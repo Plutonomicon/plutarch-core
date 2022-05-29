@@ -1,17 +1,40 @@
-module Plutarch.SystemF where
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 
+module Plutarch.SystemF where
+  
 import Plutarch.Core
 import Plutarch.EType
 import Data.Proxy (Proxy (Proxy))
+import Data.Kind (Type)
 
-newtype Lvl = Lvl Int
+data Nat = N | S Nat
+data SNat :: Nat -> Type where
+  SN :: SNat N
+  SS :: SNat n -> SNat (S n)
 
-succLvl :: Lvl -> Lvl
-succLvl (Lvl l) = Lvl (l + 1)
+class KnownSNat (n :: Nat) where
+  snat :: Proxy n -> SNat n
+
+instance KnownSNat N where
+  snat _ = SN
+
+instance KnownSNat n => KnownSNat (S n) where
+  snat _ = SS (snat (Proxy @n))
+
+snatIn :: SNat n -> (KnownSNat n => a) -> a
+snatIn SN x = x
+snatIn (SS n') x = snatIn n' x
+
+newtype Lvl = Lvl { unLvl :: Int }
+
+lvlFromSNat :: SNat n -> Lvl
+lvlFromSNat SN = Lvl 0
+lvlFromSNat (SS n) = Lvl $ unLvl (lvlFromSNat n) + 1
 
 data SFKind
-  = SFType
-  | SFTyFun SFKind SFKind
+  = SFKindType
+  | SFKindFun SFKind SFKind
 
 data SFType
   = SFTyVar Lvl
@@ -40,42 +63,65 @@ data SFTerm
 type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
 
 class TypeInfo (a :: EType) where
-  typeInfo :: Proxy a -> SFType
+  typeInfo :: Proxy a -> SNat n -> SFType
+
+data TyVar (n :: Nat) f
+instance KnownSNat n => TypeInfo (TyVar n) where
+  typeInfo _ _ = SFTyVar . lvlFromSNat $ snat (Proxy @n)
 
 instance TypeInfo EUnit where
-  typeInfo _ = SFTyUnit
+  typeInfo _ _ = SFTyUnit
 
 instance (TypeInfo a, TypeInfo b) => TypeInfo (EPair a b) where
-  typeInfo _ = SFTyPair (typeInfo $ Proxy @a) (typeInfo $ Proxy @b)
+  typeInfo _ lvl = SFTyPair (typeInfo (Proxy @a) lvl) (typeInfo (Proxy @b) lvl)
 
 instance (TypeInfo a, TypeInfo b) => TypeInfo (EEither a b) where
-  typeInfo _ = SFTyEither (typeInfo $ Proxy @a) (typeInfo $ Proxy @b)
+  typeInfo _ lvl = SFTyEither (typeInfo (Proxy @a) lvl) (typeInfo (Proxy @b) lvl)
 
 instance (TypeInfo a, TypeInfo b) => TypeInfo (a #-> b) where
-  typeInfo _ = SFTyFun (typeInfo $ Proxy @a) (typeInfo $ Proxy @b)
+  typeInfo _ lvl = SFTyFun (typeInfo (Proxy @a) lvl) (typeInfo (Proxy @b) lvl)
 
-newtype Impl (a :: EType) = Impl { runImpl :: Lvl -> Impl }
+instance (forall a. TypeInfo a => TypeInfo (f a)) => TypeInfo (EForall (IsEType Impl) f) where
+  typeInfo _ (lvl :: SNat lvl) = SFTyForall SFKindType (snatIn lvl $ typeInfo (Proxy @(f (TyVar lvl))) (SS lvl))
+
+newtype Impl (a :: EType) = Impl { runImpl :: forall n. SNat n -> SFTerm }
 
 instance EDSL Impl where
-  type IsEType Impl = TypeInfo
-
-instance (TypeInfo a, TypeInfo b) => EConstructable Impl (EPair a b) where
-  econ (EPair x y) = Impl \lvl -> SFPair (runImpl x lvl) (runImpl y lvl)
-  ematch t f = f $ EPair (Impl \lvl -> SFFst $ runImpl t lvl) (Impl \lvl -> SFSnd $ runImpl t lvl)
-
-{-
-instance (TypeInfo a, TypeInfo b) => EConstructable Impl (EEither a b) where
-  econ (ELeft x) = Impl \lvl -> MkSumLeft (runImpl x lvl) (typeInfo $ Proxy @b)
-  econ (ERight y) = Impl \lvl -> MkSumRight (typeInfo $ Proxy @a) (runImpl y lvl)
-  ematch t f = Impl \lvl ->
-    Match (runImpl t lvl)
-      (runImpl ((elam \left -> f (ELeft left))) lvl)
-      (runImpl (elam \right -> f (ERight right)) lvl)
+  type IsEType' Impl = TypeInfo
+  enamedTerm = enamedTermImpl
 
 instance (TypeInfo a, TypeInfo b) => EConstructable Impl (a #-> b) where
-  econ (ELam f) = Impl \lvl -> Lam (typeInfo $ Proxy @a) $ runImpl (f $ Impl \_ -> Var lvl) (succLvl lvl)
-  ematch f g = g $ ELam \x -> Impl \lvl -> runImpl f lvl `App` runImpl x lvl
+  econ (ELam f) = Term $ Impl \lvl -> SFLam (typeInfo (Proxy @a) lvl) $ runImpl (unTerm . f . Term $ Impl \_ -> SFVar (lvlFromSNat lvl)) (SS lvl)
+  ematch (Term f) g = g $ ELam \(Term x) -> Term $ Impl \lvl -> runImpl f lvl `SFApp` runImpl x lvl
 
-compile :: (forall edsl. ESTLC edsl => edsl a) -> (SimpleTerm, SimpleType)
-compile = undefined
--}
+instance EConstructable Impl EUnit where
+  econ EUnit = Term $ Impl \_ -> SFUnit
+  ematch _ f = f EUnit
+
+instance (TypeInfo a, TypeInfo b) => EConstructable Impl (EPair a b) where
+  econ (EPair (Term x) (Term y)) = Term $ Impl \lvl -> SFPair (runImpl x lvl) (runImpl y lvl)
+  ematch (Term t) f = f $ EPair (Term $ Impl \lvl -> SFFst $ runImpl t lvl) (Term $ Impl \lvl -> SFSnd $ runImpl t lvl)
+
+instance (TypeInfo a, TypeInfo b) => EConstructable Impl (EEither a b) where
+  econ (ELeft (Term x)) = Term $ Impl \lvl -> SFLeft (runImpl x lvl) (typeInfo (Proxy @b) lvl)
+  econ (ERight (Term y)) = Term $ Impl \lvl -> SFRight (typeInfo (Proxy @a) lvl) (runImpl y lvl)
+  ematch (Term t) f = Term $ Impl \lvl ->
+    SFMatch (runImpl t lvl)
+      (runImpl (unTerm $ elam \left -> f (ELeft left)) lvl)
+      (runImpl (unTerm $ elam \right -> f (ERight right)) lvl)
+
+instance (forall a. TypeInfo a => TypeInfo (f a)) => EConstructable Impl (EForall (IsEType Impl) f) where
+  econ t' = Term $ Impl \(lvl :: SNat lvl) -> snatIn lvl $ case t' of
+    (EForall (Term (t :: Impl (f (TyVar lvl))))) -> SFForall SFKindType $ runImpl t (SS lvl)
+  ematch (Term t) f =
+    let
+      applied :: forall a. TypeInfo a => Impl (f a)
+      applied = Impl \lvl -> runImpl t lvl `SFInst` (typeInfo (Proxy @a) lvl)
+    in
+    f $ EForall $ Term applied
+
+compile' :: forall a. (IsEType Impl a, EConstructable Impl a) => Term Impl a -> (SFTerm, SFType)
+compile' (Term t :: Term Impl a) = (runImpl t SN, typeInfo (Proxy @a) SN)
+
+compile :: forall a. (forall edsl. ESystemF edsl => EConstructable edsl a) => (forall edsl. ESystemF edsl => Term edsl a) -> (SFTerm, SFType)
+compile t = compile' t

@@ -1,8 +1,11 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 -- FIXME: This should be its own package as it's not related to Plutarch at all.
-module Plutarch.Reduce (Reduce, NoReduce(..)) where
+module Plutarch.Reduce (Reduce, NoReduce(..), reduce) where
 
 import Data.Kind (Type)
 import GHC.Generics
+import Data.Coerce (coerce, Coercible)
 
 newtype NoReduce a = NoReduce a
 
@@ -26,3 +29,6 @@ type family Reduce (x :: Type) :: Type where
   Reduce (NoReduce a) = a
   Reduce (a -> b) = a -> b
   Reduce x = GReduce x (Rep x)
+
+reduce :: Coercible a (Reduce a) => a -> Reduce a
+reduce = coerce
