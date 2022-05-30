@@ -1,18 +1,14 @@
-{ mkDerivation, async, base, bytestring, containers, lib, unix
-, utf8-string, replace-megaparsec, directory, deepseq, hspec
-}:
+{ mkDerivation, base, lib, generics-sop }:
 mkDerivation {
-  pname = "procex";
+  pname = "plutarch-core";
   version = "0.1.0.0";
   src = ./.;
   isLibrary = true;
   libraryHaskellDepends = [
-    async base bytestring containers unix utf8-string deepseq
+    base generics-sop
   ];
-  testHaskellDepends = [
-    async base replace-megaparsec unix directory hspec
-  ];
-  license = lib.licenses.asl20;
+  testHaskellDepends = [];
+  license = lib.licenses.mit;
   hydraPlatforms = lib.platforms.none;
   doHaddock = false;
   doCheck = false;

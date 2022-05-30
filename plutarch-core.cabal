@@ -1,0 +1,102 @@
+cabal-version:      2.4
+name:               plutarch-core
+version:            0.0.1
+author:             Las Safin <me@las.rs>
+license:            MIT
+extra-source-files: README.md
+
+library
+  default-language:   Haskell2010
+  default-extensions:
+    BangPatterns
+    BinaryLiterals
+    BlockArguments
+    ConstrainedClassMethods
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DisambiguateRecordFields
+    DuplicateRecordFields
+    EmptyCase
+    EmptyDataDeriving
+    ExistentialQuantification
+    ExplicitForAll
+    ExplicitNamespaces
+    ExtendedDefaultRules
+    FlexibleContexts
+    ForeignFunctionInterface
+    FunctionalDependencies
+    GADTs
+    GeneralizedNewtypeDeriving
+    Haskell2010
+    HexFloatLiterals
+    ImplicitParams
+    ImpredicativeTypes
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    LexicalNegation
+    LiberalTypeSynonyms
+    MonadComprehensions
+    MultiParamTypeClasses
+    MultiWayIf
+    NamedFieldPuns
+    NamedWildCards
+    NegativeLiterals
+    NoMonomorphismRestriction
+    NondecreasingIndentation
+    NumDecimals
+    NumericUnderscores
+    OverloadedLabels
+    OverloadedLists
+    OverloadedRecordDot
+    OverloadedStrings
+    PackageImports
+    PartialTypeSignatures
+    PatternSynonyms
+    PolyKinds
+    PostfixOperators
+    QualifiedDo
+    QuantifiedConstraints
+    QuasiQuotes
+    RankNTypes
+    RankNTypes
+    RecordWildCards
+    RecursiveDo
+    RoleAnnotations
+    ScopedTypeVariables
+    StandaloneDeriving
+    StandaloneKindSignatures
+    NoStarIsType
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeFamilyDependencies
+    TypeOperators
+    TypeSynonymInstances
+    UnicodeSyntax
+    UnliftedFFITypes
+    UnliftedNewtypes
+    ViewPatterns
+
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-uni-patterns -Wno-unused-do-bind
+    -Wno-partial-type-signatures  -Wincomplete-record-updates
+    -Wmissing-deriving-strategies -Wno-name-shadowing
+    -Wredundant-constraints -fprint-explicit-foralls -fprint-explicit-kinds
+    -Wno-unticked-promoted-constructors
+  exposed-modules:
+    Plutarch.Core
+    Plutarch.STLC
+
+  build-depends:
+    , base
+    , generics-sop
