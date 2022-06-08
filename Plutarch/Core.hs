@@ -8,6 +8,7 @@ module Plutarch.Core (
   ERepr,
   EDSLKind,
   Term (Term),
+  ClosedTerm,
   ENamedTerm,
   enamedTermImpl,
   enamedTerm,
@@ -24,6 +25,8 @@ module Plutarch.Core (
   ematch,
   type (#->),
   pattern ELam,
+  type (#=>),
+  pattern EConstrained,
   EVoid,
   EDelay (EDelay),
   EPair(EPair),
@@ -74,6 +77,8 @@ type role Term nominal nominal
 data Term (edsl :: EDSLKind) (a :: EType) where
   Term :: { unTerm :: (EDSL edsl, IsEType' edsl (ERepr a)) => edsl (ERepr a) } -> Term edsl a
 
+type ClosedTerm (c :: EDSLKind -> Constraint) (a :: EType) = forall edsl. c edsl => Term edsl a
+
 type EConcrete (edsl :: EDSLKind) (a :: EType) = a (ToETypeF (Compose NoReduce (Term edsl)))
 
 class EDSL (edsl :: EDSLKind) where
@@ -95,6 +100,7 @@ type family EReprHelper (b :: Bool) (a :: EType) where
   EReprHelper True a = ENewtype a
   EReprHelper False a = a
 
+type ERepr :: EType -> EType
 type ERepr a = EReprHelper (EIsNewtype' a) a
 
 -- Implementing these type safely is almost impossible without full dependent types,
@@ -107,6 +113,9 @@ fromERepr = unsafeCoerce
 
 class (IsEType' edsl (ERepr a)) => IsEType (edsl :: EDSLKind) (a :: EType)
 instance (IsEType' edsl (ERepr a)) => IsEType edsl a
+
+class (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
+instance (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
 
 class (EDSL edsl, IsEType' edsl a) => EConstructable' edsl (a :: EType) where
   econImpl :: HasCallStack => EConcrete edsl a -> edsl a
@@ -127,25 +136,37 @@ econ x = Term $ econImpl (toERepr x)
 ematch :: forall edsl a b. (HasCallStack, EConstructable edsl a, IsEType edsl b) => Term edsl a -> (EConcrete edsl a -> Term edsl b) -> Term edsl b
 ematch (Term t) f = ematchImpl t \x -> f (fromERepr x)
 
-data EVoid f
+data EVoid ef
+instance EIsNewtype EVoid where type EIsNewtype' _ = False
 
 -- | Effects of `econ` are effects of the argument.
-data ELet a f = ELet (Ef f a)
+data ELet a ef = ELet (Ef ef a)
 instance EIsNewtype (ELet a) where type EIsNewtype' _ = False
 
 -- | `econ` has no effects.
-data EDelay a f = EDelay (Ef f a)
+data EDelay a ef = EDelay (Ef ef a)
 instance EIsNewtype (EDelay a) where type EIsNewtype' _ = False
 
+-- | '=>' embedded into an eDSL.
+data (#=>) (a :: Constraint) (b :: EType) ef = EConstrained (a => Ef ef b)
+instance EIsNewtype (a #=> b) where type EIsNewtype' _ = False
+
+infixr 0 #=>
+
 -- | '->' embedded into an eDSL.
-data (#->) a b f = ELam ((Ef f a) -> (Ef f b)) deriving stock Generic
+data (#->) a b f = ELam (Ef f a -> Ef f b) deriving stock Generic
 instance EIsNewtype (a #-> b) where type EIsNewtype' _ = False
+
+infixr 0 #->
 
 data EAny f = forall a. EAny (Proxy a) (Ef f a)
 instance EIsNewtype EAny where type EIsNewtype' _ = False
 
-data EForall (constraint :: a -> Constraint) (b :: a -> EType) f = EForall (forall (x :: a). constraint x => Ef f (b x))
+newtype EForall (constraint :: a -> Constraint) (b :: a -> EType) f = EForall (forall (x :: a). constraint x => Ef f (b x))
 instance EIsNewtype (EForall c f) where type EIsNewtype' _ = False
+
+--data EForall2 (ca :: a -> Constraint) (cb :: b -> Constraint) (f :: a -> b -> EType) ef
+--  = EForall2 (EForall cb )
 
 data EUnit (f :: ETypeF) = EUnit deriving stock Generic
 instance EIsNewtype EUnit where type EIsNewtype' _ = False
@@ -296,6 +317,14 @@ type ESOP edsl =
   , forall a. EIsSOP edsl a => EConstructable' edsl (ENewtype a)
   )
 
-type CompileAp variant output = forall a m. (HasCallStack, Applicative m, forall edsl. variant edsl => IsEType edsl a) => (forall edsl. (variant edsl, EAp m edsl) => Term edsl a) -> m (m output)
+type CompileAp variant output =
+  forall a m.
+  (HasCallStack, Applicative m, forall edsl. variant edsl => IsEType edsl a) =>
+  (forall edsl. (variant edsl, EAp m edsl) => Term edsl a) ->
+  m (m output)
 
-type Compile variant output = forall a m. (HasCallStack, Monad m, forall edsl. variant edsl => IsEType edsl a) => (forall edsl. (variant edsl, EEmbeds m edsl) => Term edsl a) -> m (m output)
+type Compile variant output =
+  forall a m.
+  (HasCallStack, Monad m, forall edsl. variant edsl => IsEType edsl a) =>
+  (forall edsl. (variant edsl, EEmbeds m edsl) => Term edsl a) ->
+  m (m output)

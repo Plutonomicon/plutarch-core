@@ -1,8 +1,11 @@
-module Plutarch.EType (EType' (MkEType'), ETypeF, UnEType', EType, Ef, ToETypeF) where
+{-# LANGUAGE UndecidableInstances #-}
 
+module Plutarch.EType (EType' (MkEType'), ETypeF, UnEType', EType, Ef, ToETypeF) where
+  
 import Data.Kind (Type)
 import Plutarch.Reduce (Reduce)
 import GHC.Generics
+import Data.Type.Bool (type (&&))
 
 -- EType
 
@@ -16,6 +19,11 @@ import GHC.Generics
 -- the fields with eDSL terms.
 
 newtype EType' = MkEType' EType deriving stock Generic
+
+type family IsValidEType (x :: Type) :: Bool where
+  IsValidEType (ETypeF -> Type) = 'True
+  IsValidEType (x -> y) = IsValidEType x && IsValidEType y
+  IsValidEType _ = 'False
 
 type ETypeF = EType' -> Type
 

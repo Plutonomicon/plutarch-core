@@ -1,39 +1,50 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Examples.Simple where
-  
+    
 import Plutarch.Core
---import Plutarch.STLC
 import Plutarch.EType
 import GHC.Generics (Generic)
+import Data.Proxy (Proxy (Proxy))
 
 type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
 
-data EId a f = EId (Ef f (a #-> a)) deriving stock Generic deriving anyclass EIsNewtype
+data F
+instance ESystemF edsl => ENamedTerm F edsl (EUnit #-> EUnit) where
+  enamedTermImpl _ = elam \x -> g # x
 
-data EBool (f :: ETypeF) = ETrue | EFalse deriving stock Generic deriving anyclass EIsNewtype
+f :: ESystemF edsl => Term edsl (EUnit #-> EUnit)
+f = enamedTerm (Proxy @F)
 
-data Bad (f :: ETypeF) = Bad Integer deriving stock Generic deriving anyclass EIsNewtype
+data G
+instance ESystemF edsl => ENamedTerm G edsl (EUnit #-> EUnit) where
+  enamedTermImpl _ = elam \x -> f # x
 
-badex :: forall edsl. (ESystemF edsl) => Term edsl Bad
-badex = econ $ Bad 100
-
-f :: EGeneric (EId a) => ()
-f = ()
-
-g :: ()
-g = f
-
-ex :: forall a edsl. (IsEType edsl a, ESystemF edsl) => Term edsl (EId a)
-ex = econ $ EId ex'
-
-ex' :: forall a edsl. (IsEType edsl a, ESystemF edsl) => Term edsl (a #-> a)
-ex' = elam \(x :: Term edsl a) -> x
---
---expoly :: forall edsl. ESystemF edsl => Term edsl (EForall (IsEType edsl) EId)
---expoly = econ $ EForall ex
+g :: ESystemF edsl => Term edsl (EUnit #-> EUnit)
+g = enamedTerm (Proxy @G)
 
 {-
-exfailwithmessage :: forall a. (EEmbeds IO edsl, IsEType edsl a, EPLC edsl, EPartial edsl) => Term edsl a
-exfailwithmessage = eembed $ do
-  msg <- readFile "something"
-  pure $ etraceError (fromString msg)
+
+f :: Functor f => f Bool -> f Bool
+f x = not <$> x
+
+data EBool f = ETrue | EFalse
+  deriving stock Generic
+  deriving anyclass EIsNewtype
+
+newtype EId' a = EId' (Ef f (a #-> a)
+newtype EId = EId (EForall something EId')
+
+--newtype EMap f a b ef = EMap (Ef ef (f a #-> f b))
+
+--newtype EMap' a b ef = EMap (EForall (IsEType2 edsl) )
+
+class EFunctor edsl f where
+  --emap :: Term edsl (EMap f)
+
+newtype A a f = A (Ef f (a EBool #-> a EBool))
+
+--f' :: EFunctor f => Term edsl
+--
 -}
