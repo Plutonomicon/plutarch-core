@@ -83,9 +83,6 @@ type ClosedTerm (c :: EDSLKind -> Constraint) (a :: EType) = forall edsl. c edsl
 type family Helper (edsl :: EDSLKind) :: ETypeF where
   Helper edsl = MkETypeF edsl (Compose NoReduce (Term edsl))
 
-type family Helper' (edsl :: EDSLKind) :: ETypeF where
-  Helper edsl = MkETypeF edsl (Compose NoReduce (Term edsl))
-
 type EConcrete (edsl :: EDSLKind) (a :: EType) = a (Helper edsl)
 
 type EConcreteRepr (edsl :: EDSLKind) (a :: ETypeRepr) = EConcrete edsl (EReprAp a)
