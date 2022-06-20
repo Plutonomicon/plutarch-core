@@ -1,11 +1,21 @@
 {-# LANGUAGE UndecidableInstances #-}
 
-module Plutarch.EType (EType' (MkEType'), ETypeF, UnEType', EType, Ef, ToETypeF) where
-  
-import Data.Kind (Type)
+module Plutarch.EType (
+  EIfNewtype,
+  EIsNewtype(..),
+  ENewtype,
+  ERepr,
+  EReprAp,
+  ETypeRepr,
+  pattern MkETypeRepr,
+  coerceERepr, EDSLKind, ETypeF (MkETypeF), EType, Ef, UnEf
+  , type (/$)) where
+
+import Data.Coerce (Coercible)
+import Data.Kind (Type, Constraint)
 import Plutarch.Reduce (Reduce)
-import GHC.Generics
 import Data.Type.Bool (type (&&))
+import Data.Proxy (Proxy)
 
 -- EType
 
@@ -18,22 +28,73 @@ import Data.Type.Bool (type (&&))
 -- This form of (higher) HKDs is useful for eDSLs, as you can replace the
 -- the fields with eDSL terms.
 
-newtype EType' = MkEType' EType deriving stock Generic
-
 type family IsValidEType (x :: Type) :: Bool where
   IsValidEType (ETypeF -> Type) = 'True
   IsValidEType (x -> y) = IsValidEType x && IsValidEType y
   IsValidEType _ = 'False
 
-type ETypeF = EType' -> Type
+data ETypeF = MkETypeF
+  { _edsl :: EDSLKind
+  , _concretise :: EType -> Type
+  }
 
-type family UnEType' (u :: EType') :: EType where
-  UnEType' (MkEType' x) = x
---
 -- | Higher HKD
 type EType = ETypeF -> Type
 
-type Ef (f :: ETypeF) (x :: EType) = Reduce (f (MkEType' x))
+type EDSLKind = ETypeRepr -> Type
 
-type ToETypeF :: (EType -> Type) -> ETypeF
-newtype ToETypeF (f :: EType -> Type) (x :: EType') = ToETypeF (f (UnEType' x)) deriving stock Generic
+type family Ef (f :: ETypeF) (x :: EType) :: Type where
+  Ef (MkETypeF edsl concretise) x = Reduce (concretise x)
+
+type (/$) ef x = Ef ef x
+infix 0 /$
+
+type family UnEf (f :: ETypeF) :: EDSLKind where
+  UnEf (MkETypeF edsl concretise) = edsl
+
+newtype ENewtype (a :: EType) f = ENewtype (a f)
+
+class KnownBool (EIsNewtype' a) => EIsNewtype (a :: EType) where
+  type EIsNewtype' a :: Bool
+  type EIsNewtype' a = True
+
+type EIfNewtype a = (EIsNewtype a, EIsNewtype' a ~ True)
+
+newtype ETypeRepr = MkETypeRepr EType
+
+type family EReprHelper (b :: Bool) (a :: EType) where
+  EReprHelper True a = ENewtype a
+  EReprHelper False a = a
+
+type family EReprAp (a :: ETypeRepr) :: EType where
+  EReprAp (MkETypeRepr a) = a
+
+type ERepr :: EType -> ETypeRepr
+type ERepr a = MkETypeRepr (EReprHelper (EIsNewtype' a) a)
+
+data Dict :: Constraint -> Type where
+  Dict :: c => Dict c
+
+-- FIXME replace with generic-singletons
+data SBool :: Bool -> Type where
+  STrue :: SBool 'True
+  SFalse :: SBool 'False
+
+class KnownBool (b :: Bool) where
+  knownBool :: SBool b
+
+instance KnownBool 'True where
+  knownBool = STrue
+
+instance KnownBool 'False where
+  knownBool = SFalse
+
+h :: Proxy a -> SBool b -> Dict (Coercible (EReprHelper b a) a)
+h _ STrue = Dict
+h _ SFalse = Dict
+
+g :: forall a. EIsNewtype a => Proxy a -> Dict (Coercible (EReprAp (ERepr a)) a)
+g p = h p (knownBool :: SBool (EIsNewtype' a))
+
+coerceERepr :: forall a b. EIsNewtype a => Proxy a -> (Coercible (EReprAp (ERepr a)) a => b) -> b
+coerceERepr p f = case g p of Dict -> f

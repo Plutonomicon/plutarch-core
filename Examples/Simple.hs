@@ -10,31 +10,39 @@ import Data.Proxy (Proxy (Proxy))
 
 type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
 
-data F
-instance ESystemF edsl => ENamedTerm F edsl (EUnit #-> EUnit) where
-  enamedTermImpl _ = elam \x -> g # x
+data EBool ef = ETrue | EFalse
+  deriving stock Generic
+  deriving anyclass EIsNewtype
 
-f :: ESystemF edsl => Term edsl (EUnit #-> EUnit)
-f = enamedTerm (Proxy @F)
+newtype EForall1 (f :: EType -> EType) ef = EForall1 (Ef ef (EForall (IsEType (UnEf ef)) f))
+  deriving stock Generic
+  deriving anyclass EIsNewtype
 
-data G
-instance ESystemF edsl => ENamedTerm G edsl (EUnit #-> EUnit) where
-  enamedTermImpl _ = elam \x -> f # x
+newtype EId' a ef = EId' (Ef ef (a #-> a))
+newtype EId ef = EId (Ef ef (EForall1 EId'))
 
-g :: ESystemF edsl => Term edsl (EUnit #-> EUnit)
-g = enamedTerm (Proxy @G)
+type U0 = EUnit
+type U1 = EEither U0 U0
+type U2 = EEither U1 U1
+type U3 = EEither U2 U2
+type U4 = EEither U3 U3
+type U5 = EEither U4 U4
+type U6 = EEither U5 U5
+type U7 = EEither U6 U6
+type U8 = EEither U7 U7
+
+type Word = U8
+
+f :: ESOP edsl => Term edsl U1 -> Term edsl U0
+f x = ematch x \case
+  ERight EUnit -> econ EUnit
+  ELeft EUnit -> econ EUnit
 
 {-
 
 f :: Functor f => f Bool -> f Bool
 f x = not <$> x
 
-data EBool f = ETrue | EFalse
-  deriving stock Generic
-  deriving anyclass EIsNewtype
-
-newtype EId' a = EId' (Ef f (a #-> a)
-newtype EId = EId (EForall something EId')
 
 --newtype EMap f a b ef = EMap (Ef ef (f a #-> f b))
 

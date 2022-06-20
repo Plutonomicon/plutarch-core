@@ -41,7 +41,29 @@ instance EIsNewtype EAddress where type EIsNewtype' _ = False
 data EDCert (ef :: ETypeF)
 instance EIsNewtype EDCert where type EIsNewtype' _ = False
 
+data EByteString (ef :: ETypeF)
+instance EIsNewtype EByteString where type EIsNewtype' _ = False
+
+type EFix :: (EType -> EType) -> EType
+newtype EFix f ef = EFix (Ef ef (f (EFix f)))
+instance EIsNewtype (EFix f) where type EIsNewtype' _ = False
+
+data EListF a self ef
+  = ENil
+  | ECons (Ef ef a) (Ef ef self)
+  deriving stock Generic
+  deriving anyclass EIsNewtype
+
+newtype EList a ef = EList (Ef ef (EFix (EListF a)))
+  deriving stock Generic
+  deriving anyclass EIsNewtype
+
 data EData (ef :: ETypeF)
+  = EDataConstr (Ef ef EInteger) (Ef ef (EList EData))
+  | EDataMap (Ef ef (EList (EPair EData EData)))
+  | EDataList (Ef ef (EList EData))
+  | EDataInteger (Ef ef EInteger)
+  | EDataByteString (Ef ef EByteString)
 instance EIsNewtype EData where type EIsNewtype' _ = False
 
 data EOwnUTXO d f = EOwnUTXO
@@ -59,22 +81,30 @@ instance EIsNewtype (EDiagram d) where type EIsNewtype' _ = False
 class IsEType' edsl a => IsETypeHelper edsl a
 instance IsEType' edsl a => IsETypeHelper edsl a
 
+class EConstructable' edsl a => EConstructableHelper edsl a
+instance EConstructable' edsl a => EConstructableHelper edsl a
+
+class (forall a. EConstructable edsl a => EConstructable edsl (f a)) => EConstructable2 edsl f
+instance (forall a. EConstructable edsl a => EConstructable edsl (f a)) => EConstructable2 edsl f
+
 class
   ( forall d. Monoid (Term edsl (EDiagram d))
-  , (forall d. IsEType edsl d => IsETypeHelper edsl (EDiagram d))
+  , (forall d. IsEType edsl d => IsETypeHelper edsl (MkETypeRepr (EDiagram d)))
+  , Monoid (Term edsl EValue)
   , EDSL edsl
   , ESOP edsl
-  , IsEType' edsl EInteger
-  , IsEType' edsl EValue
-  , IsEType' edsl EUTXO
-  , IsEType' edsl EUTXORef
-  , IsEType' edsl ETokenName
-  , IsEType' edsl ECurrencySymbol
-  , IsEType' edsl ETimeRange
-  , IsEType' edsl EPubKeyHash
-  , IsEType' edsl EAddress
-  , IsEType' edsl EDCert
-  , IsEType' edsl EData
+  , IsEType' edsl (MkETypeRepr EInteger)
+  , forall f. EConstructable2 edsl f => EConstructableHelper edsl (MkETypeRepr (EFix f))
+  , IsEType' edsl (MkETypeRepr EValue)
+  , IsEType' edsl (MkETypeRepr EUTXO)
+  , IsEType' edsl (MkETypeRepr EUTXORef)
+  , IsEType' edsl (MkETypeRepr ETokenName)
+  , IsEType' edsl (MkETypeRepr ECurrencySymbol)
+  , IsEType' edsl (MkETypeRepr ETimeRange)
+  , IsEType' edsl (MkETypeRepr EPubKeyHash)
+  , IsEType' edsl (MkETypeRepr EAddress)
+  , IsEType' edsl (MkETypeRepr EDCert)
+  , EConstructable' edsl (MkETypeRepr EData)
   ) => EPSL edsl where
   requireInput :: Term edsl EUTXORef -> Term edsl (EDiagram d)
   requireOwnInput :: Term edsl (EOwnUTXO d) -> Term edsl (EDiagram d)
@@ -90,6 +120,10 @@ class
   toAddress :: Term edsl EAddress -> Term edsl EValue -> Term edsl EData -> Term edsl EUTXO
   fromPkh :: Term edsl EPubKeyHash -> Term edsl EAddress
   utxoRefIs :: Term edsl EUTXORef -> Term edsl EUTXO -> Term edsl (EDiagram d)
+  emptyValue :: Term edsl EValue
+  mkValue :: Term edsl ECurrencySymbol -> Term edsl ETokenName -> Term edsl EInteger -> Term edsl EValue
+  mkAda :: Term edsl EInteger -> Term edsl EValue
+  mkOwnValue :: Term edsl ETokenName -> Term edsl EInteger
 
 data Specification d where
   Specification ::
@@ -107,8 +141,12 @@ data ENat f = EZ | ES (Ef f ENat)
   deriving stock Generic
   deriving anyclass EIsNewtype
 
+instance EConstructable edsl ENat => Num (Term edsl ENat) where
+  fromInteger 0 = econ EZ
+  fromInteger n | n > 0 = econ $ ES (fromInteger n)
+  fromInteger _ = error "negative"
+
 paymentCases :: EPSL edsl => Term edsl EPubKeyHash -> Term edsl (EDiagram EPubKeyHash)
--- FIXME: Very incorrect
 paymentCases pkh = requireSignature pkh
 
 data PaymentProtocol
@@ -168,3 +206,33 @@ exampleCases c = ematch c \case
     requireInput $ otherinput
     utxoRefIs otherinput $ toProtocol (Proxy @CounterProtocol) (econ $ CounterDatum counter (fromPkh pkh) undefined) value'
     --observeOutput $ undefined (canonical $ Proxy @CounterProtocol) value' (econ $ CounterDatum 5 pkh)
+
+data MaksDatum f = MaksA | MaksB
+  deriving stock Generic
+  deriving anyclass EIsNewtype
+
+data MaksCase ef where
+  -- given one A, we produce an A and a B
+  MaksFork :: { ada :: Ef ef EInteger, ada' :: Ef ef EInteger } -> MaksCase ef
+  -- given one A and one B, we lock the value of both into the counter protocol
+  MaksConsume :: { ada :: Ef ef EInteger, ada' :: Ef ef EInteger } -> MaksCase ef
+  deriving stock Generic
+  deriving anyclass EIsNewtype
+
+pkh :: Term edsl EPubKeyHash
+pkh = undefined
+
+maksCases :: forall edsl. EPSL edsl => Term edsl MaksCase -> Term edsl (EDiagram MaksDatum)
+maksCases c = ematch c \case
+  MaksFork { ada, ada' } -> MonoidDo.do
+    requireOwnInput $ econ $ EOwnUTXO (mkAda ada) (econ MaksA)
+    createOwnOutput $ econ $ EOwnUTXO (mkAda ada) (econ MaksA)
+    createOwnOutput $ econ $ EOwnUTXO (mkAda ada') (econ MaksB)
+  MaksConsume { ada, ada' } -> MonoidDo.do
+    requireOwnInput $ econ $ EOwnUTXO (mkAda ada) (econ MaksA)
+    requireOwnInput $ econ $ EOwnUTXO (mkAda ada') (econ MaksB)
+    createOutput $ toProtocol (Proxy @CounterProtocol) (econ $ CounterDatum 100 (fromPkh pkh) (econ $ EDataList $ econ $ EList $ econ $ EFix $ econ ENil)) (mkAda ada <> mkAda ada')
+
+data MaksProtocol
+instance Protocol MaksProtocol MaksDatum where
+  specification _ = Specification @MaksDatum @MaksCase maksCases

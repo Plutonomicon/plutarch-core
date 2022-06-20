@@ -9,11 +9,8 @@ module Plutarch.Core (
   EDSLKind,
   Term (Term),
   ClosedTerm,
-  ENamedTerm,
-  enamedTermImpl,
-  enamedTerm,
   IsEType',
-  ENewtype (ENewtype),
+  ENewtype,
   EIsNewtype,
   EIsNewtype',
   EIfNewtype,
@@ -57,21 +54,25 @@ module Plutarch.Core (
   EIsSum (..),
   EIsSumR (..),
   ) where
-    
+
+import Data.Coerce (coerce)
 import Data.Kind (Constraint, Type)
 import GHC.Generics (Generic)
 import Data.Functor.Compose (Compose)
 import Data.Proxy (Proxy (Proxy))
-import Data.Typeable (Typeable)
 import qualified Generics.SOP as SOP
 import qualified Generics.SOP.GGP as SOPG
 import GHC.TypeLits (TypeError, pattern Text, pattern (:$$:), pattern ShowType)
-import Unsafe.Coerce (unsafeCoerce) -- oh no
-import Plutarch.EType (EType, ETypeF, ToETypeF, Ef)
+import Plutarch.EType (
+  coerceERepr,
+  EDSLKind,
+  type (/$),
+  ETypeRepr (MkETypeRepr), EReprAp, EType, ENewtype, EIfNewtype, EIsNewtype, EIsNewtype', ERepr, ETypeF, Ef,  pattern MkETypeF)
 import Plutarch.Reduce (NoReduce)
 import GHC.Stack (HasCallStack)
 
-type EDSLKind = EType -> Type
+class EDSL (edsl :: EDSLKind) where
+  type IsEType' edsl :: ETypeRepr -> Constraint
 
 type role Term nominal nominal
 data Term (edsl :: EDSLKind) (a :: EType) where
@@ -79,37 +80,20 @@ data Term (edsl :: EDSLKind) (a :: EType) where
 
 type ClosedTerm (c :: EDSLKind -> Constraint) (a :: EType) = forall edsl. c edsl => Term edsl a
 
-type EConcrete (edsl :: EDSLKind) (a :: EType) = a (ToETypeF (Compose NoReduce (Term edsl)))
+type family Helper (edsl :: EDSLKind) :: ETypeF where
+  Helper edsl = MkETypeF edsl (Compose NoReduce (Term edsl))
 
-class EDSL (edsl :: EDSLKind) where
-  type IsEType' edsl :: EType -> Constraint
-  enamedTerm :: (HasCallStack, ENamedTerm name edsl a) => Proxy name -> Term edsl a
+type family Helper' (edsl :: EDSLKind) :: ETypeF where
+  Helper edsl = MkETypeF edsl (Compose NoReduce (Term edsl))
 
-class Typeable name => ENamedTerm (name :: Type) (edsl :: EDSLKind) (a :: EType) | name -> a where
-  enamedTermImpl :: Proxy name -> Term edsl a
+type EConcrete (edsl :: EDSLKind) (a :: EType) = a (Helper edsl)
 
-newtype ENewtype (a :: EType) f = ENewtype (a f)
+type EConcreteRepr (edsl :: EDSLKind) (a :: ETypeRepr) = EConcrete edsl (EReprAp a)
 
-class EIsNewtype (a :: EType) where
-  type EIsNewtype' a :: Bool
-  type EIsNewtype' a = True
-
-type EIfNewtype a = (EIsNewtype a, EIsNewtype' a ~ True)
-
-type family EReprHelper (b :: Bool) (a :: EType) where
-  EReprHelper True a = ENewtype a
-  EReprHelper False a = a
-
-type ERepr :: EType -> EType
-type ERepr a = EReprHelper (EIsNewtype' a) a
-
--- Implementing these type safely is almost impossible without full dependent types,
--- as we need to prove that `forall a b. Coercible (EReprHelper b a) a` from the fact
--- that `forall a. Coercible (EReprHelper 'True a) a` and `forall a. Coercible (EReprHelper 'False a) a`.
-toERepr :: EConcrete edsl a -> EConcrete edsl (ERepr a)
-toERepr = unsafeCoerce
-fromERepr :: EConcrete edsl (ERepr a) -> EConcrete edsl a
-fromERepr = unsafeCoerce
+toERepr :: forall a edsl. EIsNewtype a => EConcrete edsl a -> EConcreteRepr edsl (ERepr a)
+toERepr x = coerceERepr (Proxy @a) $ coerce x
+fromERepr :: forall a edsl. EIsNewtype a => EConcreteRepr edsl (ERepr a) -> EConcrete edsl a
+fromERepr x = coerceERepr (Proxy @a) $ coerce x
 
 class (IsEType' edsl (ERepr a)) => IsEType (edsl :: EDSLKind) (a :: EType)
 instance (IsEType' edsl (ERepr a)) => IsEType edsl a
@@ -117,23 +101,23 @@ instance (IsEType' edsl (ERepr a)) => IsEType edsl a
 class (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
 instance (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
 
-class (EDSL edsl, IsEType' edsl a) => EConstructable' edsl (a :: EType) where
-  econImpl :: HasCallStack => EConcrete edsl a -> edsl a
+class (EDSL edsl, IsEType' edsl a) => EConstructable' edsl (a :: ETypeRepr) where
+  econImpl :: HasCallStack => EConcreteRepr edsl a -> edsl a
   -- If this didn't return `Term`, implementing it would be a lot harder.
-  ematchImpl :: forall b. (HasCallStack, IsEType edsl b) => edsl a -> (EConcrete edsl a -> Term edsl b) -> Term edsl b
+  ematchImpl :: forall b. (HasCallStack, IsEType edsl b) => edsl a -> (EConcreteRepr edsl a -> Term edsl b) -> Term edsl b
 
 -- | The crux of what an eDSL is.
 class (EConstructable' edsl (ERepr a)) => EConstructable edsl a where
 instance (EConstructable' edsl (ERepr a)) => EConstructable edsl a where
 
 -- | The handling of effects depends on the type.
-econ :: forall edsl a. (HasCallStack, EConstructable edsl a) => EConcrete edsl a -> Term edsl a
+econ :: forall edsl a. (HasCallStack, EIsNewtype a, EConstructable edsl a) => EConcrete edsl a -> Term edsl a
 econ x = Term $ econImpl (toERepr x)
 
 -- | For `ematch x \y -> z`, all effects in `x` and `z` must happen in the result.
 -- The effects in `x` must happen before the effects in `z`.
 -- `y` must be effectless.
-ematch :: forall edsl a b. (HasCallStack, EConstructable edsl a, IsEType edsl b) => Term edsl a -> (EConcrete edsl a -> Term edsl b) -> Term edsl b
+ematch :: forall edsl a b. (HasCallStack, EIsNewtype a, EConstructable edsl a, IsEType edsl b) => Term edsl a -> (EConcrete edsl a -> Term edsl b) -> Term edsl b
 ematch (Term t) f = ematchImpl t \x -> f (fromERepr x)
 
 data EVoid ef
@@ -154,7 +138,7 @@ instance EIsNewtype (a #=> b) where type EIsNewtype' _ = False
 infixr 0 #=>
 
 -- | '->' embedded into an eDSL.
-data (#->) a b f = ELam (Ef f a -> Ef f b) deriving stock Generic
+data (#->) a b ef = ELam ((ef /$ a) -> (ef /$ b)) deriving stock Generic
 instance EIsNewtype (a #-> b) where type EIsNewtype' _ = False
 
 infixr 0 #->
@@ -171,7 +155,7 @@ instance EIsNewtype (EForall c f) where type EIsNewtype' _ = False
 data EUnit (f :: ETypeF) = EUnit deriving stock Generic
 instance EIsNewtype EUnit where type EIsNewtype' _ = False
 
-data EPair a b f = EPair (Ef f a) (Ef f b) deriving stock Generic
+data EPair a b ef = EPair (ef /$ a) (ef /$ b) deriving stock Generic
 instance EIsNewtype (EPair a b) where type EIsNewtype' _ = False
 
 data EEither a b f = ELeft (Ef f a) | ERight (Ef f b) deriving stock Generic
@@ -311,10 +295,10 @@ instance IsEType' edsl a => IsETypeHelper edsl a
 type ESOP :: EDSLKind -> Constraint
 type ESOP edsl =
   ( EConstructable edsl EUnit
-  , forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable' edsl (EPair a b)
-  , forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable' edsl (EEither a b)
-  , forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable' edsl (a #-> b)
-  , forall a. EIsSOP edsl a => EConstructable' edsl (ENewtype a)
+  , forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable' edsl (MkETypeRepr (EPair a b))
+  , forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable' edsl (MkETypeRepr (EEither a b))
+  , forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable' edsl (MkETypeRepr (a #-> b))
+  , forall a. EIsSOP edsl a => EConstructable' edsl (MkETypeRepr (ENewtype a))
   )
 
 type CompileAp variant output =
