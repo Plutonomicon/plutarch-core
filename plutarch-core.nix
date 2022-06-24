@@ -5,9 +5,10 @@ mkDerivation {
   src = ./.;
   isLibrary = true;
   libraryHaskellDepends = [
-    base generics-sop
+    base
+    generics-sop
   ];
-  testHaskellDepends = [];
+  testHaskellDepends = [ ];
   license = lib.licenses.mit;
   hydraPlatforms = lib.platforms.none;
   doHaddock = false;
