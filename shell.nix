@@ -1,11 +1,9 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import <nixpkgs> { } }:
 with pkgs;
-let
-  #mkDerivation = p: old: arg: old (arg // {libraryHaskellDepends = arg.libraryHaskellDepends ++ arg.testHaskellDepends;});
-in haskell.packages.ghc922.shellFor {
+haskell.packages.ghc923.shellFor {
   packages = p: [
-    (p.callPackage ./plutarch-core.nix {})
+    (p.callPackage ./plutarch-core.nix { })
   ];
   buildHoogle = false;
-  buildInputs = [ cabal-install cabal2nix curl ];
+  buildInputs = [ cabal-install cabal2nix curl nixpkgs-fmt ];
 }
