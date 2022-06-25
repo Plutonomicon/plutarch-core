@@ -36,7 +36,6 @@ library
     FunctionalDependencies
     GADTs
     GeneralizedNewtypeDeriving
-    Haskell2010
     HexFloatLiterals
     ImplicitParams
     ImpredicativeTypes
@@ -100,3 +99,4 @@ library
   build-depends:
     , base
     , generics-sop
+    , data-fix

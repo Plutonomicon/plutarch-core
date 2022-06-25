@@ -1,4 +1,4 @@
-{ mkDerivation, base, lib, generics-sop }:
+{ mkDerivation, base, lib, generics-sop, data-fix }:
 mkDerivation {
   pname = "plutarch-core";
   version = "0.1.0.0";
@@ -7,6 +7,7 @@ mkDerivation {
   libraryHaskellDepends = [
     base
     generics-sop
+    data-fix
   ];
   testHaskellDepends = [ ];
   license = lib.licenses.mit;

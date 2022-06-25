@@ -1,12 +1,16 @@
 {
-  description = "Plutarch 2.0 (WIP)";
+  description = "Plutarch 2.0";
   inputs = {
-    flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-unstable";
   };
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.simpleFlake {
-      inherit self nixpkgs;
-      name = "plutarch-core";
-      shell = ./shell.nix;
+  outputs = { self, nixpkgs }:
+    let
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
+      perSystem = nixpkgs.lib.genAttrs supportedSystems;
+      nixpkgsFor = system: nixpkgs.legacyPackages.${system};
+    in {
+      devShells = perSystem (system: {
+        default = import ./shell.nix { pkgs = nixpkgsFor system; };
+      });
     };
 }
