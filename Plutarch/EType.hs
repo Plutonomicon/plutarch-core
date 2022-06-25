@@ -3,7 +3,8 @@
 module Plutarch.EType (
   EIfNewtype,
   EIsNewtype(..),
-  ENewtype,
+  ENewtype(..),
+  type MkENewtype,
   ERepr,
   EReprAp,
   ETypeRepr,
@@ -53,6 +54,7 @@ type family UnEf (f :: ETypeF) :: EDSLKind where
   UnEf (MkETypeF edsl concretise) = edsl
 
 newtype ENewtype (a :: EType) f = ENewtype (a f)
+type MkENewtype a = MkETypeRepr (ENewtype a)
 
 class KnownBool (EIsNewtype' a) => EIsNewtype (a :: EType) where
   type EIsNewtype' a :: Bool

@@ -10,7 +10,6 @@ module Plutarch.Core (
   Term (Term),
   ClosedTerm,
   IsEType',
-  ENewtype,
   EIsNewtype,
   EIsNewtype',
   EIfNewtype,
@@ -29,6 +28,8 @@ module Plutarch.Core (
   EPair(EPair),
   EEither(ELeft, ERight),
   EForall (EForall),
+  ESome (ESome),
+  EFix (EFix),
   EAny (EAny),
   EPolymorphic,
   ESOP,
@@ -140,14 +141,17 @@ instance EIsNewtype (a #-> b) where type EIsNewtype' _ = False
 
 infixr 0 #->
 
-data EAny f = forall a. EAny (Proxy a) (Ef f a)
+data EAny ef = forall a. EAny (Proxy a) (Ef ef a)
 instance EIsNewtype EAny where type EIsNewtype' _ = False
 
-newtype EForall (constraint :: a -> Constraint) (b :: a -> EType) f = EForall (forall (x :: a). constraint x => Ef f (b x))
-instance EIsNewtype (EForall c f) where type EIsNewtype' _ = False
+newtype EForall (constraint :: a -> Constraint) (b :: a -> EType) ef = EForall (forall (x :: a). constraint x => ef /$ b x)
+instance EIsNewtype (EForall c ef) where type EIsNewtype' _ = False
 
---data EForall2 (ca :: a -> Constraint) (cb :: b -> Constraint) (f :: a -> b -> EType) ef
---  = EForall2 (EForall cb )
+data ESome (constraint :: a -> Constraint) (b :: a -> EType) ef = forall (x :: a). ESome (constraint x => ef /$ b x)
+instance EIsNewtype (ESome c ef) where type EIsNewtype' _ = False
+
+newtype EFix f ef = EFix (ef /$ f (EFix f))
+instance EIsNewtype (EFix f) where type EIsNewtype' _ = False
 
 data EUnit (f :: ETypeF) = EUnit deriving stock Generic
 instance EIsNewtype EUnit where type EIsNewtype' _ = False
@@ -302,10 +306,10 @@ type CompileAp variant output =
   forall a m.
   (HasCallStack, Applicative m, forall edsl. variant edsl => IsEType edsl a) =>
   (forall edsl. (variant edsl, EAp m edsl) => Term edsl a) ->
-  m (m output)
+  m output
 
 type Compile variant output =
   forall a m.
   (HasCallStack, Monad m, forall edsl. variant edsl => IsEType edsl a) =>
   (forall edsl. (variant edsl, EEmbeds m edsl) => Term edsl a) ->
-  m (m output)
+  m output

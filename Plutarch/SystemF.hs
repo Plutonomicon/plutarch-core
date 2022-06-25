@@ -7,6 +7,7 @@ import Plutarch.Core
 import Plutarch.EType
 import Data.Proxy (Proxy (Proxy))
 import Data.Kind (Type)
+import Data.Fix (Fix)
 
 data Nat = N | S Nat
 data SNat :: Nat -> Type where
@@ -32,76 +33,73 @@ lvlFromSNat :: SNat n -> Lvl
 lvlFromSNat SN = Lvl 0
 lvlFromSNat (SS n) = Lvl $ unLvl (lvlFromSNat n) + 1
 
-data SFKind
+data SFKindF a
   = SFKindType
-  | SFKindFun SFKind SFKind
+  | SFKindFun a a
 
-data SFType
+type SFKind = Fix SFKindF
+
+data SFTypeF a
   = SFTyVar Lvl
-  | SFTyFun SFType SFType
-  | SFTyForall SFKind SFType
-  | SFTyLam SFKind SFType
-  | SFTyApp SFType SFType
+  | SFTyFun a a
+  | SFTyForall SFKind a
+  | SFTyLam SFKind a
+  | SFTyApp a a
   | SFTyUnit
-  | SFTyPair SFType SFType
-  | SFTyEither SFType SFType
+  | SFTyPair a a
+  | SFTyEither a a
 
-data SFTerm' (m :: Type -> Type)
-  = SFVar' Lvl
-  | SFLam' SFType (SFTerm' m)
-  | SFApp' (SFTerm' m) (SFTerm' m)
-  | SFForall' SFKind (SFTerm' m)
-  | SFInst' (SFTerm' m) SFType
-  | SFUnit'
-  | SFPair' (SFTerm' m) (SFTerm' m)
-  | SFLeft' (SFTerm' m) SFType
-  | SFRight' SFType (SFTerm' m)
-  | SFFst' (SFTerm' m)
-  | SFSnd' (SFTerm' m)
-  | SFMatch' (SFTerm' m) (SFTerm' m) (SFTerm' m)
+type SFType = Fix SFTypeF
 
-data SFTerm
+data SFTermF a
   = SFVar Lvl
-  | SFLam SFType SFTerm
-  | SFApp SFTerm SFTerm
-  | SFForall SFKind SFTerm
-  | SFInst SFTerm SFType
+  | SFLam SFType a
+  | SFApp a a
+  | SFForall SFKind a
+  | SFInst a SFType
   | SFUnit
-  | SFPair SFTerm SFTerm
-  | SFLeft SFTerm SFType
-  | SFRight SFType SFTerm
-  | SFFst SFTerm
-  | SFSnd SFTerm
-  | SFMatch SFTerm SFTerm SFTerm
+  | SFPair a a
+  | SFLeft a SFType
+  | SFRight SFType a
+  | SFFst a
+  | SFSnd a
+  | SFMatch a a a
+
+type SFTerm = Fix SFTermF
 
 type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
 
-newtype Impl (m :: Type -> Type) (a :: EType) = Impl { runImpl :: forall n. SNat n -> m (SFTerm' m) }
+newtype Impl (m :: Type -> Type) (a :: ETypeRepr) = Impl { runImpl :: forall n. SNat n -> m SFTerm }
 
+class TypeInfo' (m :: Type -> Type) (a :: ETypeRepr) where
+  typeInfo' :: Proxy m -> Proxy a -> SNat n -> SFType
 
-{-
+class TypeInfo' m (ERepr a) => TypeInfo m a
+instance TypeInfo' m (ERepr a) => TypeInfo m a
 
-class TypeInfo (a :: EType) where
-  typeInfo :: Proxy a -> SNat n -> SFType
+typeInfo :: forall a m. TypeInfo m a => Proxy m -> Proxy a -> SFType
+typeInfo m _ = typeInfo' m (Proxy @(ERepr a))
 
 data TyVar (n :: Nat) f
-instance KnownSNat n => TypeInfo (TyVar n) where
-  typeInfo _ _ = SFTyVar . lvlFromSNat $ snat (Proxy @n)
+instance KnownSNat n => TypeInfo m (TyVar n) where
+  typeInfo _ _ _ = SFTyVar . lvlFromSNat $ snat (Proxy @n)
 
-instance TypeInfo EUnit where
-  typeInfo _ _ = SFTyUnit
+instance TypeInfo m EUnit where
+  typeInfo _ _ _ = SFTyUnit
 
-instance (TypeInfo a, TypeInfo b) => TypeInfo (EPair a b) where
-  typeInfo _ lvl = SFTyPair (typeInfo (Proxy @a) lvl) (typeInfo (Proxy @b) lvl)
+instance (TypeInfo m a, TypeInfo m b) => TypeInfo m (EPair a b) where
+  typeInfo m _ lvl = SFTyPair (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
 
-instance (TypeInfo a, TypeInfo b) => TypeInfo (EEither a b) where
-  typeInfo _ lvl = SFTyEither (typeInfo (Proxy @a) lvl) (typeInfo (Proxy @b) lvl)
+instance (TypeInfo m a, TypeInfo m b) => TypeInfo m (EEither a b) where
+  typeInfo m _ lvl = SFTyEither (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
 
-instance (TypeInfo a, TypeInfo b) => TypeInfo (a #-> b) where
-  typeInfo _ lvl = SFTyFun (typeInfo (Proxy @a) lvl) (typeInfo (Proxy @b) lvl)
+instance (TypeInfo m a, TypeInfo m b) => TypeInfo m (a #-> b) where
+  typeInfo m _ lvl = SFTyFun (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
 
-instance (forall a. TypeInfo a => TypeInfo (f a)) => TypeInfo (EForall (IsEType Impl) f) where
-  typeInfo _ (lvl :: SNat lvl) = SFTyForall SFKindType (snatIn lvl $ typeInfo (Proxy @(f (TyVar lvl))) (SS lvl))
+instance (forall a. TypeInfo a => TypeInfo (f a)) => TypeInfo (EForall (IsEType (Impl m)) f) where
+  typeInfo m _ (lvl :: SNat lvl) = SFTyForall SFKindType (snatIn lvl $ typeInfo m (Proxy @(f (TyVar lvl))) (SS lvl))
+{-
+
 
 instance EDSL Impl where
   type IsEType' Impl = TypeInfo
