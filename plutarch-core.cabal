@@ -1,6 +1,6 @@
-cabal-version:      2.4
+cabal-version:      3.0
 name:               plutarch-core
-version:            0.0.1
+version:            0.1.0
 author:             Las Safin <me@las.rs>
 license:            MIT
 extra-source-files: README.md
@@ -87,14 +87,22 @@ library
     ViewPatterns
 
   ghc-options:
-    -Wall -Wcompat -Wincomplete-uni-patterns -Wno-unused-do-bind
-    -Wno-partial-type-signatures  -Wincomplete-record-updates
-    -Wmissing-deriving-strategies -Wno-name-shadowing
-    -Wredundant-constraints -fprint-explicit-foralls -fprint-explicit-kinds
+    -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures
+    -Wno-partial-type-signatures -Werror -Wno-implicit-prelude
+    -Wno-name-shadowing -Wno-unsafe -Wno-missing-safe-haskell-mode
+    -Wno-missing-local-signatures -Wno-prepositive-qualified-module
+    -Wno-missing-import-lists -fprint-explicit-foralls
     -Wno-unticked-promoted-constructors
+    -fprint-equality-relations -fprint-explicit-kinds
+    -fprint-explicit-coercions -Wno-all-missed-specializations
+
   exposed-modules:
+    Plutarch.EType
+    Plutarch.Reduce
     Plutarch.Core
     Plutarch.STLC
+    Plutarch.Experimental
+    Plutarch.SystemF
 
   build-depends:
     , base

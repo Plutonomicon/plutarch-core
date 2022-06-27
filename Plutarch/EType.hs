@@ -9,14 +9,15 @@ module Plutarch.EType (
   EReprAp,
   ETypeRepr,
   pattern MkETypeRepr,
-  coerceERepr, EDSLKind, ETypeF (MkETypeF), EType, Ef, UnEf
+  coerceERepr, EDSLKind, ETypeF (MkETypeF), EType, Ef, EfC,
+  EHs
   , type (/$)) where
 
 import Data.Coerce (Coercible)
 import Data.Kind (Type, Constraint)
-import Plutarch.Reduce (Reduce)
-import Data.Type.Bool (type (&&))
+import Plutarch.Reduce (Reduce, NoReduce)
 import Data.Proxy (Proxy)
+import Generics.SOP (Top)
 
 -- EType
 
@@ -29,13 +30,8 @@ import Data.Proxy (Proxy)
 -- This form of (higher) HKDs is useful for eDSLs, as you can replace the
 -- the fields with eDSL terms.
 
-type family IsValidEType (x :: Type) :: Bool where
-  IsValidEType (ETypeF -> Type) = 'True
-  IsValidEType (x -> y) = IsValidEType x && IsValidEType y
-  IsValidEType _ = 'False
-
 data ETypeF = MkETypeF
-  { _edsl :: EDSLKind
+  { _constraint :: EType -> Constraint
   , _concretise :: EType -> Type
   }
 
@@ -45,20 +41,20 @@ type EType = ETypeF -> Type
 type EDSLKind = ETypeRepr -> Type
 
 type family Ef (f :: ETypeF) (x :: EType) :: Type where
-  Ef (MkETypeF edsl concretise) x = Reduce (concretise x)
+  Ef (MkETypeF _constraint concretise) x = Reduce (concretise x)
 
 type (/$) ef x = Ef ef x
 infix 0 /$
 
-type family UnEf (f :: ETypeF) :: EDSLKind where
-  UnEf (MkETypeF edsl concretise) = edsl
+type family EfC (f :: ETypeF) :: EType -> Constraint where
+  EfC (MkETypeF constraint _concretise) = constraint
 
 newtype ENewtype (a :: EType) f = ENewtype (a f)
 type MkENewtype a = MkETypeRepr (ENewtype a)
 
 class KnownBool (EIsNewtype' a) => EIsNewtype (a :: EType) where
   type EIsNewtype' a :: Bool
-  type EIsNewtype' a = True
+  type EIsNewtype' _ = True
 
 type EIfNewtype a = (EIsNewtype a, EIsNewtype' a ~ True)
 
@@ -96,7 +92,15 @@ h _ STrue = Dict
 h _ SFalse = Dict
 
 g :: forall a. EIsNewtype a => Proxy a -> Dict (Coercible (EReprAp (ERepr a)) a)
-g p = h p (knownBool :: SBool (EIsNewtype' a))
+g p =
+  let
+    _ = EHs' -- FIXME: Remove, -Wunused-top-binds is broken
+  in
+    h p (knownBool :: SBool (EIsNewtype' a))
 
 coerceERepr :: forall a b. EIsNewtype a => Proxy a -> (Coercible (EReprAp (ERepr a)) a => b) -> b
 coerceERepr p f = case g p of Dict -> f
+
+type EHs' :: EType -> Type
+type EHs (a :: EType) = a (MkETypeF Top EHs')
+newtype EHs' (a :: EType) = EHs' (NoReduce (EHs a))

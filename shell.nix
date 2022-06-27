@@ -5,5 +5,13 @@ haskell.packages.ghc923.shellFor {
     (p.callPackage ./plutarch-core.nix { })
   ];
   buildHoogle = false;
-  buildInputs = [ cabal-install cabal2nix curl nixpkgs-fmt ];
+  nativeBuildInputs = [
+    cabal-install
+    hlint
+    cabal2nix
+    nixpkgs-fmt
+    curl
+    haskellPackages.cabal-fmt
+    haskell.packages.ghc923.fourmolu_0_7_0_1
+  ];
 }

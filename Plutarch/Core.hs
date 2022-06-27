@@ -82,7 +82,7 @@ data Term (edsl :: EDSLKind) (a :: EType) where
 type ClosedTerm (c :: EDSLKind -> Constraint) (a :: EType) = forall edsl. c edsl => Term edsl a
 
 type family Helper (edsl :: EDSLKind) :: ETypeF where
-  Helper edsl = MkETypeF edsl (Compose NoReduce (Term edsl))
+  Helper edsl = MkETypeF (IsEType edsl) (Compose NoReduce (Term edsl))
 
 type EConcrete (edsl :: EDSLKind) (a :: EType) = a (Helper edsl)
 
