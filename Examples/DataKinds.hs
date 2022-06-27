@@ -15,7 +15,6 @@ data EBool ef = EFalse | ETrue
     deriving stock (Generic)
     deriving anyclass (EIsNewtype)
 
--- takes `edsl` twice..
 data ESBool (b :: EHs EBool) ef
     = ESFalse (ef /$ EEq b EFalse)
     | ESTrue (ef /$ EEq b ETrue)
