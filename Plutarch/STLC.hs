@@ -43,7 +43,6 @@ newtype Impl (m :: Type -> Type) (a :: ETypeRepr) = Impl { runImpl :: Lvl -> m S
 
 instance EDSL (Impl m) where
   type IsEType' (Impl m) = TypeInfo' m
-  --enamedTerm p = Term $ Impl \lvl -> Hoisted <$> enamedTermImpl p
 
 class TypeInfo' (m :: Type -> Type) (a :: ETypeRepr) where
   typeInfo' :: Proxy m -> Proxy a -> SimpleType
@@ -115,6 +114,8 @@ gpCon SOP.Nil _ = pure MkUnit
 gpCon (x SOP.:* SOP.Nil) lvl = runImpl (unTerm x) lvl
 gpCon (x SOP.:* xs) lvl = MkProduct <$> runImpl (unTerm x) lvl <*> gpCon xs lvl
 
+-- FIXME: Ormolu doesn't support `@` in patterns
+{- ORMOLU_DISABLE -}
 gsCon :: forall (a :: [[EType]]) m. (Applicative m, SOP.All2 (TypeInfo m) a) => SOP.SOP (Term (Impl m)) a -> Lvl -> m (SimpleTerm)
 gsCon (SOP.SOP (SOP.Z @_ @_ @_ @(at :: [[EType]]) t)) = case SOP.sList :: SOP.SList at of
   SOP.SNil -> gpCon t
@@ -151,6 +152,7 @@ mapAll2 :: forall a b c d. (SOP.All2 c a, forall a'. c a' => d a') => Proxy a ->
 mapAll2 _ c d f = case (SOP.sList :: SOP.SList a) of
   SOP.SNil -> f
   SOP.SCons @_ @at @ah -> mapAll2 (Proxy @at) c d $ mapAll (Proxy @ah) c d f
+{- ORMOLU_ENABLE -}
 
 helper2 :: forall a b m. SOP.All2 (IsEType (Impl m)) a => Proxy m -> Proxy a -> (SOP.All2 (TypeInfo m) a => b) -> b
 helper2 _ _ = mapAll2 (Proxy @a) (Proxy @(IsEType (Impl m))) (Proxy @(TypeInfo m))

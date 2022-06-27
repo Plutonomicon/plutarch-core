@@ -8,6 +8,8 @@ extra-source-files: README.md
 library
   default-language:   Haskell2010
   default-extensions:
+    NoMonomorphismRestriction
+    NoStarIsType
     BangPatterns
     BinaryLiterals
     BlockArguments
@@ -50,13 +52,11 @@ library
     NamedFieldPuns
     NamedWildCards
     NegativeLiterals
-    NoMonomorphismRestriction
     NondecreasingIndentation
     NumDecimals
     NumericUnderscores
     OverloadedLabels
     OverloadedLists
-    OverloadedRecordDot
     OverloadedStrings
     PackageImports
     PartialTypeSignatures
@@ -74,7 +74,6 @@ library
     ScopedTypeVariables
     StandaloneDeriving
     StandaloneKindSignatures
-    NoStarIsType
     TupleSections
     TypeApplications
     TypeFamilies
@@ -85,6 +84,7 @@ library
     UnliftedFFITypes
     UnliftedNewtypes
     ViewPatterns
+    OverloadedRecordDot
 
   ghc-options:
     -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures
@@ -92,19 +92,19 @@ library
     -Wno-name-shadowing -Wno-unsafe -Wno-missing-safe-haskell-mode
     -Wno-missing-local-signatures -Wno-prepositive-qualified-module
     -Wno-missing-import-lists -fprint-explicit-foralls
-    -Wno-unticked-promoted-constructors
-    -fprint-equality-relations -fprint-explicit-kinds
-    -fprint-explicit-coercions -Wno-all-missed-specializations
+    -Wno-unticked-promoted-constructors -fprint-equality-relations
+    -fprint-explicit-kinds -fprint-explicit-coercions
+    -Wno-all-missed-specializations
 
   exposed-modules:
-    Plutarch.EType
-    Plutarch.Reduce
     Plutarch.Core
-    Plutarch.STLC
+    Plutarch.EType
     Plutarch.Experimental
+    Plutarch.Reduce
+    Plutarch.STLC
     Plutarch.SystemF
 
   build-depends:
     , base
-    , generics-sop
     , data-fix
+    , generics-sop

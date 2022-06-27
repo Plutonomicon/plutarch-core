@@ -1,9 +1,9 @@
 module Plutarch.Experimental (EEq (..), ESingle (..)) where
 
-import Plutarch.EType (EIsNewtype (EIsNewtype'), EHs, type (/$), EType)
+import Plutarch.EType (EHs, EIsNewtype (EIsNewtype'), EType, type (/$))
 
 data EEq (x :: a) (y :: a) ef where
-  ERefl :: EEq x x ef
+    ERefl :: EEq x x ef
 instance EIsNewtype (EEq x y) where type EIsNewtype' _ = False
 
 type ESingle :: forall (a :: EType). EHs a -> EType

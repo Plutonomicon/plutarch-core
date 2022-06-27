@@ -8,7 +8,8 @@
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = nixpkgs.lib.genAttrs supportedSystems;
       nixpkgsFor = system: nixpkgs.legacyPackages.${system};
-    in {
+    in
+    {
       devShells = perSystem (system: {
         default = import ./shell.nix { pkgs = nixpkgsFor system; };
       });
