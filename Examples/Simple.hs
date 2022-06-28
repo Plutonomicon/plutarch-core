@@ -11,12 +11,12 @@ import Plutarch.EType
 type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
 
 data EBool ef = ETrue | EFalse
-    deriving stock (Generic)
-    deriving anyclass (EIsNewtype)
+  deriving stock (Generic)
+  deriving anyclass (EIsNewtype)
 
 newtype EForall1 (f :: EType -> EType) ef = EForall1 (Ef ef (EForall (IsEType (UnEf ef)) f))
-    deriving stock (Generic)
-    deriving anyclass (EIsNewtype)
+  deriving stock (Generic)
+  deriving anyclass (EIsNewtype)
 
 newtype EId' a ef = EId' (Ef ef (a #-> a))
 newtype EId ef = EId (Ef ef (EForall1 EId'))
@@ -35,8 +35,8 @@ type Word = U8
 
 f :: ESOP edsl => Term edsl U1 -> Term edsl U0
 f x = ematch x \case
-    ERight EUnit -> econ EUnit
-    ELeft EUnit -> econ EUnit
+  ERight EUnit -> econ EUnit
+  ELeft EUnit -> econ EUnit
 
 {-
 

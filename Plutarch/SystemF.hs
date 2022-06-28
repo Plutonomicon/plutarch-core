@@ -12,17 +12,17 @@ import Plutarch.EType
 
 data Nat = N | S Nat
 data SNat :: Nat -> Type where
-    SN :: SNat N
-    SS :: SNat n -> SNat (S n)
+  SN :: SNat N
+  SS :: SNat n -> SNat (S n)
 
 class KnownSNat (n :: Nat) where
-    snat :: Proxy n -> SNat n
+  snat :: Proxy n -> SNat n
 
 instance KnownSNat N where
-    snat _ = SN
+  snat _ = SN
 
 instance KnownSNat n => KnownSNat (S n) where
-    snat _ = SS (snat (Proxy @n))
+  snat _ = SS (snat (Proxy @n))
 
 snatIn :: SNat n -> (KnownSNat n => a) -> a
 snatIn SN x = x
@@ -35,36 +35,36 @@ lvlFromSNat SN = Lvl 0
 lvlFromSNat (SS n) = Lvl $ unLvl (lvlFromSNat n) + 1
 
 data SFKindF a
-    = SFKindType
-    | SFKindFun a a
+  = SFKindType
+  | SFKindFun a a
 
 type SFKind = Fix SFKindF
 
 data SFTypeF a
-    = SFTyVar Lvl
-    | SFTyFun a a
-    | SFTyForall SFKind a
-    | SFTyLam SFKind a
-    | SFTyApp a a
-    | SFTyUnit
-    | SFTyPair a a
-    | SFTyEither a a
+  = SFTyVar Lvl
+  | SFTyFun a a
+  | SFTyForall SFKind a
+  | SFTyLam SFKind a
+  | SFTyApp a a
+  | SFTyUnit
+  | SFTyPair a a
+  | SFTyEither a a
 
 type SFType = Fix SFTypeF
 
 data SFTermF a
-    = SFVar Lvl
-    | SFLam SFType a
-    | SFApp a a
-    | SFForall SFKind a
-    | SFInst a SFType
-    | SFUnit
-    | SFPair a a
-    | SFLeft a SFType
-    | SFRight SFType a
-    | SFFst a
-    | SFSnd a
-    | SFMatch a a a
+  = SFVar Lvl
+  | SFLam SFType a
+  | SFApp a a
+  | SFForall SFKind a
+  | SFInst a SFType
+  | SFUnit
+  | SFPair a a
+  | SFLeft a SFType
+  | SFRight SFType a
+  | SFFst a
+  | SFSnd a
+  | SFMatch a a a
 
 type SFTerm = Fix SFTermF
 
@@ -73,7 +73,7 @@ type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
 newtype Impl (m :: Type -> Type) (a :: ETypeRepr) = Impl {runImpl :: forall n. SNat n -> m SFTerm}
 
 class TypeInfo' (m :: Type -> Type) (a :: ETypeRepr) where
-    typeInfo' :: Proxy m -> Proxy a -> SNat n -> SFType
+  typeInfo' :: Proxy m -> Proxy a -> SNat n -> SFType
 
 class TypeInfo' m (ERepr a) => TypeInfo m a
 instance TypeInfo' m (ERepr a) => TypeInfo m a
@@ -85,34 +85,34 @@ data TyVar (n :: Nat) f
 instance EIsNewtype (TyVar n) where type EIsNewtype' _ = False
 
 instance KnownSNat n => TypeInfo' m (MkETypeRepr (TyVar n)) where
-    typeInfo' _ _ _ = Fix $ SFTyVar . lvlFromSNat $ snat (Proxy @n)
+  typeInfo' _ _ _ = Fix $ SFTyVar . lvlFromSNat $ snat (Proxy @n)
 
 instance TypeInfo' m (MkETypeRepr EUnit) where
-    typeInfo' _ _ _ = Fix SFTyUnit
+  typeInfo' _ _ _ = Fix SFTyUnit
 
 instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (EPair a b)) where
-    typeInfo' m _ lvl = Fix $ SFTyPair (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
+  typeInfo' m _ lvl = Fix $ SFTyPair (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
 
 instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (EEither a b)) where
-    typeInfo' m _ lvl = Fix $ SFTyEither (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
+  typeInfo' m _ lvl = Fix $ SFTyEither (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
 
 instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (a #-> b)) where
-    typeInfo' m _ lvl = Fix $ SFTyFun (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
+  typeInfo' m _ lvl = Fix $ SFTyFun (typeInfo m (Proxy @a) lvl) (typeInfo m (Proxy @b) lvl)
 
 instance (forall a. TypeInfo m a => TypeInfo m (f a)) => TypeInfo' m (MkETypeRepr (EForall (IsEType (Impl m)) f)) where
-    typeInfo' m _ (lvl :: SNat lvl) = Fix $ SFTyForall (Fix SFKindType) (snatIn lvl $ typeInfo m (Proxy @(f (TyVar lvl))) (SS lvl))
+  typeInfo' m _ (lvl :: SNat lvl) = Fix $ SFTyForall (Fix SFKindType) (snatIn lvl $ typeInfo m (Proxy @(f (TyVar lvl))) (SS lvl))
 
 instance EDSL (Impl m) where
-    type IsEType' (Impl m) = TypeInfo' m
+  type IsEType' (Impl m) = TypeInfo' m
 
 instance Applicative m => EAp m (Impl m) where
-    eapr x y = Term $ Impl \lvl -> x *> runImpl (unTerm $ y) lvl
-    eapl x y = Term $ Impl \lvl -> runImpl (unTerm $ x) lvl <* y
+  eapr x y = Term $ Impl \lvl -> x *> runImpl (unTerm $ y) lvl
+  eapl x y = Term $ Impl \lvl -> runImpl (unTerm $ x) lvl <* y
 
 instance Monad m => EEmbeds m (Impl m) where
-    eembed t = Term $ Impl \lvl -> do
-        t' <- t
-        runImpl (unTerm $ t') lvl
+  eembed t = Term $ Impl \lvl -> do
+    t' <- t
+    runImpl (unTerm $ t') lvl
 
 {-
 

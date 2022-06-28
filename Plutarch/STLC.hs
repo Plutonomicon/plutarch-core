@@ -1,16 +1,16 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.STLC (ESTLC, compile, compileAp, SimpleType (..), SimpleTerm (..)) where
 
+import Data.Functor.Const (Const (Const), getConst)
 import Data.Kind (Type)
-import Plutarch.Core
-import Plutarch.EType
 import Data.Proxy (Proxy (Proxy))
+import GHC.Stack (callStack)
 import qualified Generics.SOP as SOP
 import qualified Generics.SOP.GGP as SOPG
-import Data.Functor.Const (Const (Const), getConst)
-import GHC.Stack (callStack)
+import Plutarch.Core
+import Plutarch.EType
 
 newtype Lvl = Lvl Int
 
@@ -39,7 +39,7 @@ data SimpleTerm
 
 type ESTLC edsl = (ELC edsl, ESOP edsl)
 
-newtype Impl (m :: Type -> Type) (a :: ETypeRepr) = Impl { runImpl :: Lvl -> m SimpleTerm }
+newtype Impl (m :: Type -> Type) (a :: ETypeRepr) = Impl {runImpl :: Lvl -> m SimpleTerm}
 
 instance EDSL (Impl m) where
   type IsEType' (Impl m) = TypeInfo' m
@@ -78,7 +78,8 @@ instance (Applicative m, TypeInfo m a, TypeInfo m b) => EConstructable' (Impl m)
   econImpl (ELeft (Term x)) = Impl \lvl -> MkSumLeft <$> runImpl x lvl <*> pure (typeInfo (Proxy @m) $ Proxy @b)
   econImpl (ERight (Term y)) = Impl \lvl -> MkSumRight (typeInfo (Proxy @m) $ Proxy @a) <$> (runImpl y lvl)
   ematchImpl t f = Term $ Impl \lvl ->
-    Match <$> (runImpl t lvl)
+    Match
+      <$> (runImpl t lvl)
       <*> (runImpl ((unTerm $ elam \left -> f (ELeft left))) lvl)
       <*> (runImpl ((unTerm $ elam \right -> f (ERight right))) lvl)
 
@@ -160,19 +161,21 @@ helper2 _ _ = mapAll2 (Proxy @a) (Proxy @(IsEType (Impl m))) (Proxy @(TypeInfo m
 instance (EIsSOP (Impl m) a) => TypeInfo' m (MkENewtype a) where
   typeInfo' m _ =
     case esop (Proxy @(Impl m)) (Proxy @a) of
-      EIsSumR { inner } -> helper2 m inner $ gsInfo m inner
+      EIsSumR {inner} -> helper2 m inner $ gsInfo m inner
 
 instance
   ( EIsSOP (Impl m) a
   , IsEType (Impl m) a
   , Applicative m
-  ) => EConstructable' (Impl m) (MkENewtype a) where
+  ) =>
+  EConstructable' (Impl m) (MkENewtype a)
+  where
   econImpl (ENewtype x) =
     case esop (Proxy @(Impl m)) (Proxy @a) of
-      EIsSumR { inner, from } -> helper2 (Proxy @m) inner $ Impl $ gsCon $ (from (SOPG.gfrom x))
+      EIsSumR {inner, from} -> helper2 (Proxy @m) inner $ Impl $ gsCon $ (from (SOPG.gfrom x))
   ematchImpl x f =
     case esop (Proxy @(Impl m)) (Proxy @a) of
-      EIsSumR { inner, to } -> helper2 (Proxy @m) inner $ gsMatch x \sop -> f $ ENewtype $ SOPG.gto (to sop)
+      EIsSumR {inner, to} -> helper2 (Proxy @m) inner $ gsMatch x \sop -> f $ ENewtype $ SOPG.gto (to sop)
 
 compile' :: forall a m. (Applicative m, IsEType (Impl m) a) => Term (Impl m) a -> m (SimpleTerm, SimpleType)
 compile' (Term t) = (,) <$> runImpl t (Lvl 0) <*> pure (typeInfo (Proxy @m) $ Proxy @a)

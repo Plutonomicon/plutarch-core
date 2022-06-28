@@ -11,9 +11,9 @@ newtype NoReduce a = NoReduce a
 
 type family GReduce (def :: Type) (rep :: Type -> Type) :: Type where
 -- newtype
-    GReduce _def (D1 ( 'MetaData _ _ _ 'True) (C1 _ (S1 _ (Rec0 (x :: Type))))) = Reduce x
+  GReduce _def (D1 ( 'MetaData _ _ _ 'True) (C1 _ (S1 _ (Rec0 (x :: Type))))) = Reduce x
 -- data
-    GReduce def _ = def
+  GReduce def _ = def
 
 {- | This class provides a work-around for partially applying
  type families of kind @a@, where @a@ is either 'Type' or
@@ -27,9 +27,9 @@ type family GReduce (def :: Type) (rep :: Type -> Type) :: Type where
  It is then true that @forall a. Reduce (F' a) ~ F a@.
 -}
 type family Reduce (x :: Type) :: Type where
-    Reduce (NoReduce a) = a
-    Reduce (a -> b) = a -> b
-    Reduce x = GReduce x (Rep x)
+  Reduce (NoReduce a) = a
+  Reduce (a -> b) = a -> b
+  Reduce x = GReduce x (Rep x)
 
 reduce :: Coercible a (Reduce a) => a -> Reduce a
 reduce = coerce
