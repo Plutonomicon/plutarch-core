@@ -30,7 +30,7 @@ import Plutarch.Reduce (NoReduce, Reduce)
 -- What is an EType? It's a type that represents higher HKDs,
 -- in the sense that their elements are applied to a type-level function,
 -- but the core difference is that the following type is made legal:
--- `data A f = A (Hf f a)` which is isomorphic to `data A f = A (f A)`.
+-- `data A f = A (Ef f A)` which is isomorphic to `data A f = A (f A)`.
 -- Simple HKDs don't allow this, as you'd have to do `data A f = A (f (A Identity))`
 -- or similar, which doesn't convey the same thing.
 -- This form of (higher) HKDs is useful for eDSLs, as you can replace the
