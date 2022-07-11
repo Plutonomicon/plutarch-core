@@ -100,6 +100,7 @@ library
     Plutarch.Core
     Plutarch.EType
     Plutarch.Experimental
+    Plutarch.Lens
     Plutarch.Reduce
     Plutarch.STLC
     Plutarch.SystemF
