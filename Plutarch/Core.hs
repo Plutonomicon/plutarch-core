@@ -28,6 +28,7 @@ module Plutarch.Core (
   EDelay (EDelay),
   EPair (EPair),
   EEither (ELeft, ERight),
+  peither,
   EForall (EForall),
   ESome (ESome),
   EFix (EFix),
@@ -36,6 +37,7 @@ module Plutarch.Core (
   ESOP,
   EIsSOP (..),
   EUnit (EUnit),
+  punit,
   EDSL,
   ELC,
   unTerm,
@@ -175,11 +177,23 @@ instance EIsNewtype (EFix f) where type EIsNewtype' _ = False
 data EUnit (f :: ETypeF) = EUnit deriving stock (Generic)
 instance EIsNewtype EUnit where type EIsNewtype' _ = False
 
+punit :: (EConstructable edsl EUnit) => Term edsl EUnit
+punit = econ EUnit
+
 data EPair a b ef = EPair (ef /$ a) (ef /$ b) deriving stock (Generic)
 instance EIsNewtype (EPair a b) where type EIsNewtype' _ = False
 
 data EEither a b f = ELeft (Ef f a) | ERight (Ef f b) deriving stock (Generic)
 instance EIsNewtype (EEither a b) where type EIsNewtype' _ = False
+
+peither :: (ESOP edsl, IsEType edsl a, IsEType edsl b, IsEType edsl c) =>
+  (Term edsl a -> Term edsl c) ->
+  (Term edsl b -> Term edsl c) ->
+  Term edsl (EEither a b) ->
+  Term edsl c
+peither f g te = ematch te \case
+  ELeft x -> f x
+  ERight x -> g x
 
 type ELC :: EDSLKind -> Constraint
 type ELC edsl = forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable edsl (a #-> b)
