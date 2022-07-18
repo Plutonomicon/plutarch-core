@@ -29,6 +29,8 @@ module Plutarch.Core (
   EPair (EPair),
   EEither (ELeft, ERight),
   peither,
+  pleft,
+  pright,
   EForall (EForall),
   ESome (ESome),
   EFix (EFix),
@@ -185,6 +187,13 @@ instance EIsNewtype (EPair a b) where type EIsNewtype' _ = False
 
 data EEither a b f = ELeft (Ef f a) | ERight (Ef f b) deriving stock (Generic)
 instance EIsNewtype (EEither a b) where type EIsNewtype' _ = False
+
+
+pleft :: (ESOP edsl, IsEType edsl a, IsEType edsl b) => Term edsl a -> Term edsl (EEither a b)
+pleft = econ . ELeft
+
+pright :: (ESOP edsl, IsEType edsl a, IsEType edsl b) => Term edsl b -> Term edsl (EEither a b)
+pright = econ . ERight
 
 peither :: (ESOP edsl, IsEType edsl a, IsEType edsl b, IsEType edsl c) =>
   (Term edsl a -> Term edsl c) ->
