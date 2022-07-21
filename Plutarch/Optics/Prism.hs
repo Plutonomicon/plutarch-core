@@ -82,5 +82,9 @@ instance
   (ESOP edsl, IsEType edsl a, IsEType edsl b) =>
   IsPPrism edsl (UnpackedPPrism edsl a b)
 
-withPPrism :: (ESOP edsl, IsEType edsl a, IsEType edsl b) => PPrism edsl s t a b -> ((b :--> t) edsl -> (s :--> EEither t a) edsl -> r) -> r
+withPPrism ::
+  (ESOP edsl, IsEType edsl a, IsEType edsl b) =>
+  PPrism edsl s t a b ->
+  ((b :--> t) edsl -> (s :--> EEither t a) edsl -> r) ->
+  r
 withPPrism o = withUnpackedPPrism (o (unpackedPPrism id pright))
