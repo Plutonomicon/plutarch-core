@@ -16,6 +16,8 @@ type POptional edsl s t a b = forall p. IsPOptional edsl p => POptic p s t a b
 
 class (IsPLens edsl p, IsPPrism edsl p) => IsPOptional edsl p
 
+instance (ESOP edsl, Functor f) => IsPOptional edsl (PStar edsl f)
+
 newtype UnpackedPOptional edsl a b s t = UnpackedPOptional
   { withUnpackedPOptional ::
       forall r.

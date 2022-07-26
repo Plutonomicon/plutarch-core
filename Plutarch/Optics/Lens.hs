@@ -16,6 +16,8 @@ type PLens' edsl s a = PLens edsl s s a a
 
 class (IsPIso edsl p, PStrong edsl p) => IsPLens edsl p
 
+instance (ESOP edsl, Functor f) => IsPLens edsl (PStar edsl f)
+
 plens ::
   forall edsl s t a b.
   (ESOP edsl, IsEType edsl s, IsEType edsl t, IsEType edsl a, IsEType edsl b) =>

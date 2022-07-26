@@ -17,6 +17,8 @@ type PPrism' edsl s a = PPrism edsl s s a a
 
 class (IsPIso edsl p, PChoice edsl p) => IsPPrism edsl p
 
+instance (ESOP edsl, Functor f) => IsPPrism edsl (PStar edsl f)
+
 pprism ::
   forall edsl s t a b.
   (ESOP edsl, IsEType edsl t, IsEType edsl a, IsEType edsl b) =>

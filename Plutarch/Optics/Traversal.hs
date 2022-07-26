@@ -1,4 +1,6 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Plutarch.Optics.Traversal where
 
@@ -17,5 +19,7 @@ type PTraversal' edsl s a = PTraversal edsl s s a a
 
 class (IsPOptional edsl p, PMonoidal edsl p) => IsPTraversal edsl p
 
-traverseOf :: PTraversal edsl s t a b -> (Term edsl a -> f (Term edsl b)) -> (Term edsl s -> f (Term edsl t))
+instance (ESOP edsl, Applicative f) => IsPTraversal edsl (PStar edsl f)
+
+traverseOf :: (ESOP edsl, Applicative f) => PTraversal edsl s t a b -> (Term edsl a -> f (Term edsl b)) -> (Term edsl s -> f (Term edsl t))
 traverseOf p = unPStar . p . PStar
