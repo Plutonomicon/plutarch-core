@@ -69,9 +69,9 @@ instance
     r $ \inj prj ->
       unpackedPPrism
         (pleft . inj)
-        (peither
-          (peither (pleft . pleft) pright . prj)
-          (pleft . pright)
+        ( peither
+            (peither (pleft . pleft) pright . prj)
+            (pleft . pright)
         )
 
 instance

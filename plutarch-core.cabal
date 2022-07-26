@@ -102,10 +102,13 @@ library
     Plutarch.Optics.Iso
     Plutarch.Optics.Lens
     Plutarch.Optics.Optic
+    Plutarch.Optics.Optional
     Plutarch.Optics.PEither
     Plutarch.Optics.PPair
     Plutarch.Optics.Prism
     Plutarch.Optics.Profunctor
+    Plutarch.Optics.Traversal
+    Plutarch.PList
     Plutarch.Reduce
     Plutarch.STLC
     Plutarch.SystemF

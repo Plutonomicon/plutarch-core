@@ -31,36 +31,6 @@ newtype UnpackedPLens edsl a b s t = UnpackedPLens
       r
   }
 
-instance PProfunctor edsl (UnpackedPLens edsl a b) where
-  pdimap f g (UnpackedPLens r) =
-    r \get set -> unpackedPLens (get . f) (unTermF . prmap g . TermF . set . f)
-
-instance
-  (ESOP edsl, IsEType edsl a) =>
-  PStrong edsl (UnpackedPLens edsl a b)
-  where
-  pfirst' (UnpackedPLens r) =
-    r \get set ->
-      unpackedPLens
-        (\tp -> ematch tp \(EPair a _) -> get a)
-        (\tp b -> ematch tp \(EPair a c) -> econ $ EPair (set a b) c)
-
-instance IsPIso edsl (UnpackedPLens edsl a b)
-instance (ESOP edsl, IsEType edsl a) => IsPLens edsl (UnpackedPLens edsl a b)
-
-withPLens ::
-  forall edsl s t a b r.
-  (ESOP edsl, IsEType edsl a) =>
-  PLens edsl s t a b ->
-  (((s :--> a) edsl -> (Term edsl s -> Term edsl b -> Term edsl t) -> r) -> r)
-withPLens o = withUnpackedPLens (o (unpackedPLens id (const id)))
-
-unpackedPLens ::
-  (s :--> a) edsl ->
-  (Term edsl s -> Term edsl b -> Term edsl t) ->
-  UnpackedPLens edsl a b s t
-unpackedPLens get set = UnpackedPLens $ \k -> k get set
-
 pand ::
   (ESOP edsl, IsEType edsl a, IsEType edsl b) =>
   (s :--> a) edsl ->
@@ -73,3 +43,28 @@ puncurry ::
   (Term edsl a -> Term edsl b -> Term edsl c) ->
   (EPair a b :--> c) edsl
 puncurry f tp = ematch tp \(EPair a b) -> f a b
+
+data ConcreteLens edsl a b s t = ConcreteLens
+  { plensGet :: (s :--> a) edsl
+  , plensSet :: Term edsl b -> Term edsl s -> Term edsl t
+  }
+
+instance PProfunctor edsl (ConcreteLens edsl a b) where
+  pdimap f g o = ConcreteLens (plensGet o . f) (\b -> g . plensSet o b . f)
+
+instance
+  (ESOP edsl, IsEType edsl a) =>
+  PStrong edsl (ConcreteLens edsl a b)
+  where
+  pfirst' o =
+    ConcreteLens
+      (\p -> ematch p \(EPair a _) -> plensGet o a)
+      (\b p -> ematch p \(EPair a c) -> econ $ EPair (plensSet o b a) c)
+
+  psecond' o =
+    ConcreteLens
+      (\p -> ematch p \(EPair _ a) -> plensGet o a)
+      (\b p -> ematch p \(EPair c a) -> econ $ EPair c (plensSet o b a))
+
+instance IsPIso edsl (ConcreteLens edsl a b)
+instance (ESOP edsl, IsEType edsl a) => IsPLens edsl (ConcreteLens edsl a b)
