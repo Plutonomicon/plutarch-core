@@ -2,18 +2,24 @@
 
 module Plutarch.Optics.PEither where
 
-import Plutarch.Optics.Prism
+import Plutarch.CPS.Profunctor
+import Plutarch.CPS.Prism
 
 import Plutarch.Core
 
 _PLeft ::
   forall edsl a a' b.
-  (IsEType edsl a, IsEType edsl a', IsEType edsl b) =>
-  PPrism edsl (EEither a b) (EEither a' b) a a'
-_PLeft = pprism @edsl pleft (peither pright (pleft . pright))
+  (ESOP edsl, IsEType edsl a, IsEType edsl a', IsEType edsl b) =>
+  CPSPrism
+    (Term edsl (EEither a b))
+    (Term edsl (EEither a' b))
+    (Term edsl a)
+    (Term edsl a')
+_PLeft = cpsPrism pleft _
 
-_PRight ::
-  forall edsl a b b'.
-  (IsEType edsl a, IsEType edsl b, IsEType edsl b') =>
-  PPrism edsl (EEither a b) (EEither a b') b b'
-_PRight = pprism @edsl pright (peither (pleft . pleft) pright)
+t :: (ESOP edsl, IsEType edsl a, IsEType edsl  b) => Term edsl (EEither a b) -> (forall c. (Term edsl (EEither a b) -> Term edsl c) -> (Term edsl a -> Term edsl c) -> (IsEType edsl c => Term edsl c))
+t te l r = ematch te \case
+  ELeft a -> r a
+  ERight b -> l $ pright b
+
+type PEither a b = forall edsl c. IsEType edsl c => (a -> Term edsl c) -> (b -> Term edsl c) -> Term edsl c
