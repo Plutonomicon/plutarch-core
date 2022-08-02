@@ -9,7 +9,8 @@ import GHC.Generics
 
 newtype NoReduce a = NoReduce a
 
-type family GReduce (def :: Type) (rep :: Type -> Type) :: Type where
+type GReduce :: Type -> (Type -> Type) -> Type
+type family GReduce def rep where
 -- newtype
   GReduce _def (D1 ( 'MetaData _ _ _ 'True) (C1 _ (S1 _ (Rec0 (x :: Type))))) = Reduce x
 -- data
@@ -26,7 +27,8 @@ type family GReduce (def :: Type) (rep :: Type -> Type) :: Type where
  @
  It is then true that @forall a. Reduce (F' a) ~ F a@.
 -}
-type family Reduce (x :: Type) :: Type where
+type Reduce :: Type -> Type
+type family Reduce x where
   Reduce (NoReduce a) = a
   Reduce (a -> b) = a -> b
   Reduce x = GReduce x (Rep x)

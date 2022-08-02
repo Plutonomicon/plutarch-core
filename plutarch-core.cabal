@@ -103,8 +103,12 @@ library
     Plutarch.Reduce
     Plutarch.STLC
     Plutarch.SystemF
+    Plutarch.UPLC
 
   build-depends:
     , base
+    , text
+    , bytestring
     , data-fix
     , generics-sop
+    , some

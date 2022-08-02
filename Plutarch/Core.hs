@@ -16,6 +16,7 @@ module Plutarch.Core (
   EIfNewtype,
   IsEType,
   EConcrete,
+  EConcreteRepr,
   EConstructable' (econImpl, ematchImpl),
   EConstructable,
   econ,
@@ -31,6 +32,7 @@ module Plutarch.Core (
   EForall (EForall),
   ESome (ESome),
   EFix (EFix),
+  ELet (ELet),
   EAny (EAny),
   EPolymorphic,
   ESOP,
@@ -40,6 +42,7 @@ module Plutarch.Core (
   ELC,
   unTerm,
   elam,
+  elam2,
   (#),
   elet,
   eunsafeCoerce,
@@ -87,16 +90,25 @@ import Plutarch.Reduce (NoReduce)
 class EDSL (edsl :: EDSLKind) where
   type IsEType' edsl :: ETypeRepr -> Constraint
 
-type role Term nominal nominal
-data Term (edsl :: EDSLKind) (a :: EType) where
-  Term :: {unTerm :: (EDSL edsl, IsEType' edsl (ERepr a)) => edsl (ERepr a)} -> Term edsl a
+class (IsEType' edsl (ERepr a)) => IsEType (edsl :: EDSLKind) (a :: EType)
+instance (IsEType' edsl (ERepr a)) => IsEType edsl a
 
-type ClosedTerm (c :: EDSLKind -> Constraint) (a :: EType) = forall edsl. c edsl => Term edsl a
+class (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
+instance (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
 
-type family Helper (edsl :: EDSLKind) :: ETypeF where
-  Helper edsl = MkETypeF (IsEType edsl) (Compose NoReduce (Term edsl))
+type role Term representational nominal
+type Term :: EDSLKind -> EType -> Type
+newtype Term edsl a where
+  Term :: { unTerm :: edsl (ERepr a) } -> Term edsl a
 
-type EConcrete (edsl :: EDSLKind) (a :: EType) = a (Helper edsl)
+type ClosedTerm :: (EDSLKind -> Constraint) -> EType -> Type
+type ClosedTerm c a = forall edsl. c edsl => Term edsl a
+
+type Helper :: EDSLKind -> ETypeF
+type Helper edsl = MkETypeF (IsEType edsl) (Compose NoReduce (Term edsl))
+
+type EConcrete :: EDSLKind -> EType -> Type
+type EConcrete edsl a = a (Helper edsl)
 
 type EConcreteRepr (edsl :: EDSLKind) (a :: ETypeRepr) = EConcrete edsl (EReprAp a)
 
@@ -104,12 +116,6 @@ toERepr :: forall a edsl. EIsNewtype a => EConcrete edsl a -> EConcreteRepr edsl
 toERepr x = coerceERepr (Proxy @a) $ coerce x
 fromERepr :: forall a edsl. EIsNewtype a => EConcreteRepr edsl (ERepr a) -> EConcrete edsl a
 fromERepr x = coerceERepr (Proxy @a) $ coerce x
-
-class (IsEType' edsl (ERepr a)) => IsEType (edsl :: EDSLKind) (a :: EType)
-instance (IsEType' edsl (ERepr a)) => IsEType edsl a
-
-class (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
-instance (forall a. IsEType edsl a => IsEType edsl (f a)) => IsEType2 (edsl :: EDSLKind) (f :: EType -> EType)
 
 class (EDSL edsl, IsEType' edsl a) => EConstructable' edsl (a :: ETypeRepr) where
   econImpl :: HasCallStack => EConcreteRepr edsl a -> edsl a
@@ -137,7 +143,8 @@ data EVoid ef
 instance EIsNewtype EVoid where type EIsNewtype' _ = False
 
 -- | Effects of `econ` are effects of the argument.
-data ELet a ef = ELet (Ef ef a)
+type ELet :: EType -> EType
+newtype ELet a ef = ELet (Ef ef a)
 
 instance EIsNewtype (ELet a) where type EIsNewtype' _ = False
 
@@ -166,7 +173,8 @@ instance EIsNewtype EAny where type EIsNewtype' _ = False
 newtype EForall (constraint :: a -> Constraint) (b :: a -> EType) ef = EForall (forall (x :: a). constraint x => ef /$ b x)
 instance EIsNewtype (EForall c ef) where type EIsNewtype' _ = False
 
-data ESome (constraint :: a -> Constraint) (b :: a -> EType) ef = forall (x :: a). ESome (constraint x => ef /$ b x)
+data ESome (constraint :: a -> Constraint) (b :: a -> EType) ef where
+  ESome :: (constraint x => ef /$ b x) -> ESome constraint b ef
 instance EIsNewtype (ESome c ef) where type EIsNewtype' _ = False
 
 newtype EFix f ef = EFix (ef /$ f (EFix f))
@@ -185,7 +193,13 @@ type ELC :: EDSLKind -> Constraint
 type ELC edsl = forall a b. (IsEType edsl a, IsEType edsl b) => EConstructable edsl (a #-> b)
 
 elam :: forall edsl a b. (HasCallStack, EConstructable edsl (a #-> b)) => (Term edsl a -> Term edsl b) -> Term edsl (a #-> b)
-elam f = econ $ (ELam f :: EConcrete edsl (a #-> b))
+elam body = econ $ (ELam body :: EConcrete edsl (a #-> b))
+
+elam2 :: EConstructable edsl (a #-> b #-> c)
+      => EConstructable edsl (b #-> c)
+      => (Term edsl a -> Term edsl b -> Term edsl c)
+      -> Term edsl (a #-> (b #-> c))
+elam2 body = elam \a -> elam \b -> body a b
 
 (#) :: (HasCallStack, ELC edsl, IsEType edsl a, IsEType edsl b) => Term edsl (a #-> b) -> Term edsl a -> Term edsl b
 (#) f x = ematch f (\(ELam f') -> f' x)

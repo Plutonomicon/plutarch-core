@@ -22,6 +22,7 @@ module Plutarch.EType (
 import Data.Coerce (Coercible)
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy)
+import Data.Type.Coercion (Coercion(..))
 import Generics.SOP (Top)
 import Plutarch.Reduce (NoReduce, Reduce)
 
@@ -44,8 +45,6 @@ data ETypeF = MkETypeF
 -- | Higher HKD
 type EType = ETypeF -> Type
 
-type EDSLKind = ETypeRepr -> Type
-
 type family Ef (f :: ETypeF) (x :: EType) :: Type where
   Ef (MkETypeF _constraint concretise) x = Reduce (concretise x)
 
@@ -66,6 +65,8 @@ type EIfNewtype a = (EIsNewtype a, EIsNewtype' a ~ True)
 
 newtype ETypeRepr = MkETypeRepr EType
 
+type EDSLKind = ETypeRepr -> Type
+
 type family EReprHelper (b :: Bool) (a :: EType) where
   EReprHelper True a = ENewtype a
   EReprHelper False a = a
@@ -75,9 +76,6 @@ type family EReprAp (a :: ETypeRepr) :: EType where
 
 type ERepr :: EType -> ETypeRepr
 type ERepr a = MkETypeRepr (EReprHelper (EIsNewtype' a) a)
-
-data Dict :: Constraint -> Type where
-  Dict :: c => Dict c
 
 -- FIXME replace with generic-singletons
 data SBool :: Bool -> Type where
@@ -93,17 +91,17 @@ instance KnownBool 'True where
 instance KnownBool 'False where
   knownBool = SFalse
 
-h :: Proxy a -> SBool b -> Dict (Coercible (EReprHelper b a) a)
-h _ STrue = Dict
-h _ SFalse = Dict
+h :: Proxy a -> SBool b -> Coercion (EReprHelper b a) a
+h _ STrue = Coercion
+h _ SFalse = Coercion
 
-g :: forall a. EIsNewtype a => Proxy a -> Dict (Coercible (EReprAp (ERepr a)) a)
+g :: forall a. EIsNewtype a => Proxy a -> Coercion (EReprAp (ERepr a)) a
 g p =
   let _ = EHs' -- FIXME: Remove, -Wunused-top-binds is broken
    in h p (knownBool :: SBool (EIsNewtype' a))
 
 coerceERepr :: forall a b. EIsNewtype a => Proxy a -> (Coercible (EReprAp (ERepr a)) a => b) -> b
-coerceERepr p f = case g p of Dict -> f
+coerceERepr p f = case g p of Coercion -> f
 
 type EHs' :: EType -> Type
 type EHs (a :: EType) = a (MkETypeF Top EHs')
