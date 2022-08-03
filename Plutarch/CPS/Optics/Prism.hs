@@ -37,13 +37,11 @@ instance CProfunctor r (ConcretePrism r a b) where
   cdimap ab cd p
     = ConcretePrism
     { cprismGet =
-      (\a ->
-        ab a >>=
-          cprismGet p >>=
-            either
-              (\c -> c >>= cd >>= return . Left . return)
-              (return . Right)
-      )
+      ab >=>
+        cprismGet p >=>
+          either
+            (\c -> Left . return <$> (c >>= cd))
+            (return . Right)
     , cprismSet = (cprismSet p >=> cd)
     }
 
