@@ -105,7 +105,6 @@ library
     Plutarch.EType
     Plutarch.Experimental
     Plutarch.Optics.Optic
-    Plutarch.Optics.Optional
     Plutarch.Optics.PEither
     Plutarch.Optics.PPair
     Plutarch.Optics.Traversal
