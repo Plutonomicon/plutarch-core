@@ -1,86 +1,68 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Plutarch.CPS.Profunctor where
 
-import Data.Profunctor
+import Control.Monad.Cont
+import Data.Tuple
 
-type CPSPair r a b = (a -> b -> r) -> r
+newtype CStar r f a b = CStar { runCStar :: a -> Cont r (f b) }
+  
+class CProfunctor r p where
+  cdimap :: (a -> Cont r b) -> (c -> Cont r d) -> p b (Cont r c) -> p a (Cont r d)
 
-class Profunctor p => CPSStrong p where
-  cpsFirst' :: p a b -> p (CPSPair r a c) (CPSPair r b c)
-  cpsFirst' = dimap cpsSwap cpsSwap . cpsSecond'
+clmap :: (CProfunctor r p) => (a -> Cont r b) -> p b (Cont r c) -> p a (Cont r c)
+clmap f = cdimap f return
 
-  cpsSecond' :: p a b -> p (CPSPair r c a) (CPSPair r c b)
-  cpsSecond' = dimap cpsSwap cpsSwap . cpsFirst'
-  {-# MINIMAL cpsFirst' | cpsSecond' #-}
+crmap :: (CProfunctor r p) => (b -> Cont r c) -> p a (Cont r b) -> p a (Cont r c)
+crmap f = cdimap return f
 
-pair :: a -> b -> CPSPair r a b
-pair a b f = f a b
+instance CProfunctor r (->) where
+  cdimap ab cd bc = ab >=> bc >=> cd
 
-pairMap :: (b -> c) -> CPSPair (CPSPair r a c) a b -> CPSPair r a c
-pairMap f ab = ab \a b p -> p a (f b)
+instance (Functor f) => CProfunctor r (CStar r f) where
+  cdimap ab cd (CStar bc) = CStar $ ab >=> bc >=> return . fmap (>>= cd)
 
-cpsFst :: CPSPair a a b -> a
-cpsFst p = p const
+class (CProfunctor r p) => CStrong r p where
+  cfirst' :: p a (Cont r b) -> p (a, c) (Cont r (b, c))
+  cfirst' = cdimap (return . swap) (return . swap) . csecond'
 
-cpsSnd :: CPSPair b a b -> b
-cpsSnd p = p \_ b -> b
+  csecond' :: p a (Cont r b) -> p (c, a) (Cont r (c, b))
+  csecond' = cdimap (return . swap) (return . swap) . cfirst'
 
-cpsSwap :: CPSPair r a b -> CPSPair r b a
-cpsSwap ab p = ab \a b -> p b a
+instance CStrong r (->) where
+  cfirst' ab (a, c) = (,c) <$> ab a
+  csecond' ab (c, a) = (c,) <$> ab a
 
-instance CPSStrong (->) where
-  cpsFirst' f ac p = ac \a c -> p (f a) c
+instance (Functor f) => CStrong r (CStar r f) where
+  cfirst' (CStar afb) = CStar \(a, c) -> (fmap . fmap . fmap) (, c) (afb a)
+  csecond' (CStar afb) = CStar \(c, a) -> (fmap . fmap . fmap) (c,) (afb a)
 
-  cpsSecond' f ca p = ca \c a -> p c (f a)
+class (CProfunctor r p) => CChoice r p where
+  cleft' :: p a (Cont r b) -> p (Either a c) (Cont r (Either b c))
+  cleft' = cdimap (return . either Right Left) (return . either Right Left) . cright'
 
-instance (Functor f) => CPSStrong (Star f) where
-  cpsFirst' (Star f) = Star (rstrength . \ac p -> ac \a c -> p (f a) c)
-  cpsSecond' (Star f) = Star (lstrength . \ca p -> ca \c a -> p c (f a))
+  cright' :: p a (Cont r b) -> p (Either c a) (Cont r (Either c b))
+  cright' = cdimap (return . either Right Left) (return . either Right Left) . cleft'
 
-rstrength :: (Functor f) => (CPSPair (f (CPSPair r a b)) (f a) b) -> f (CPSPair r a b)
-rstrength fab = fab \fa b -> fmap (\a p -> p a b) fa
+instance CChoice r (->) where
+  cleft' ab e = either (fmap Left . ab) (return . Right) e
+  cright' ab e = either (return . Left) (fmap Right . ab) e
 
-lstrength :: (Functor f) => (CPSPair (f (CPSPair r a b)) a (f b)) -> f (CPSPair r a b)
-lstrength afb = afb \a fb -> fmap (\b p -> p a b) fb
+instance (Applicative f) => CChoice r (CStar r f) where
+  cleft' (CStar afb) = CStar $
+    either
+      ((fmap . fmap . fmap) Left . afb)
+      (return . pure . return . Right)
 
-type CPSEither r a b = (a -> r) -> (b -> r) -> r
+  cright' (CStar afb) = CStar $
+    either
+      (return . pure . return . Left)
+      ((fmap . fmap . fmap) Right . afb)
 
-cpsLeft :: a -> CPSEither r a b
-cpsLeft a l _ = l a
+class (CProfunctor r p) => CMonoidal r p where
+  cunit :: p () (Cont r ())
+  cpar :: p a (Cont r b) -> p c (Cont r d) -> p (a, c) (Cont r (b, d))
 
-cpsRight :: b -> CPSEither r a b
-cpsRight b _ r = r b
-
-class Profunctor p => CPSChoice p where
-  cpsLeft' :: p a b -> p (CPSEither r a c) (CPSEither r b c)
-  cpsLeft' =
-    dimap (\e -> e cpsRight cpsLeft) (\e -> e cpsRight cpsLeft)
-      . cpsRight'
-
-  cpsRight' :: p a b -> p (CPSEither r c a) (CPSEither r c b)
-  cpsRight' =
-    dimap (\e -> e cpsRight cpsLeft) (\e -> e cpsRight cpsLeft)
-      . cpsLeft'
-  {-# MINIMAL cpsLeft' | cpsRight' #-}
-
-instance CPSChoice (->) where
-  cpsLeft' f e l r = e (l . f) r
-  cpsRight' f e l r = e l (r . f)
-
-instance (Applicative f) => CPSChoice (Star f) where
-  cpsLeft' (Star f) = Star (\e -> e (fmap cpsLeft . f) (pure . cpsRight))
-  cpsRight' (Star f) = Star (\e -> e (pure . cpsLeft) (fmap cpsRight . f))
-
-class Profunctor p => CPSMonoidal p where
-  cpsUnit :: p () ()
-  cpsPar :: p a b -> p c d -> p (CPSPair r a c) (CPSPair r b d)
-
-instance CPSMonoidal (->) where
-  cpsUnit () = ()
-  cpsPar f g ac p = ac \a c -> p (f a) (g c)
-
-instance (Applicative f) => CPSMonoidal (Star f) where
-  cpsUnit = Star \() -> pure ()
-  cpsPar (Star f) (Star g) = Star (starPar f g)
-
-starPar :: (Applicative f) => (a -> f b) -> (c -> f d) -> CPSPair (f (CPSPair r b d)) a c -> f (CPSPair r b d)
-starPar afb cfd ac = ac \a c -> pair <$> afb a <*> cfd c
+instance CMonoidal r (->) where
+  cunit () = return ()
+  cpar ab cd (a, c) = (,) <$> ab a <*> cd c

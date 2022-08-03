@@ -1,29 +1,30 @@
 module Plutarch.Optics.PPair where
-
-import Fresnel.Lens
-
 import Plutarch.Core
 
-pfst_ ::
+import Plutarch.CPS.Optics.Lens
+
+pfst ::
   (ESOP edsl, IsEType edsl a, IsEType edsl a', IsEType edsl b) =>
-  Lens
+  CLens
+    r
     (Term edsl (EPair a b))
     (Term edsl (EPair a' b))
     (Term edsl a)
     (Term edsl a')
-pfst_ =
-  lens
-    (\tp -> ematch tp \(EPair a _) -> a)
-    (\ts a' -> ematch ts \(EPair _ b) -> econ $ EPair a' b)
+pfst =
+  clens
+    (\tp -> return $ ematch tp \(EPair a _) -> a)
+    (\ts a' -> return $ ematch ts \(EPair _ b) -> econ $ EPair a' b)
 
-psnd_ ::
+psnd ::
   (ESOP edsl, IsEType edsl a, IsEType edsl b, IsEType edsl b') =>
-  Lens
+  CLens
+    r
     (Term edsl (EPair a b))
     (Term edsl (EPair a b'))
     (Term edsl b)
     (Term edsl b')
-psnd_ =
-  lens
-    (\tp -> ematch tp \(EPair _ b) -> b)
-    (\ts b' -> ematch ts \(EPair a _) -> econ $ EPair a b')
+psnd =
+  clens
+    (\tp -> return $ ematch tp \(EPair _ b) -> b)
+    (\ts b' -> return $ ematch ts \(EPair a _) -> econ $ EPair a b')
