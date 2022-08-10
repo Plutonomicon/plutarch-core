@@ -105,5 +105,4 @@ library
 
   build-depends:
     , base
-    , data-fix
     , generics-sop
