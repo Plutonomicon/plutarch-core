@@ -13,6 +13,8 @@ type CLens' r s a = CLens r s s a a
 
 class (IsCIso r p, CStrong r p) => IsCLens r p
 
+instance (Functor f) => IsCLens r (CStar r f)
+
 clens :: (s -> Cont r a) -> (s -> b -> Cont r t) -> CLens r s t a b
 clens get set = cdimap (\s -> (s,) <$> get s) (uncurry set) . csecond'
 

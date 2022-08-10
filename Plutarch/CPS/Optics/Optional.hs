@@ -16,6 +16,8 @@ type COptional' r s a = COptional r s s a a
 
 class (IsCLens r p, IsCPrism r p) => IsCOptional r p
 
+instance (Applicative f) => IsCOptional r (CStar r f)
+
 withCOptional :: COptional r s t a b -> ((s -> Cont r (Either t a)) -> (s -> b -> Cont r t) -> r') -> r'
 withCOptional o f = f (coptionalGet l >=> either (fmap Left) (return . Right)) (coptionalSet l)
   where l = o $ ConcreteOptional { coptionalGet = return . Right, coptionalSet = const return }
@@ -29,7 +31,7 @@ data ConcreteOptional r a b s t
 instance CProfunctor r (ConcreteOptional r a b) where
   cdimap ab cd o
     = ConcreteOptional
-    { coptionalGet = 
+    { coptionalGet =
       ab >=> coptionalGet o >=> return . left (>>= cd)
     , coptionalSet = \a b -> ab a >>= \b' -> coptionalSet o b' b >>= cd
     }
@@ -37,14 +39,14 @@ instance CProfunctor r (ConcreteOptional r a b) where
 instance CStrong r (ConcreteOptional r a b) where
   cfirst' o
     = ConcreteOptional
-    { coptionalGet = (\(a, c) -> left (fmap (,c)) <$> coptionalGet o a)
-    , coptionalSet = (\(a, c) b -> (,c) <$> coptionalSet o a b)
+    { coptionalGet = \(a, c) -> left (fmap (,c)) <$> coptionalGet o a
+    , coptionalSet = \(a, c) b -> (,c) <$> coptionalSet o a b
     }
-  
+
   csecond' o
     = ConcreteOptional
-    { coptionalGet = (\(c, a) -> left (fmap (c,)) <$> coptionalGet o a)
-    , coptionalSet = (\(c, a) b -> (c,) <$> coptionalSet o a b)
+    { coptionalGet = \(c, a) -> left (fmap (c,)) <$> coptionalGet o a
+    , coptionalSet = \(c, a) b -> (c,) <$> coptionalSet o a b
     }
 
 instance CChoice r (ConcreteOptional r a b) where
@@ -58,7 +60,7 @@ instance CChoice r (ConcreteOptional r a b) where
     , coptionalSet =
       \e b -> either (\a -> Left <$> coptionalSet o a b) (return . Right) e
     }
-  
+
   cright' o
     = ConcreteOptional
     { coptionalGet =

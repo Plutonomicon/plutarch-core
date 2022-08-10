@@ -4,6 +4,7 @@ module Plutarch.CPS.Profunctor where
 
 import Control.Monad.Cont
 import Data.Tuple
+import Control.Applicative
 
 newtype CStar r f a b = CStar { runCStar :: a -> Cont r (f b) }
   
@@ -14,7 +15,7 @@ clmap :: (CProfunctor r p) => (a -> Cont r b) -> p b (Cont r c) -> p a (Cont r c
 clmap f = cdimap f return
 
 crmap :: (CProfunctor r p) => (b -> Cont r c) -> p a (Cont r b) -> p a (Cont r c)
-crmap f = cdimap return f
+crmap = cdimap return
 
 instance CProfunctor r (->) where
   cdimap ab cd bc = ab >=> bc >=> cd
@@ -45,8 +46,8 @@ class (CProfunctor r p) => CChoice r p where
   cright' = cdimap (return . either Right Left) (return . either Right Left) . cleft'
 
 instance CChoice r (->) where
-  cleft' ab e = either (fmap Left . ab) (return . Right) e
-  cright' ab e = either (return . Left) (fmap Right . ab) e
+  cleft' ab = either (fmap Left . ab) (return . Right)
+  cright' ab = either (return . Left) (fmap Right . ab)
 
 instance (Applicative f) => CChoice r (CStar r f) where
   cleft' (CStar afb) = CStar $
@@ -66,3 +67,8 @@ class (CProfunctor r p) => CMonoidal r p where
 instance CMonoidal r (->) where
   cunit () = return ()
   cpar ab cd (a, c) = (,) <$> ab a <*> cd c
+
+instance (Applicative f) => CMonoidal r (CStar r f) where
+  cunit = CStar $ \() -> return . pure . return $ ()
+  cpar (CStar afb) (CStar cfd) =
+    CStar (\(a, c) -> (liftA2 . liftA2) (,) <$> afb a <*> cfd c)

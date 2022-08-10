@@ -12,6 +12,8 @@ type CPrism' r a b = CPrism r a a b b
 
 class (IsCIso r p, CChoice r p) => IsCPrism r p
 
+instance (Applicative f) => IsCPrism r (CStar r f)
+
 cprism :: (b -> Cont r t) -> (s -> Cont r (Either t a)) -> CPrism r s t a b
 cprism inj prj = cdimap prj (either return inj) . cright'
 
@@ -42,7 +44,7 @@ instance CProfunctor r (ConcretePrism r a b) where
           either
             (\c -> Left . return <$> (c >>= cd))
             (return . Right)
-    , cprismSet = (cprismSet p >=> cd)
+    , cprismSet = cprismSet p >=> cd
     }
 
 instance CChoice r (ConcretePrism r a b) where

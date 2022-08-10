@@ -101,13 +101,13 @@ library
     Plutarch.CPS.Optics.Lens
     Plutarch.CPS.Optics.Optic
     Plutarch.CPS.Optics.Prism
+    Plutarch.CPS.Optics.Traversal
     Plutarch.CPS.Profunctor
     Plutarch.EType
     Plutarch.Experimental
     Plutarch.Optics.Optic
     Plutarch.Optics.PEither
     Plutarch.Optics.PPair
-    Plutarch.Optics.Traversal
     Plutarch.PList
     Plutarch.Reduce
     Plutarch.STLC
@@ -118,3 +118,4 @@ library
     , data-fix
     , generics-sop
     , mtl
+    , profunctors
