@@ -4,7 +4,7 @@ haskell.packages.ghc923.shellFor {
   packages = p: [
     (p.callPackage ./plutarch-core.nix { })
   ];
-  buildHoogle = false;
+  buildHoogle = true;
   nativeBuildInputs = [
     cabal-install
     hlint

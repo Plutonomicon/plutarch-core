@@ -12,11 +12,24 @@
     in
     {
       checks = perSystem (system: {
-        formatting = (nixpkgsFor system).runCommandNoCC "formatting" {} ''
+        formatting = (nixpkgsFor system).runCommandNoCC "formatting-check" {} ''
           cd ${self}
           ./bin/format check
           touch $out
         '';
+        cabal2nix = (nixpkgsFor system).runCommandNoCC "cabal2nix-check" {
+          nativeBuildInputs = [ (nixpkgsFor system).cabal2nix ];
+        } ''
+          cd ${self}
+          exec diff <(cabal2nix ./.) plutarch-core.nix
+        '';
+      });
+      apps = perSystem (system: {
+        regen.type = "app";
+        regen.program = builtins.toString ((nixpkgsFor system).writeShellScript "regen" ''
+          cabal2nix ./. > plutarch-core.nix
+          ./bin/format
+        '');
       });
       packages = perSystem (system: {
         default = (haskellPackagesFor system).callPackage ./plutarch-core.nix {};
