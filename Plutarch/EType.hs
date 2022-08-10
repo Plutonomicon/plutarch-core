@@ -1,29 +1,30 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.EType (
-  EIfNewtype,
-  EIsNewtype (..),
-  ENewtype (..),
-  type MkENewtype,
-  ERepr,
-  EReprAp,
-  ETypeRepr,
-  pattern MkETypeRepr,
-  coerceERepr,
-  EDSLKind,
+  EGeneric,
+  egto,
+  egfrom,
   ETypeF (MkETypeF),
   EType,
+  EEType (EEType),
   Ef,
+  Ef' (..),
   EfC,
   EHs,
+  EHsW,
   type (/$),
 ) where
 
-import Data.Coerce (Coercible)
 import Data.Kind (Constraint, Type)
-import Data.Proxy (Proxy)
-import Generics.SOP (Top)
+import Data.Proxy (Proxy (Proxy))
+import GHC.Generics (Generic)
+import Generics.SOP (All2, I, SOP, Top)
+import Generics.SOP.GGP (GCode, GDatatypeInfo, GFrom, GTo)
+import Plutarch.Internal.Witness (witness)
 import Plutarch.Reduce (NoReduce, Reduce)
+import Unsafe.Coerce (unsafeCoerce)
 
 -- EType
 
@@ -37,74 +38,89 @@ import Plutarch.Reduce (NoReduce, Reduce)
 -- the fields with eDSL terms.
 
 data ETypeF = MkETypeF
-  { _constraint :: EType -> Constraint
-  , _concretise :: EType -> Type
+  { _constraint :: forall (a :: Type). a -> Constraint
+  , _concretise :: (ETypeF -> Type) -> Type
   }
 
 -- | Higher HKD
 type EType = ETypeF -> Type
 
-type EDSLKind = ETypeRepr -> Type
+newtype EEType (ef :: ETypeF) = EEType EType
+
+type EHs :: EType -> Type
+type family EHs (a :: EType) = r | r -> a where
+  EHs EEType = (ETypeF -> Type)
+  EHs a = a (MkETypeF Top EHsW)
+
+type EHsW :: EType -> Type
+newtype EHsW a = EHsW (NoReduce (EHs a)) deriving stock (Generic)
 
 type family Ef (f :: ETypeF) (x :: EType) :: Type where
-  Ef (MkETypeF _constraint concretise) x = Reduce (concretise x)
+  forall (_constraint :: forall (a :: Type). a -> Constraint) (concretise :: EType -> Type) (x :: EType).
+    Ef (MkETypeF _constraint concretise) x =
+      Reduce (concretise x)
 
-type (/$) ef x = Ef ef x
-infix 0 /$
+type (/$) ef a = Ef ef a
+infixr 0 /$
 
-type family EfC (f :: ETypeF) :: EType -> Constraint where
-  EfC (MkETypeF constraint _concretise) = constraint
+newtype Ef' ef a = Ef' (ef /$ a)
 
-newtype ENewtype (a :: EType) f = ENewtype (a f)
-type MkENewtype a = MkETypeRepr (ENewtype a)
+type family EfC (f :: ETypeF) :: EHs a -> Constraint where
+  forall (constraint :: forall (a :: Type). a -> Constraint) (_concretise :: EType -> Type).
+    EfC (MkETypeF constraint _concretise) =
+      constraint
 
-class KnownBool (EIsNewtype' a) => EIsNewtype (a :: EType) where
-  type EIsNewtype' a :: Bool
-  type EIsNewtype' _ = True
+class
+  ( Generic (a ef)
+  , GFrom (a ef)
+  , GTo (a ef)
+  , GDatatypeInfo (a ef)
+  , All2 Top (ECode a) -- DO NOT REMOVE! Will cause unsound behavior otherwise. See `unsafeCoerce` below.
+  ) =>
+  EGeneric' a ef
+instance
+  ( Generic (a ef)
+  , GFrom (a ef)
+  , GTo (a ef)
+  , GDatatypeInfo (a ef)
+  , All2 Top (ECode a)
+  ) =>
+  EGeneric' a ef
 
-type EIfNewtype a = (EIsNewtype a, EIsNewtype' a ~ True)
+type EGeneric :: EType -> Constraint
+class (forall ef. EGeneric' a ef) => EGeneric a
+instance (forall ef. EGeneric' a ef) => EGeneric a
 
-newtype ETypeRepr = MkETypeRepr EType
+data Dummy (a :: EType) deriving stock (Generic)
 
-type family EReprHelper (b :: Bool) (a :: EType) where
-  EReprHelper True a = ENewtype a
-  EReprHelper False a = a
+type ToEType :: [Type] -> [EType]
+type family ToEType as where
+  ToEType '[] = '[]
+  ToEType (a ': as) = UnDummy a ': ToEType as
 
-type family EReprAp (a :: ETypeRepr) :: EType where
-  EReprAp (MkETypeRepr a) = a
+type ToEType2 :: [[Type]] -> [[EType]]
+type family ToEType2 as where
+  ToEType2 '[] = '[]
+  ToEType2 (a ': as) = ToEType a ': ToEType2 as
 
-type ERepr :: EType -> ETypeRepr
-type ERepr a = MkETypeRepr (EReprHelper (EIsNewtype' a) a)
+type UnDummy :: Type -> EType
+type family UnDummy a where
+  UnDummy (Dummy a) = a
 
-data Dict :: Constraint -> Type where
-  Dict :: c => Dict c
+type DummyInst :: EType -> Type
+type DummyInst a = a (MkETypeF Top Dummy)
 
--- FIXME replace with generic-singletons
-data SBool :: Bool -> Type where
-  STrue :: SBool 'True
-  SFalse :: SBool 'False
+-- FIXME: This doesn't work if the data type definition matches
+-- on the `ef` using a type family.
+type family ECode (a :: EType) :: [[EType]] where
+  ECode a = ToEType2 (GCode (DummyInst a))
 
-class KnownBool (b :: Bool) where
-  knownBool :: SBool b
+egfrom :: forall a ef. EGeneric a => Proxy a -> SOP I (GCode (a ef)) -> SOP (Ef' ef) (ECode a)
+-- This could be done safely, but it's a PITA.
+-- Depends on `All` constraint above.
+egfrom = let _ = witness (Proxy @(EGeneric a)) in unsafeCoerce
 
-instance KnownBool 'True where
-  knownBool = STrue
-
-instance KnownBool 'False where
-  knownBool = SFalse
-
-h :: Proxy a -> SBool b -> Dict (Coercible (EReprHelper b a) a)
-h _ STrue = Dict
-h _ SFalse = Dict
-
-g :: forall a. EIsNewtype a => Proxy a -> Dict (Coercible (EReprAp (ERepr a)) a)
-g p =
-  let _ = EHs' -- FIXME: Remove, -Wunused-top-binds is broken
-   in h p (knownBool :: SBool (EIsNewtype' a))
-
-coerceERepr :: forall a b. EIsNewtype a => Proxy a -> (Coercible (EReprAp (ERepr a)) a => b) -> b
-coerceERepr p f = case g p of Dict -> f
-
-type EHs' :: EType -> Type
-type EHs (a :: EType) = a (MkETypeF Top EHs')
-newtype EHs' (a :: EType) = EHs' (NoReduce (EHs a))
+egto :: forall a ef. EGeneric a => Proxy a -> SOP (Ef' ef) (ECode a) -> SOP I (GCode (a ef))
+-- This could be done safely, but it's a PITA.
+-- Depends on `All` constraint above.
+egto = let _ = witness (Proxy @(EGeneric a)) in unsafeCoerce

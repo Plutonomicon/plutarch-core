@@ -1,57 +1,39 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Examples.Simple where
+module Examples.Simple (eid_alt, eid, efalse) where
 
-import Data.Proxy (Proxy (Proxy))
-import GHC.Generics (Generic)
-import Plutarch.Core
-import Plutarch.EType
+import Plutarch.Core (ELC, EPolymorphic, ESOP)
+import Plutarch.Prelude
 
 type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
 
 data EBool ef = ETrue | EFalse
   deriving stock (Generic)
-  deriving anyclass (EIsNewtype)
+instance EHasRepr EBool where type EReprSort _ = EReprSOP
 
-newtype EForall1 (f :: EType -> EType) ef = EForall1 (Ef ef (EForall (IsEType (UnEf ef)) f))
+newtype EId' a ef = EId' (ef /$ (a #-> a))
   deriving stock (Generic)
-  deriving anyclass (EIsNewtype)
+instance EHasRepr (EId' a) where type EReprSort _ = EReprSOP
 
-newtype EId' a ef = EId' (Ef ef (a #-> a))
-newtype EId ef = EId (Ef ef (EForall1 EId'))
+newtype EId ef = EId (ef /$ EForall EId')
+  deriving stock (Generic)
+instance EHasRepr EId where type EReprSort _ = EReprSOP
 
-type U0 = EUnit
-type U1 = EEither U0 U0
-type U2 = EEither U1 U1
-type U3 = EEither U2 U2
-type U4 = EEither U3 U3
-type U5 = EEither U4 U4
-type U6 = EEither U5 U5
-type U7 = EEither U6 U6
-type U8 = EEither U7 U7
+efalse :: ESystemF edsl => Term edsl EBool
+efalse = econ EFalse
 
-type Word = U8
+eid''' :: (ESystemF edsl, IsEType edsl a) => Term edsl $ a #-> a
+eid''' = elam \x -> x
 
-f :: ESOP edsl => Term edsl U1 -> Term edsl U0
-f x = ematch x \case
-  ERight EUnit -> econ EUnit
-  ELeft EUnit -> econ EUnit
+eid'' :: (ESystemF edsl, IsEType edsl a) => Term edsl $ EId' a
+eid'' = econ $ EId' eid'''
 
-{-
+eid' :: ESystemF edsl => Term edsl (EForall EId')
+eid' = econ $ EForall eid''
 
-f :: Functor f => f Bool -> f Bool
-f x = not <$> x
+eid :: ESystemF edsl => Term edsl EId
+eid = econ $ EId eid'
 
---newtype EMap f a b ef = EMap (Ef ef (f a #-> f b))
-
---newtype EMap' a b ef = EMap (EForall (IsEType2 edsl) )
-
-class EFunctor edsl f where
-  --emap :: Term edsl (EMap f)
-
-newtype A a f = A (Ef f (a EBool #-> a EBool))
-
---f' :: EFunctor f => Term edsl
---
--}
+eid_alt :: ESystemF edsl => Term edsl EId
+eid_alt = econ $ EId $$ EForall $ econ $ EId' $ elam \x -> x

@@ -1,10 +1,8 @@
 module Examples.DataKinds where
 
 import Data.Kind (Type)
-import GHC.Generics (Generic)
-import Plutarch.Core
-import Plutarch.EType
-import Plutarch.Experimental
+import Plutarch.Experimental (EEq)
+import Plutarch.Prelude
 
 data Nat = N | S Nat
 data SNat :: Nat -> Type where
@@ -13,8 +11,10 @@ data SNat :: Nat -> Type where
 
 data EBool ef = EFalse | ETrue
   deriving stock (Generic)
-  deriving anyclass (EIsNewtype)
+instance EHasRepr EBool where type EReprSort _ = EReprSOP
 
 data ESBool (b :: EHs EBool) ef
   = ESFalse (ef /$ EEq b EFalse)
   | ESTrue (ef /$ EEq b ETrue)
+  deriving stock (Generic)
+instance EHasRepr (ESBool b) where type EReprSort _ = EReprSOP
