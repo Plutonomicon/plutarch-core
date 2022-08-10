@@ -10,14 +10,15 @@ data PListF a self ef
   deriving stock Generic
   deriving anyclass EIsNewtype
 
-newtype PList edsl a = PList (Term edsl (EFix (PListF a)))
+newtype PList a ef = PList { unPList :: ef /$ EFix (PListF a) }
   deriving stock Generic
+  deriving anyclass EIsNewtype
 
-mkPList :: (ESOP edsl, IsEType edsl a, _) => EConcrete edsl (PListF a (EFix (PListF a))) -> PList edsl a
-mkPList = PList . econ . EFix . econ
+mkPList :: (ESOP edsl, IsEType edsl a, IsEType edsl (EFix (PListF a)), EConstructable edsl (EFix (PListF a))) => EConcrete edsl (PListF a (EFix (PListF a))) -> Term edsl (PList a)
+mkPList = econ . PList . econ . EFix . econ
 
-pnil :: (ESOP edsl, IsEType edsl a, _) => PList edsl a
+pnil :: (ESOP edsl, IsEType edsl a, IsEType edsl (EFix (PListF a)), EConstructable edsl (EFix (PListF a))) => Term edsl (PList a)
 pnil = mkPList PNil
 
-pcons :: (ESOP edsl, IsEType edsl a, _) => Term edsl a -> PList edsl a -> PList edsl a
-pcons a (PList as) = mkPList $ PCons a as
+pcons :: (ESOP edsl, IsEType edsl a, IsEType edsl (EFix (PListF a)), EConstructable edsl (EFix (PListF a))) => Term edsl a -> Term edsl (PList a) -> Term edsl (PList a)
+pcons a las = mkPList $ PCons a (ematch las unPList)
