@@ -2,12 +2,12 @@
 
 module Plutarch.CPS.Profunctor where
 
+import Control.Applicative
 import Control.Monad.Cont
 import Data.Tuple
-import Control.Applicative
 
-newtype CStar r f a b = CStar { runCStar :: a -> Cont r (f b) }
-  
+newtype CStar r f a b = CStar {runCStar :: a -> Cont r (f b)}
+
 class CProfunctor r p where
   cdimap :: (a -> Cont r b) -> (c -> Cont r d) -> p b (Cont r c) -> p a (Cont r d)
 
@@ -35,7 +35,7 @@ instance CStrong r (->) where
   csecond' ab (c, a) = (c,) <$> ab a
 
 instance (Functor f) => CStrong r (CStar r f) where
-  cfirst' (CStar afb) = CStar \(a, c) -> (fmap . fmap . fmap) (, c) (afb a)
+  cfirst' (CStar afb) = CStar \(a, c) -> (fmap . fmap . fmap) (,c) (afb a)
   csecond' (CStar afb) = CStar \(c, a) -> (fmap . fmap . fmap) (c,) (afb a)
 
 class (CProfunctor r p) => CChoice r p where
@@ -50,15 +50,17 @@ instance CChoice r (->) where
   cright' ab = either (return . Left) (fmap Right . ab)
 
 instance (Applicative f) => CChoice r (CStar r f) where
-  cleft' (CStar afb) = CStar $
-    either
-      ((fmap . fmap . fmap) Left . afb)
-      (return . pure . return . Right)
+  cleft' (CStar afb) =
+    CStar $
+      either
+        ((fmap . fmap . fmap) Left . afb)
+        (return . pure . return . Right)
 
-  cright' (CStar afb) = CStar $
-    either
-      (return . pure . return . Left)
-      ((fmap . fmap . fmap) Right . afb)
+  cright' (CStar afb) =
+    CStar $
+      either
+        (return . pure . return . Left)
+        ((fmap . fmap . fmap) Right . afb)
 
 class (CProfunctor r p) => CMonoidal r p where
   cunit :: p () (Cont r ())

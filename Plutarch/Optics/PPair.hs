@@ -1,4 +1,5 @@
 module Plutarch.Optics.PPair where
+
 import Plutarch.Core
 
 import Plutarch.CPS.Optics.Lens

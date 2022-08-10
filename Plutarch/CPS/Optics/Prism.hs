@@ -1,10 +1,11 @@
 {-# LANGUAGE FlexibleInstances #-}
+
 module Plutarch.CPS.Optics.Prism where
 
-import Plutarch.CPS.Optics.Optic
-import Plutarch.CPS.Optics.Iso
-import Plutarch.CPS.Profunctor
 import Control.Monad.Cont
+import Plutarch.CPS.Optics.Iso
+import Plutarch.CPS.Optics.Optic
+import Plutarch.CPS.Profunctor
 
 type CPrism r s t a b = forall p. IsCPrism r p => COptic r p s t a b
 
@@ -27,35 +28,34 @@ withCPrism ::
 withCPrism o f =
   f (cprismSet l) (cprismGet l >=> either (fmap Left) (return . Right))
   where
-    l = o $ ConcretePrism { cprismSet = return, cprismGet = return . Right }
+    l = o $ ConcretePrism {cprismSet = return, cprismGet = return . Right}
 
-data ConcretePrism r a b s t
-  = ConcretePrism
+data ConcretePrism r a b s t = ConcretePrism
   { cprismGet :: s -> Cont r (Either t a)
   , cprismSet :: b -> t
   }
 
 instance CProfunctor r (ConcretePrism r a b) where
-  cdimap ab cd p
-    = ConcretePrism
-    { cprismGet =
-      ab >=>
-        cprismGet p >=>
-          either
-            (\c -> Left . return <$> (c >>= cd))
-            (return . Right)
-    , cprismSet = cprismSet p >=> cd
-    }
+  cdimap ab cd p =
+    ConcretePrism
+      { cprismGet =
+          ab
+            >=> cprismGet p
+            >=> either
+              (\c -> Left . return <$> (c >>= cd))
+              (return . Right)
+      , cprismSet = cprismSet p >=> cd
+      }
 
 instance CChoice r (ConcretePrism r a b) where
-  cleft' p
-    = ConcretePrism
-    { cprismGet =
-      either
-        (cprismGet p >=> either (fmap (Left . return . Left)) (return . Right))
-        (return . Left . return . Right)
-    , cprismSet = fmap Left . cprismSet p
-    }
+  cleft' p =
+    ConcretePrism
+      { cprismGet =
+          either
+            (cprismGet p >=> either (fmap (Left . return . Left)) (return . Right))
+            (return . Left . return . Right)
+      , cprismSet = fmap Left . cprismSet p
+      }
 
 instance IsCIso r (ConcretePrism r a b)
 instance IsCPrism r (ConcretePrism r a b)

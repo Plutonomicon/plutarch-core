@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Plutarch.CPS.Optics.Iso where
-  
+
 import Plutarch.CPS.Optics.Optic
 import Plutarch.CPS.Profunctor
 
