@@ -12,10 +12,10 @@ module Plutarch.Prelude (
   type (#->) (..),
   type (#=>) (..),
   Term,
-  econ,
-  ematch,
+  pcon,
+  pmatch,
   Generic,
-  elam,
+  plam,
   (#),
   PHs,
   PType,
@@ -27,7 +27,7 @@ import Plutarch.Core
 import Plutarch.PType
 
 ($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b
-f $$ x = f (econ x)
+f $$ x = f (pcon x)
 infixr 0 $$
 
 type f $ x = f x

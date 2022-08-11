@@ -7,18 +7,23 @@
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = nixpkgs.lib.genAttrs supportedSystems;
-      nixpkgsFor = system: nixpkgs.legacyPackages.${system};
-      haskellPackagesFor = system: (nixpkgsFor system).haskell.packages.ghc923;
+      pkgsFor = system: nixpkgs.legacyPackages.${system};
+      hsOverlay = hsPkgs: hsPkgs.override {
+        overrides = final: prev: {
+          plutarch-core = final.callPackage ./plutarch-core.nix {};
+        };
+      };
+      hsPkgsFor = system: hsOverlay (pkgsFor system).haskell.packages.ghc923;
     in
     {
       checks = perSystem (system: {
-        formatting = (nixpkgsFor system).runCommandNoCC "formatting-check" {} ''
+        formatting = (pkgsFor system).runCommandNoCC "formatting-check" {} ''
           cd ${self}
           ./bin/format check
           touch $out
         '';
-        cabal2nix = (nixpkgsFor system).runCommandNoCC "cabal2nix-check" {
-          nativeBuildInputs = [ (nixpkgsFor system).cabal2nix ];
+        cabal2nix = (pkgsFor system).runCommandNoCC "cabal2nix-check" {
+          nativeBuildInputs = [ (pkgsFor system).cabal2nix ];
         } ''
           cd ${self}
           diff <(cabal2nix ./.) plutarch-core.nix
@@ -27,16 +32,29 @@
       });
       apps = perSystem (system: {
         regen.type = "app";
-        regen.program = builtins.toString ((nixpkgsFor system).writeShellScript "regen" ''
-          cabal2nix ./. > plutarch-core.nix
+        regen.program = builtins.toString ((pkgsFor system).writeShellScript "regen" ''
+          set -xe
+          ${(pkgsFor system).cabal2nix}/bin/cabal2nix ./. > plutarch-core.nix
           ./bin/format
         '');
       });
       packages = perSystem (system: {
-        default = (haskellPackagesFor system).callPackage ./plutarch-core.nix {};
+        default = (hsPkgsFor system).plutarch-core;
       });
       devShells = perSystem (system: {
-        default = import ./shell.nix { pkgs = nixpkgsFor system; };
+        default = (hsPkgsFor system).shellFor {
+          packages = p: [ p.plutarch-core ];
+          buildHoogle = true;
+          nativeBuildInputs = with (pkgsFor system); [
+            cabal-install
+            hlint
+            cabal2nix
+            nixpkgs-fmt
+            curl
+            haskellPackages.cabal-fmt
+            (hsPkgsFor system).fourmolu_0_7_0_1
+          ];
+        };
       });
     };
 }

@@ -16,16 +16,16 @@ newtype F' a x ef = F' (ef /$ PProxy x #-> PUnit)
 newtype F (a :: PType) ef = F (ef /$ PForall (F' a))
 
 f :: PForall F
-f = econ $ PForall $$ F $$ PForall $$ F' $ elam \_ -> econ PUnit
+f = pcon $ PForall $$ F $$ PForall $$ F' $ elam \_ -> pcon PUnit
 
 --g :: Proxy x -> ()
 --g (Proxy @x) = f (Proxy @(Identity x))
 
 g :: PForall F
-g = econ $ PForall $$ F $$ PForall $$ F' $ elam \(x :: Term edsl (PProxy x)) ->
-  ematch f \PForall f ->
-  ematch f \F f ->
-  ematch f \PForall f ->
-  ematch f \F' f ->
-  f # (econ PProxy :: Term edsl (PProxy ('PIdentity x)))
+g = pcon $ PForall $$ F $$ PForall $$ F' $ elam \(x :: Term edsl (PProxy x)) ->
+  pmatch f \PForall f ->
+  pmatch f \F f ->
+  pmatch f \PForall f ->
+  pmatch f \F' f ->
+  f # (pcon PProxy :: Term edsl (PProxy ('PIdentity x)))
 -}

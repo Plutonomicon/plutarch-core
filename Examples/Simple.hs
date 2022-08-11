@@ -21,19 +21,19 @@ newtype PId ef = PId (ef /$ PForall PId')
 instance PHasRepr PId where type PReprSort _ = PReprSOP
 
 efalse :: PSystemF edsl => Term edsl PBool
-efalse = econ PFalse
+efalse = pcon PFalse
 
 eid''' :: (PSystemF edsl, IsPType edsl a) => Term edsl $ a #-> a
 eid''' = elam \x -> x
 
 eid'' :: (PSystemF edsl, IsPType edsl a) => Term edsl $ PId' a
-eid'' = econ $ PId' eid'''
+eid'' = pcon $ PId' eid'''
 
 eid' :: PSystemF edsl => Term edsl (PForall PId')
-eid' = econ $ PForall eid''
+eid' = pcon $ PForall eid''
 
 eid :: PSystemF edsl => Term edsl PId
-eid = econ $ PId eid'
+eid = pcon $ PId eid'
 
 eid_alt :: PSystemF edsl => Term edsl PId
-eid_alt = econ $ PId $$ PForall $ econ $ PId' $ elam \x -> x
+eid_alt = pcon $ PId $$ PForall $ pcon $ PId' $ elam \x -> x
