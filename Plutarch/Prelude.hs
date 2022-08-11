@@ -2,13 +2,13 @@ module Plutarch.Prelude (
   type (/$),
   type ($),
   ($$),
-  EHasRepr (..),
-  EConstructable,
-  IsEType,
-  EReprSOP,
-  EForall (..),
-  ESome (..),
-  EUnit (..),
+  PHasRepr (..),
+  PConstructable,
+  IsPType,
+  PReprSOP,
+  PForall (..),
+  PSome (..),
+  PUnit (..),
   type (#->) (..),
   type (#=>) (..),
   Term,
@@ -17,16 +17,16 @@ module Plutarch.Prelude (
   Generic,
   elam,
   (#),
-  EHs,
-  EType,
-  EEType,
+  PHs,
+  PType,
+  PPType,
 ) where
 
 import GHC.Generics (Generic)
 import Plutarch.Core
-import Plutarch.EType
+import Plutarch.PType
 
-($$) :: EConstructable edsl a => (Term edsl a -> b) -> EConcrete edsl a -> b
+($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b
 f $$ x = f (econ x)
 infixr 0 $$
 

@@ -21,7 +21,8 @@
           nativeBuildInputs = [ (nixpkgsFor system).cabal2nix ];
         } ''
           cd ${self}
-          exec diff <(cabal2nix ./.) plutarch-core.nix
+          diff <(cabal2nix ./.) plutarch-core.nix
+          touch $out
         '';
       });
       apps = perSystem (system: {

@@ -6,79 +6,44 @@ license:            MIT
 extra-source-files: README.md
 
 library
-  default-language:   Haskell2010
+  default-language: GHC2021
   default-extensions:
     NoMonomorphismRestriction
     NoStarIsType
-    BangPatterns
-    BinaryLiterals
     BlockArguments
-    ConstrainedClassMethods
-    ConstraintKinds
     DataKinds
     DefaultSignatures
     DeriveAnyClass
-    DeriveDataTypeable
-    DeriveFoldable
-    DeriveFunctor
-    DeriveGeneric
-    DeriveTraversable
     DerivingStrategies
     DerivingVia
     DisambiguateRecordFields
     DuplicateRecordFields
-    EmptyCase
-    EmptyDataDeriving
-    ExistentialQuantification
-    ExplicitForAll
-    ExplicitNamespaces
-    ExtendedDefaultRules
-    FlexibleContexts
-    ForeignFunctionInterface
+    NoFlexibleInstances
     FunctionalDependencies
     GADTs
-    GeneralizedNewtypeDeriving
-    HexFloatLiterals
-    ImplicitParams
     ImpredicativeTypes
-    InstanceSigs
-    KindSignatures
     LambdaCase
     LexicalNegation
     LiberalTypeSynonyms
     MonadComprehensions
-    MultiParamTypeClasses
     MultiWayIf
-    NamedFieldPuns
-    NamedWildCards
     NegativeLiterals
     NondecreasingIndentation
     NumDecimals
-    NumericUnderscores
     OverloadedLabels
     OverloadedLists
     OverloadedStrings
     PackageImports
     PatternSynonyms
-    PolyKinds
-    PostfixOperators
     QualifiedDo
     QuantifiedConstraints
     QuasiQuotes
     RankNTypes
-    RankNTypes
     RecordWildCards
     RecursiveDo
     RoleAnnotations
-    ScopedTypeVariables
-    StandaloneDeriving
-    StandaloneKindSignatures
-    TupleSections
-    TypeApplications
     TypeFamilies
     TypeFamilyDependencies
-    TypeOperators
-    TypeSynonymInstances
     UnicodeSyntax
     UnliftedFFITypes
     UnliftedNewtypes
@@ -97,11 +62,12 @@ library
 
   exposed-modules:
     Plutarch.Core
-    Plutarch.EType
+    Plutarch.PType
     Plutarch.Experimental
     Plutarch.Reduce
     Plutarch.Internal.WithDictHack
     Plutarch.Internal.Witness
+    Plutarch.Prelude
 
   build-depends:
     , base

@@ -3,37 +3,37 @@
 
 module Examples.Simple (eid_alt, eid, efalse) where
 
-import Plutarch.Core (ELC, EPolymorphic, ESOP)
+import Plutarch.Core (PLC, PPolymorphic, PSOP)
 import Plutarch.Prelude
 
-type ESystemF edsl = (ELC edsl, EPolymorphic edsl, ESOP edsl)
+type PSystemF edsl = (PLC edsl, PPolymorphic edsl, PSOP edsl)
 
-data EBool ef = ETrue | EFalse
+data PBool ef = PTrue | PFalse
   deriving stock (Generic)
-instance EHasRepr EBool where type EReprSort _ = EReprSOP
+instance PHasRepr PBool where type PReprSort _ = PReprSOP
 
-newtype EId' a ef = EId' (ef /$ (a #-> a))
+newtype PId' a ef = PId' (ef /$ (a #-> a))
   deriving stock (Generic)
-instance EHasRepr (EId' a) where type EReprSort _ = EReprSOP
+instance PHasRepr (PId' a) where type PReprSort _ = PReprSOP
 
-newtype EId ef = EId (ef /$ EForall EId')
+newtype PId ef = PId (ef /$ PForall PId')
   deriving stock (Generic)
-instance EHasRepr EId where type EReprSort _ = EReprSOP
+instance PHasRepr PId where type PReprSort _ = PReprSOP
 
-efalse :: ESystemF edsl => Term edsl EBool
-efalse = econ EFalse
+efalse :: PSystemF edsl => Term edsl PBool
+efalse = econ PFalse
 
-eid''' :: (ESystemF edsl, IsEType edsl a) => Term edsl $ a #-> a
+eid''' :: (PSystemF edsl, IsPType edsl a) => Term edsl $ a #-> a
 eid''' = elam \x -> x
 
-eid'' :: (ESystemF edsl, IsEType edsl a) => Term edsl $ EId' a
-eid'' = econ $ EId' eid'''
+eid'' :: (PSystemF edsl, IsPType edsl a) => Term edsl $ PId' a
+eid'' = econ $ PId' eid'''
 
-eid' :: ESystemF edsl => Term edsl (EForall EId')
-eid' = econ $ EForall eid''
+eid' :: PSystemF edsl => Term edsl (PForall PId')
+eid' = econ $ PForall eid''
 
-eid :: ESystemF edsl => Term edsl EId
-eid = econ $ EId eid'
+eid :: PSystemF edsl => Term edsl PId
+eid = econ $ PId eid'
 
-eid_alt :: ESystemF edsl => Term edsl EId
-eid_alt = econ $ EId $$ EForall $ econ $ EId' $ elam \x -> x
+eid_alt :: PSystemF edsl => Term edsl PId
+eid_alt = econ $ PId $$ PForall $ econ $ PId' $ elam \x -> x
