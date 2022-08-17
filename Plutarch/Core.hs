@@ -316,7 +316,7 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
   papl :: HasCallStack => Term edsl a -> f b -> Term edsl a
 
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
-  eembed :: HasCallStack => m (Term edsl a) -> Term edsl a
+  pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
 
 data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
   SOP.All (IsPType edsl) inner =>
