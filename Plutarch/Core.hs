@@ -7,11 +7,12 @@ module Plutarch.Core (
   Compile,
   CompileAp,
   PRepr,
-  PDSLKind,
+  PDSLKind(..),
   UnEDSLKind,
   Term (Term),
   ClosedTerm,
   IsPTypeBackend,
+  NoTypeInfo, 
   PHasRepr (..),
   PIsRepr (..),
   IsPType,
@@ -29,6 +30,7 @@ module Plutarch.Core (
   type (#=>),
   pattern PConstrained,
   PVoid,
+  PLet(..),
   PDelay (PDelay),
   PPair (PPair),
   PEither (PLeft, PRight),
@@ -44,6 +46,7 @@ module Plutarch.Core (
   PLC,
   unTerm,
   plam,
+  plam2,
   (#),
   plet,
   punsafeCoerce,
@@ -146,12 +149,17 @@ instance PHasRepr PPType where
 type PRepr :: PType -> PType
 type PRepr a = PReprApply (PReprSort a) a
 
+type NoTypeInfo :: forall k. PHs k -> Constraint
+class    NoTypeInfo a
+instance NoTypeInfo a
+
 class PDSL (edsl :: PDSLKind) where
   type IsPTypeBackend edsl :: forall (a :: PType). PHs a -> Constraint
+  type IsPTypeBackend _ = NoTypeInfo
 
 type role Term nominal nominal
-data Term (edsl :: PDSLKind) (a :: PType) where
-  Term :: {unTerm :: (PDSL edsl, IsPTypeBackend edsl (PRepr a)) => UnEDSLKind edsl (PRepr a)} -> Term edsl a
+newtype Term (edsl :: PDSLKind) (a :: PType) where
+  Term :: {unTerm :: UnEDSLKind edsl (PRepr a) } -> Term edsl a
 
 type ClosedTerm (c :: PDSLKind -> Constraint) (a :: PType) = forall edsl. c edsl => Term edsl a
 
@@ -276,6 +284,12 @@ type PLC edsl = forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable e
 
 plam :: forall edsl a b. (HasCallStack, PConstructable edsl (a #-> b)) => (Term edsl a -> Term edsl b) -> Term edsl (a #-> b)
 plam f = pcon $ (PLam f :: PConcrete edsl (a #-> b))
+
+plam2 :: PConstructable edsl (a #-> b #-> c)
+      => PConstructable edsl (b #-> c)
+      => (Term edsl a -> Term edsl b -> Term edsl c)
+      -> Term edsl (a #-> (b #-> c))
+plam2 body = plam \a -> plam \b -> body a b
 
 (#) :: (HasCallStack, PLC edsl, IsPType edsl a, IsPType edsl b) => Term edsl (a #-> b) -> Term edsl a -> Term edsl b
 (#) f x = pmatch f (\(PLam f') -> f' x)
