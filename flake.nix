@@ -14,10 +14,27 @@
         };
       };
       hsPkgsFor = system: hsOverlay (pkgsFor system).haskell.packages.ghc923;
+      formattersFor = system: with (pkgsFor system); [
+        nixpkgs-fmt
+        haskellPackages.cabal-fmt
+        (hsPkgsFor system).fourmolu_0_7_0_1
+      ];
+      regen = system: (pkgsFor system).writeShellApplication {
+        name = "regen";
+        runtimeInputs = [ (pkgsFor system).cabal2nix ] ++ formattersFor system;
+        text = ''
+          set -xe
+          cabal2nix ./. > plutarch-core.nix
+          ./bin/format
+        '';
+      };
     in
     {
       checks = perSystem (system: {
-        formatting = (pkgsFor system).runCommandNoCC "formatting-check" { } ''
+        formatting = (pkgsFor system).runCommandNoCC "formatting-check"
+          {
+            nativeBuildInputs = formattersFor system;
+          } ''
           cd ${self}
           ./bin/format check
           touch $out
@@ -33,12 +50,7 @@
       });
       apps = perSystem (system: {
         regen.type = "app";
-        regen.program = builtins.toString ((pkgsFor system).writeShellScript "regen" ''
-          set -xe
-          export PATH="${(hsPkgsFor system).fourmolu_0_7_0_1}/bin:$PATH"
-          ${(pkgsFor system).cabal2nix}/bin/cabal2nix ./. > plutarch-core.nix
-          ./bin/format
-        '');
+        regen.program = "${regen system}/bin/regen";
       });
       packages = perSystem (system: {
         default = (hsPkgsFor system).plutarch-core;
@@ -51,18 +63,16 @@
             cabal-install
             hlint
             cabal2nix
-            nixpkgs-fmt
             curl
-            haskellPackages.cabal-fmt
-            (hsPkgsFor system).fourmolu_0_7_0_1
-          ];
+          ] ++ formattersFor system;
         };
       });
       hydraJobs = {
         checks = { inherit (self.checks) x86_64-linux; };
         packages = { inherit (self.packages) x86_64-linux; };
         devShells = { inherit (self.devShells) x86_64-linux; };
-        apps.x86_64-linux.regen = self.apps.x86_64-linux.regen.program;
+        apps.x86_64-linux.regen = regen "x86_64-linux";
       };
+      herculesCI.ciSystems = [ "x86_64-linux" ];
     };
 }
