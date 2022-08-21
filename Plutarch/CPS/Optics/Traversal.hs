@@ -28,6 +28,9 @@ ctraverseOf p = runCStar . p . CStar . (fmap . fmap . fmap) return
 
 newtype FunList a b t = FunList {unFunList :: Either t (a, FunList a b (b -> t))}
 
+single :: a -> FunList a b b
+single a = FunList $ Right (a, FunList $ Left id)
+
 instance Functor (FunList a b) where
   fmap f (FunList (Left t)) = FunList (Left (f t))
   fmap f (FunList (Right (a, as))) = FunList (Right (a, fmap (f .) as))

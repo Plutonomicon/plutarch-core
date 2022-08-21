@@ -6,16 +6,6 @@ import Plutarch.CPS.Optics.Traversal
 import Plutarch.Core
 import Plutarch.PList
 
-list' :: [a] -> Cont r (FunList a b [b])
-list' [] = cont \f -> f (pure [])
-list' (x : xs) = cont $ \c -> runCont (list' xs) (c . liftA2 (:) (single x))
-
-single :: a -> FunList a b b
-single a = FunList $ Right (a, FunList $ Left id)
-
-list :: CTraversal r [a] [b] a b
-list = traversal list'
-
 plist'' ::
   ( ESOP edsl
   , IsEType edsl a
@@ -71,3 +61,4 @@ plist ::
     (Term edsl a)
     (Term edsl b)
 plist = traversal plist'
+

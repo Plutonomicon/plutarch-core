@@ -8,9 +8,11 @@ data PListF a self ef
   = PNil
   | PCons (ef /$ a) (ef /$ self)
   deriving stock (Generic)
+  deriving anyclass EHasRepr
 
 newtype PList a ef = PList {unPList :: ef /$ EFix (PListF a)}
   deriving stock (Generic)
+  deriving anyclass EHasRepr
 
 mkPList ::
   ( ESOP edsl
