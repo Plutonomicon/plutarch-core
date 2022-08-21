@@ -7,8 +7,8 @@ module Plutarch.Core (
   Compile,
   CompileAp,
   PRepr,
-  PDSLKind,
-  UnEDSLKind,
+  PDSLKind (..),
+  UnPDSLKind,
   Term (Term),
   ClosedTerm,
   IsPTypeBackend,
@@ -29,6 +29,7 @@ module Plutarch.Core (
   type (#=>),
   pattern PConstrained,
   PVoid,
+  PLet (..),
   PDelay (PDelay),
   PPair (PPair),
   PEither (PLeft, PRight),
@@ -43,7 +44,6 @@ module Plutarch.Core (
   PDSL,
   PLC,
   unTerm,
-  plam,
   (#),
   plet,
   punsafeCoerce,
@@ -51,7 +51,7 @@ module Plutarch.Core (
   PPartial,
   perror,
   PEmbeds,
-  eembed,
+  pembed,
   PAp,
   papr,
   papl,
@@ -67,12 +67,12 @@ import Data.Proxy (Proxy (Proxy))
 import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
 import GHC.TypeLits (Symbol, TypeError, pattern ShowType, pattern Text, pattern (:$$:))
-import qualified Generics.SOP as SOP
-import qualified Generics.SOP.GGP as SOPG
+import Generics.SOP qualified as SOP
+import Generics.SOP.GGP qualified as SOPG
 import Plutarch.PType (
-  PPType,
   PGeneric,
   PHs,
+  PPType,
   PType,
   PTypeF,
   PfC,
@@ -83,8 +83,8 @@ import Plutarch.Reduce (NoReduce)
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
-type family UnEDSLKind (edsl :: PDSLKind) :: PType -> Type where
-  UnEDSLKind ( 'PDSLKind edsl) = edsl
+type family UnPDSLKind (edsl :: PDSLKind) :: PType -> Type where
+  UnPDSLKind ( 'PDSLKind edsl) = edsl
 
 newtype PReprKind = PReprKind Type
 
@@ -146,12 +146,17 @@ instance PHasRepr PPType where
 type PRepr :: PType -> PType
 type PRepr a = PReprApply (PReprSort a) a
 
+type NoTypeInfo :: forall k. PHs k -> Constraint
+class NoTypeInfo a
+instance NoTypeInfo a
+
 class PDSL (edsl :: PDSLKind) where
   type IsPTypeBackend edsl :: forall (a :: PType). PHs a -> Constraint
+  type IsPTypeBackend _ = NoTypeInfo
 
 type role Term nominal nominal
-data Term (edsl :: PDSLKind) (a :: PType) where
-  Term :: {unTerm :: (PDSL edsl, IsPTypeBackend edsl (PRepr a)) => UnEDSLKind edsl (PRepr a)} -> Term edsl a
+newtype Term (edsl :: PDSLKind) (a :: PType) where
+  Term :: {unTerm :: UnPDSLKind edsl (PRepr a)} -> Term edsl a
 
 type ClosedTerm (c :: PDSLKind -> Constraint) (a :: PType) = forall edsl. c edsl => Term edsl a
 
@@ -197,10 +202,10 @@ type family Helper (edsl :: PDSLKind) :: PTypeF where
 type PConcrete (edsl :: PDSLKind) (a :: PType) = a (Helper edsl)
 
 class (PDSL edsl, IsPTypeBackend edsl a) => PConstructable' edsl (a :: PType) where
-  pconImpl :: HasCallStack => PConcrete edsl a -> UnEDSLKind edsl a
+  pconImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
 
   -- If this didn't return `Term`, implementing it would be a lot harder.
-  pmatchImpl :: forall b. (HasCallStack, IsPType edsl b) => UnEDSLKind edsl a -> (PConcrete edsl a -> Term edsl b) -> Term edsl b
+  pmatchImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> Term edsl b) -> Term edsl b
 
 -- | The crux of what an eDSL is.
 class (PConstructable' edsl (PRepr a), PHasRepr a) => PConstructable edsl (a :: PType)
@@ -274,9 +279,6 @@ instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
 type PLC :: PDSLKind -> Constraint
 type PLC edsl = forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (a #-> b)
 
-plam :: forall edsl a b. (HasCallStack, PConstructable edsl (a #-> b)) => (Term edsl a -> Term edsl b) -> Term edsl (a #-> b)
-plam f = pcon $ (PLam f :: PConcrete edsl (a #-> b))
-
 (#) :: (HasCallStack, PLC edsl, IsPType edsl a, IsPType edsl b) => Term edsl (a #-> b) -> Term edsl a -> Term edsl b
 (#) f x = pmatch f (\(PLam f') -> f' x)
 
@@ -302,7 +304,7 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
   papl :: HasCallStack => Term edsl a -> f b -> Term edsl a
 
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
-  eembed :: HasCallStack => m (Term edsl a) -> Term edsl a
+  pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
 
 data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
   SOP.All (IsPType edsl) inner =>

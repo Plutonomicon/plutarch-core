@@ -1,10 +1,21 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Plutarch.Lam (plam) where
 
-class ELamN (a :: Type) (b :: EType) (s :: S) | a -> b, s b -> a where
-  elam :: forall c. (Term s c -> a) -> Term s (c :--> b)
+import Data.Kind (Type)
+import GHC.Stack (HasCallStack, withFrozenCallStack)
+import Plutarch.Core (PConcrete, PConstructable, PDSLKind, Term, pcon, type (#->) (PLam))
+import Plutarch.PType (PType)
 
-instance {-# OVERLAPPABLE #-} (a' ~ Term s a) => ELamN a' a s where
-  elam = elam'
+plam' :: forall edsl a b. (HasCallStack, PConstructable edsl (a #-> b)) => (Term edsl a -> Term edsl b) -> Term edsl (a #-> b)
+plam' f = pcon $ (PLam f :: PConcrete edsl (a #-> b))
 
-instance (a' ~ Term s a, ELamN b' b s) => ELamN (a' -> b') (a :--> b) s where
-  elam f = elam' $ \x -> elam (f x)
+class PLamN (a :: Type) (b :: PType) (edsl :: PDSLKind) | a -> b, edsl b -> a where
+  plam :: forall c. (HasCallStack, PConstructable edsl (c #-> b)) => (Term edsl c -> a) -> Term edsl (c #-> b)
+
+instance {-# OVERLAPPABLE #-} (a' ~ Term edsl a) => PLamN a' a edsl where
+  plam = withFrozenCallStack plam'
+
+instance (PConstructable edsl (a #-> b), a' ~ Term edsl a, PLamN b' b edsl) => PLamN (a' -> b') (a #-> b) edsl where
+  plam f = withFrozenCallStack $ plam' $ \x -> plam (f x)

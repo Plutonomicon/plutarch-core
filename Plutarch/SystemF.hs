@@ -1,3 +1,4 @@
+{-
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -190,7 +191,6 @@ instance (Applicative m, TypeInfo m a, TypeInfo m b) => EConstructable' (Impl m)
   --ematchImpl f g = g $ ELam \(Term x) -> Term $ Impl \lvl -> runImpl f lvl `SFApp` runImpl x lvl
 {-
 
-
 instance EConstructable Impl EUnit where
   econ EUnit = Term $ Impl \_ -> SFUnit'
   ematch _ f = f EUnit
@@ -217,7 +217,6 @@ instance (forall a. TypeInfo a => TypeInfo (f a)) => EConstructable Impl (EForal
     in
     f $ EForall $ Term applied
 
-
 compile' :: forall a m. (Applicative m, IsEType (Impl m) a) => Term (Impl m) a -> m (SFTerm, SFType)
 compile' (Term t) = (,) <$> runImpl t SN <*> pure (typeInfo (Proxy @m) (Proxy @a) SN)
 
@@ -226,4 +225,5 @@ compile t = let _unused = callStack in compile' t
 
 compileAp :: CompileAp EDSL (SFTerm, SFType)
 compileAp t = let _unused = callStack in compile' t
+-}
 -}
