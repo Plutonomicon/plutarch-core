@@ -8,13 +8,11 @@ then
 	cabalfmt_mode="-c"
 	nixpkgsfmt_mode="--check"
 	echo check
-	exit 0
 else
 	fourmolu_mode="inplace"
 	cabalfmt_mode="-i"
 	nixpkgsfmt_mode=""
 	echo nocheck
-	exit 0
 fi
 
 find -type f -name '*.hs' ! -path '*/dist-newstyle/*' ! -path '*/tmp/*' | xargs fourmolu -o-XTypeApplications -o-XQualifiedDo -o-XOverloadedRecordDot -o-XNondecreasingIndentation -o-XPatternSynonyms -m "$fourmolu_mode"

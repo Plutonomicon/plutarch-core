@@ -6,8 +6,9 @@ license:            MIT
 extra-source-files: README.md
 
 library
-  default-language: GHC2021
+  default-language:   GHC2021
   default-extensions:
+    NoFlexibleInstances
     NoMonomorphismRestriction
     NoStarIsType
     BlockArguments
@@ -18,7 +19,6 @@ library
     DerivingVia
     DisambiguateRecordFields
     DuplicateRecordFields
-    NoFlexibleInstances
     FunctionalDependencies
     GADTs
     ImpredicativeTypes
@@ -52,22 +52,22 @@ library
 
   ghc-options:
     -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures
-    -Werror -Wno-implicit-prelude
-    -Wno-name-shadowing -Wno-unsafe -Wno-missing-safe-haskell-mode
-    -Wno-missing-local-signatures -Wno-prepositive-qualified-module
-    -Wno-missing-import-lists -Wno-all-missed-specializations
-    -Wno-unticked-promoted-constructors
+    -Werror -Wno-implicit-prelude -Wno-name-shadowing -Wno-unsafe
+    -Wno-missing-safe-haskell-mode -Wno-missing-local-signatures
+    -Wno-prepositive-qualified-module -Wno-missing-import-lists
+    -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
     -fprint-explicit-kinds -fprint-explicit-coercions
     -fprint-equality-relations -fprint-explicit-foralls
 
   exposed-modules:
     Plutarch.Core
-    Plutarch.PType
     Plutarch.Experimental
-    Plutarch.Reduce
     Plutarch.Internal.WithDictHack
     Plutarch.Internal.Witness
+    Plutarch.Lam
     Plutarch.Prelude
+    Plutarch.PType
+    Plutarch.Reduce
 
   build-depends:
     , base

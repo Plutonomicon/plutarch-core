@@ -10,21 +10,22 @@
       pkgsFor = system: nixpkgs.legacyPackages.${system};
       hsOverlay = hsPkgs: hsPkgs.override {
         overrides = final: prev: {
-          plutarch-core = final.callPackage ./plutarch-core.nix {};
+          plutarch-core = final.callPackage ./plutarch-core.nix { };
         };
       };
       hsPkgsFor = system: hsOverlay (pkgsFor system).haskell.packages.ghc923;
     in
     {
       checks = perSystem (system: {
-        formatting = (pkgsFor system).runCommandNoCC "formatting-check" {} ''
+        formatting = (pkgsFor system).runCommandNoCC "formatting-check" { } ''
           cd ${self}
           ./bin/format check
           touch $out
         '';
-        cabal2nix = (pkgsFor system).runCommandNoCC "cabal2nix-check" {
-          nativeBuildInputs = [ (pkgsFor system).cabal2nix ];
-        } ''
+        cabal2nix = (pkgsFor system).runCommandNoCC "cabal2nix-check"
+          {
+            nativeBuildInputs = [ (pkgsFor system).cabal2nix ];
+          } ''
           cd ${self}
           diff <(cabal2nix ./.) plutarch-core.nix
           touch $out
@@ -34,6 +35,7 @@
         regen.type = "app";
         regen.program = builtins.toString ((pkgsFor system).writeShellScript "regen" ''
           set -xe
+          export PATH="${(hsPkgsFor system).fourmolu_0_7_0_1}/bin:$PATH"
           ${(pkgsFor system).cabal2nix}/bin/cabal2nix ./. > plutarch-core.nix
           ./bin/format
         '');

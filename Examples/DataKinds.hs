@@ -1,8 +1,8 @@
 module Pxamples.DataKinds where
 
 import Data.Kind (Type)
-import Plutarch.Pxperimental (PEq)
 import Plutarch.Prelude
+import Plutarch.Pxperimental (PEq)
 
 data Nat = N | S Nat
 data SNat :: Nat -> Type where

@@ -24,6 +24,7 @@ module Plutarch.Prelude (
 
 import GHC.Generics (Generic)
 import Plutarch.Core
+import Plutarch.Lam
 import Plutarch.PType
 
 ($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b
