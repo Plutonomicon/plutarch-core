@@ -106,6 +106,7 @@ library
     Plutarch.CPS.Profunctor
     Plutarch.EType
     Plutarch.Experimental
+    Plutarch.Optics.Fix
     Plutarch.Optics.Optic
     Plutarch.Optics.PEither
     Plutarch.Optics.PPair
@@ -116,5 +117,8 @@ library
 
   build-depends:
     , base
+    , data-fix
     , generics-sop
+    , lens
     , mtl
+    , recursion-schemes

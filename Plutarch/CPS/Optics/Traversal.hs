@@ -1,6 +1,15 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Plutarch.CPS.Optics.Traversal where
+module Plutarch.CPS.Optics.Traversal(
+  CTraversal,
+  CTraversal',
+  ctraverse,
+  ctraverseOf,
+  ConcreteTraversal(ConcreteTraversal, unConcreteTraversal),
+  FunList,
+  single,
+  traversal,
+  ) where
 
 import Control.Monad.Cont
 import Plutarch.CPS.Optics.Optic
