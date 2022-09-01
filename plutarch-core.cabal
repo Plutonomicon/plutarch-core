@@ -96,6 +96,7 @@ library
     -fprint-equality-relations -fprint-explicit-foralls
 
   exposed-modules:
+    Plutarch.Cont
     Plutarch.Core
     Plutarch.CPS.Optics.Iso
     Plutarch.CPS.Optics.Lens
@@ -117,8 +118,6 @@ library
 
   build-depends:
     , base
-    , data-fix
     , generics-sop
-    , lens
-    , mtl
-    , recursion-schemes
+    , transformers
+    , profunctors

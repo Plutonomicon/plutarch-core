@@ -1,28 +1,42 @@
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
-module Plutarch.Optics.Fix(fixt) where
 
-import Data.Fix
-import Control.Lens
+module Plutarch.Optics.Fix(pfix) where
 
-import Data.Functor.Base
 import Data.Function
+import Data.Profunctor
 
-fixt ::
-  (Applicative f) =>
-  (forall ra rb. (ra -> f rb) -> a ra -> f (b rb)) ->
-  Fix a ->
-  f (Fix b)
-fixt f = fmap Fix . (fix (f . dimap unFix (fmap Fix))) . unFix
+import Control.Monad.Trans.Cont
 
-list' :: Traversal (Fix (ListF a)) (Fix (ListF b)) a b
-list' f = fixt (listf f)
+import Plutarch.Core
+import Plutarch.Cont
 
-listf ::
-  (Applicative f) =>
-  (a -> f b) ->
-  (ra -> f rb) ->
-  ListF a ra ->
-  f (ListF b rb)
-listf _ _ Nil = pure Nil
-listf f r (Cons a b) = Cons <$> f a <*> r b
+-- | Not a 'Plutarch.CPS.Optics.Traversal.CTraversal', but can be used to construct one.
+pfix ::
+  (
+    EConstructable edsl (EFix a),
+    EConstructable edsl (a (EFix a)),
+    EConstructable edsl (EFix b),
+    EConstructable edsl (b (EFix b)),
+    EConstructable edsl r,
+    Applicative f
+  ) =>
+  (
+    forall ra rb.
+    (
+      EConstructable edsl (a ra),
+      EConstructable edsl (b rb)
+    ) =>
+    (Term edsl    ra    -> Cont (Term edsl r) (f (Term edsl    rb  ))) ->
+     Term edsl (a ra  ) -> Cont (Term edsl r) (f (Term edsl (b rb  )))
+  ) ->
+     Term edsl (EFix a) -> Cont (Term edsl r) (f (Term edsl (EFix b)))
+pfix f =
+  pmatchCont \(EFix a) ->
+    fmap (econ . EFix)
+      <$> fix
+        (f .
+          dimap
+            (\fa -> ematch fa \(EFix a') -> a')
+            (fmap (fmap (econ . EFix)))
+        )
+        a

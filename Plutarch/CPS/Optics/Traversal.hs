@@ -5,13 +5,10 @@ module Plutarch.CPS.Optics.Traversal(
   CTraversal',
   ctraverse,
   ctraverseOf,
-  ConcreteTraversal(ConcreteTraversal, unConcreteTraversal),
-  FunList,
-  single,
-  traversal,
+  ctraversal,
   ) where
 
-import Control.Monad.Cont
+import Control.Monad.Trans.Cont
 import Plutarch.CPS.Optics.Optic
 import Plutarch.CPS.Optics.Optional
 import Plutarch.CPS.Profunctor
@@ -52,7 +49,7 @@ instance Applicative (FunList a b) where
 fuse :: FunList b b t -> Cont r t
 fuse = either return (\(a, c) -> ($ a) <$> fuse c) . unFunList
 
-newtype ConcreteTraversal r s t a b = ConcreteTraversal {unConcreteTraversal :: s -> Cont r (FunList a b t)}
-
-traversal :: (s -> Cont r (FunList a b t)) -> CTraversal r s t a b
-traversal h = cdimap h fuse . ctraverse
+ctraversal ::
+  (forall f. Applicative f => (a -> f b) -> (s -> Cont r (f t))) ->
+  CTraversal r s t a b
+ctraversal h = cdimap (h single) fuse . ctraverse

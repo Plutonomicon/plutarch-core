@@ -1,11 +1,9 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-
 module Plutarch.Optics.PEither where
 
 import Plutarch.CPS.Optics.Prism
 
-import Control.Monad.Cont
 import Plutarch.Core
+import Plutarch.Cont
 
 _PLeft ::
   (ESOP edsl, IsEType edsl a, IsEType edsl a', IsEType edsl b, IsEType edsl r) =>
@@ -18,9 +16,9 @@ _PLeft ::
 _PLeft =
   cprism
     (return . pleft)
-    ( \te -> cont \f -> ematch te \case
-        ELeft a -> f . Right $ a
-        ERight b -> f . Left $ pright b
+    (pmatchCont \case
+      ELeft a -> return $ Right a
+      ERight b -> return $ Left (pright b)
     )
 
 _PRight ::
@@ -34,7 +32,7 @@ _PRight ::
 _PRight =
   cprism
     (return . pright)
-    ( \te -> cont \f -> ematch te \case
-        ELeft a -> f . Left $ pleft a
-        ERight b -> f . Right $ b
+    (pmatchCont \case
+        ELeft a -> return $ Left (pleft a)
+        ERight b -> return $ Right b
     )

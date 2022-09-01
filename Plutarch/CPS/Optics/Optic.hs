@@ -1,6 +1,6 @@
 module Plutarch.CPS.Optics.Optic where
 
-import Control.Monad.Cont
+import Control.Monad.Trans.Cont
 
 type COptic r p s t a b = p a (Cont r b) -> p s (Cont r t)
 

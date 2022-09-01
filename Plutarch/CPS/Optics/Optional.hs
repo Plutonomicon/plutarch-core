@@ -7,7 +7,9 @@ import Plutarch.CPS.Optics.Optic
 import Plutarch.CPS.Optics.Prism
 
 import Control.Arrow
-import Control.Monad.Cont
+import Control.Monad
+
+import Control.Monad.Trans.Cont
 import Plutarch.CPS.Optics.Iso
 import Plutarch.CPS.Profunctor
 

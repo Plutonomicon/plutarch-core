@@ -3,7 +3,8 @@
 module Plutarch.CPS.Profunctor where
 
 import Control.Applicative
-import Control.Monad.Cont
+import Control.Monad
+import Control.Monad.Trans.Cont
 import Data.Tuple
 
 newtype CStar r f a b = CStar {runCStar :: a -> Cont r (f b)}

@@ -2,7 +2,8 @@
 
 module Plutarch.CPS.Optics.Lens where
 
-import Control.Monad.Cont
+import Control.Monad
+import Control.Monad.Trans.Cont
 import Plutarch.CPS.Optics.Iso
 import Plutarch.CPS.Optics.Optic
 import Plutarch.CPS.Profunctor
