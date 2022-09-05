@@ -10,7 +10,7 @@ import GHC.Stack (callStack)
 import qualified Generics.SOP as SOP
 import qualified Generics.SOP.GGP as SOPG
 import Plutarch.Core
-import Plutarch.EType
+import Plutarch.PType
 
 newtype Lvl = Lvl Int
 
@@ -37,12 +37,12 @@ data SimpleTerm
   | MkSumRight SimpleType SimpleTerm
   | Match SimpleTerm SimpleTerm SimpleTerm
 
-type ESTLC edsl = (ELC edsl, ESOP edsl)
+type ESTLC edsl = (ELC edsl, PSOP edsl)
 
 newtype Impl (m :: Type -> Type) (a :: ETypeRepr) = Impl {runImpl :: Lvl -> m SimpleTerm}
 
 instance EDSL (Impl m) where
-  type IsEType' (Impl m) = TypeInfo' m
+  type IsPType' (Impl m) = TypeInfo' m
 
 class TypeInfo' (m :: Type -> Type) (a :: ETypeRepr) where
   typeInfo' :: Proxy m -> Proxy a -> SimpleType
@@ -56,34 +56,34 @@ typeInfo p _ = typeInfo' p (Proxy @(ERepr a))
 instance TypeInfo' m (MkETypeRepr EUnit) where
   typeInfo' _ _ = UnitType
 
-instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (EPair a b)) where
+instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (PPair a b)) where
   typeInfo' m _ = ProductType (typeInfo m $ Proxy @a) (typeInfo m $ Proxy @b)
 
-instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (EEither a b)) where
+instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (PEither a b)) where
   typeInfo' m _ = SumType (typeInfo m $ Proxy @a) (typeInfo m $ Proxy @b)
 
 instance (TypeInfo m a, TypeInfo m b) => TypeInfo' m (MkETypeRepr (a #-> b)) where
   typeInfo' m _ = FunctionType (typeInfo m $ Proxy @a) (typeInfo m $ Proxy @b)
 
-instance Applicative m => EConstructable' (Impl m) (MkETypeRepr EUnit) where
+instance Applicative m => PConstructable' (Impl m) (MkETypeRepr EUnit) where
   econImpl EUnit = Impl $ \_ -> pure MkUnit
   ematchImpl _ f = f EUnit
 
-instance (Applicative m, TypeInfo m a, TypeInfo m b) => EConstructable' (Impl m) (MkETypeRepr (EPair a b)) where
-  econImpl (EPair (Term x) (Term y)) = Impl \lvl -> MkProduct <$> (runImpl x lvl) <*> (runImpl y lvl)
+instance (Applicative m, TypeInfo m a, TypeInfo m b) => PConstructable' (Impl m) (MkETypeRepr (PPair a b)) where
+  econImpl (PPair (Term x) (Term y)) = Impl \lvl -> MkProduct <$> (runImpl x lvl) <*> (runImpl y lvl)
   ematchImpl t f = Term $ Impl \lvl ->
-    Let <$> runImpl t lvl <*> (flip runImpl (succLvl lvl) $ unTerm $ f $ EPair (Term $ Impl \_ -> pure $ Fst (Var lvl)) (Term $ Impl \_ -> pure $ Snd (Var lvl)))
+    Let <$> runImpl t lvl <*> (flip runImpl (succLvl lvl) $ unTerm $ f $ PPair (Term $ Impl \_ -> pure $ Fst (Var lvl)) (Term $ Impl \_ -> pure $ Snd (Var lvl)))
 
-instance (Applicative m, TypeInfo m a, TypeInfo m b) => EConstructable' (Impl m) (MkETypeRepr (EEither a b)) where
-  econImpl (ELeft (Term x)) = Impl \lvl -> MkSumLeft <$> runImpl x lvl <*> pure (typeInfo (Proxy @m) $ Proxy @b)
-  econImpl (ERight (Term y)) = Impl \lvl -> MkSumRight (typeInfo (Proxy @m) $ Proxy @a) <$> (runImpl y lvl)
+instance (Applicative m, TypeInfo m a, TypeInfo m b) => PConstructable' (Impl m) (MkETypeRepr (PEither a b)) where
+  econImpl (PLeft (Term x)) = Impl \lvl -> MkSumLeft <$> runImpl x lvl <*> pure (typeInfo (Proxy @m) $ Proxy @b)
+  econImpl (PRight (Term y)) = Impl \lvl -> MkSumRight (typeInfo (Proxy @m) $ Proxy @a) <$> (runImpl y lvl)
   ematchImpl t f = Term $ Impl \lvl ->
     Match
       <$> (runImpl t lvl)
-      <*> (runImpl ((unTerm $ elam \left -> f (ELeft left))) lvl)
-      <*> (runImpl ((unTerm $ elam \right -> f (ERight right))) lvl)
+      <*> (runImpl ((unTerm $ elam \left -> f (PLeft left))) lvl)
+      <*> (runImpl ((unTerm $ elam \right -> f (PRight right))) lvl)
 
-instance (Applicative m, TypeInfo m a, TypeInfo m b) => EConstructable' (Impl m) (MkETypeRepr (a #-> b)) where
+instance (Applicative m, TypeInfo m a, TypeInfo m b) => PConstructable' (Impl m) (MkETypeRepr (a #-> b)) where
   econImpl (ELam f) = Impl \lvl -> Lam (typeInfo (Proxy @m) $ Proxy @a) <$> runImpl (unTerm . f . Term $ Impl \_ -> pure $ Var lvl) (succLvl lvl)
   ematchImpl f g = g $ ELam \(Term x) -> Term $ Impl \lvl -> App <$> runImpl f lvl <*> runImpl x lvl
 
@@ -96,34 +96,34 @@ instance Monad m => EEmbeds m (Impl m) where
     t' <- t
     runImpl (unTerm $ t') lvl
 
-gpInfo :: forall (a :: [EType]) m. SOP.All (TypeInfo m) a => Proxy m -> Proxy a -> SimpleType
+gpInfo :: forall (a :: [PType]) m. SOP.All (TypeInfo m) a => Proxy m -> Proxy a -> SimpleType
 gpInfo _ _ = getConst $ (SOP.cpara_SList (Proxy @(TypeInfo m)) (Const UnitType) go :: Const SimpleType a)
   where
     go :: forall y ys. TypeInfo m y => Const SimpleType ys -> Const SimpleType (y : ys)
     go (Const UnitType) = Const $ typeInfo (Proxy @m) (Proxy @y)
     go (Const x) = Const $ ProductType (typeInfo (Proxy @m) (Proxy @y)) x
 
-gsInfo :: forall (a :: [[EType]]) m. SOP.All2 (TypeInfo m) a => Proxy m -> Proxy a -> SimpleType
+gsInfo :: forall (a :: [[PType]]) m. SOP.All2 (TypeInfo m) a => Proxy m -> Proxy a -> SimpleType
 gsInfo _ _ = getConst $ (SOP.cpara_SList (Proxy @(SOP.All (TypeInfo m))) (Const VoidType) go :: Const SimpleType a)
   where
     go :: forall y ys. (SOP.All (TypeInfo m) y) => Const SimpleType ys -> Const SimpleType (y : ys)
     go (Const VoidType) = Const $ gpInfo (Proxy @m) (Proxy @y)
     go (Const x) = Const $ SumType (gpInfo (Proxy @m) (Proxy @y)) x
 
-gpCon :: forall (a :: [EType]) m. (Applicative m, SOP.All (TypeInfo m) a) => SOP.NP (Term (Impl m)) a -> Lvl -> m (SimpleTerm)
+gpCon :: forall (a :: [PType]) m. (Applicative m, SOP.All (TypeInfo m) a) => SOP.NP (Term (Impl m)) a -> Lvl -> m (SimpleTerm)
 gpCon SOP.Nil _ = pure MkUnit
 gpCon (x SOP.:* SOP.Nil) lvl = runImpl (unTerm x) lvl
 gpCon (x SOP.:* xs) lvl = MkProduct <$> runImpl (unTerm x) lvl <*> gpCon xs lvl
 
 -- FIXME: Ormolu doesn't support `@` in patterns
 {- ORMOLU_DISABLE -}
-gsCon :: forall (a :: [[EType]]) m. (Applicative m, SOP.All2 (TypeInfo m) a) => SOP.SOP (Term (Impl m)) a -> Lvl -> m (SimpleTerm)
-gsCon (SOP.SOP (SOP.Z @_ @_ @_ @(at :: [[EType]]) t)) = case SOP.sList :: SOP.SList at of
+gsCon :: forall (a :: [[PType]]) m. (Applicative m, SOP.All2 (TypeInfo m) a) => SOP.SOP (Term (Impl m)) a -> Lvl -> m (SimpleTerm)
+gsCon (SOP.SOP (SOP.Z @_ @_ @_ @(at :: [[PType]]) t)) = case SOP.sList :: SOP.SList at of
   SOP.SNil -> gpCon t
   SOP.SCons -> \lvl -> MkSumLeft <$> (gpCon t lvl) <*> (pure $ gsInfo (Proxy @m) (Proxy @at))
-gsCon (SOP.SOP (SOP.S @_ @_ @_ @(ah :: [EType]) sum)) = \lvl -> MkSumRight (gpInfo (Proxy @m) (Proxy @ah)) <$> (gsCon (SOP.SOP sum) lvl)
+gsCon (SOP.SOP (SOP.S @_ @_ @_ @(ah :: [PType]) sum)) = \lvl -> MkSumRight (gpInfo (Proxy @m) (Proxy @ah)) <$> (gsCon (SOP.SOP sum) lvl)
 
-gpMatch :: forall (a :: [EType]) m a' b. (Applicative m, SOP.All (TypeInfo m) a) => Impl m a' -> (SOP.NP (Term (Impl m)) a -> Term (Impl m) b) -> Term (Impl m) b
+gpMatch :: forall (a :: [PType]) m a' b. (Applicative m, SOP.All (TypeInfo m) a) => Impl m a' -> (SOP.NP (Term (Impl m)) a -> Term (Impl m) b) -> Term (Impl m) b
 gpMatch = case SOP.sList :: SOP.SList a of
   SOP.SNil -> \_ f -> f SOP.Nil
   SOP.SCons @_ @at -> case SOP.sList :: SOP.SList at of
@@ -134,7 +134,7 @@ gpMatch = case SOP.sList :: SOP.SList a of
           (f $ (Term $ Impl \_ -> pure $ Fst (Var lvl)) SOP.:* sop)
       )
 
-gsMatch :: forall (a :: [[EType]]) m a' b. (Applicative m, SOP.All2 (TypeInfo m) a) => Impl m a' -> (SOP.SOP (Term (Impl m)) a -> Term (Impl m) b) -> Term (Impl m) b
+gsMatch :: forall (a :: [[PType]]) m a' b. (Applicative m, SOP.All2 (TypeInfo m) a) => Impl m a' -> (SOP.SOP (Term (Impl m)) a -> Term (Impl m) b) -> Term (Impl m) b
 gsMatch = case SOP.sList :: SOP.SList a of
   SOP.SNil -> \(Impl t) _ -> Term $ Impl t
   SOP.SCons @_ @at @ah -> case SOP.sList :: SOP.SList at of
@@ -155,8 +155,8 @@ mapAll2 _ c d f = case (SOP.sList :: SOP.SList a) of
   SOP.SCons @_ @at @ah -> mapAll2 (Proxy @at) c d $ mapAll (Proxy @ah) c d f
 {- ORMOLU_ENABLE -}
 
-helper2 :: forall a b m. SOP.All2 (IsEType (Impl m)) a => Proxy m -> Proxy a -> (SOP.All2 (TypeInfo m) a => b) -> b
-helper2 _ _ = mapAll2 (Proxy @a) (Proxy @(IsEType (Impl m))) (Proxy @(TypeInfo m))
+helper2 :: forall a b m. SOP.All2 (IsPType (Impl m)) a => Proxy m -> Proxy a -> (SOP.All2 (TypeInfo m) a => b) -> b
+helper2 _ _ = mapAll2 (Proxy @a) (Proxy @(IsPType (Impl m))) (Proxy @(TypeInfo m))
 
 instance (EIsSOP (Impl m) a) => TypeInfo' m (MkENewtype a) where
   typeInfo' m _ =
@@ -165,10 +165,10 @@ instance (EIsSOP (Impl m) a) => TypeInfo' m (MkENewtype a) where
 
 instance
   ( EIsSOP (Impl m) a
-  , IsEType (Impl m) a
+  , IsPType (Impl m) a
   , Applicative m
   ) =>
-  EConstructable' (Impl m) (MkENewtype a)
+  PConstructable' (Impl m) (MkENewtype a)
   where
   econImpl (ENewtype x) =
     case esop (Proxy @(Impl m)) (Proxy @a) of
@@ -177,7 +177,7 @@ instance
     case esop (Proxy @(Impl m)) (Proxy @a) of
       EIsSumR {inner, to} -> helper2 (Proxy @m) inner $ gsMatch x \sop -> f $ ENewtype $ SOPG.gto (to sop)
 
-compile' :: forall a m. (Applicative m, IsEType (Impl m) a) => Term (Impl m) a -> m (SimpleTerm, SimpleType)
+compile' :: forall a m. (Applicative m, IsPType (Impl m) a) => Term (Impl m) a -> m (SimpleTerm, SimpleType)
 compile' (Term t) = (,) <$> runImpl t (Lvl 0) <*> pure (typeInfo (Proxy @m) $ Proxy @a)
 
 compile :: Compile ESTLC (SimpleTerm, SimpleType)

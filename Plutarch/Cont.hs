@@ -6,10 +6,10 @@ import Plutarch.Core
 
 pmatchCont ::
   (
-    EConstructable edsl a,
-    IsEType edsl r
+    PConstructable edsl a,
+    IsPType edsl r
   ) =>
-  (EConcrete edsl a -> Cont (Term edsl r) b) ->
+  (PConcrete edsl a -> Cont (Term edsl r) b) ->
   Term edsl a ->
   Cont (Term edsl r) b
-pmatchCont cnt t = cont \c -> ematch t \con -> runCont (cnt con) c
+pmatchCont cnt t = cont \c -> pmatch t \con -> runCont (cnt con) c

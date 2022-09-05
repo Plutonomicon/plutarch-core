@@ -2,44 +2,44 @@ module Plutarch.PList where
 
 import GHC.Generics
 import Plutarch.Core
-import Plutarch.EType
+import Plutarch.PType
 
 data PListF a self ef
   = PNil
   | PCons (ef /$ a) (ef /$ self)
   deriving stock (Generic)
-  deriving anyclass EHasRepr
+  deriving anyclass PHasRepr
 
-newtype PList a ef = PList {unPList :: ef /$ EFix (PListF a)}
+newtype PList a ef = PList {unPList :: ef /$ PFix (PListF a)}
   deriving stock (Generic)
-  deriving anyclass EHasRepr
+  deriving anyclass PHasRepr
 
 mkPList ::
-  ( ESOP edsl
-  , IsEType edsl a
-  , IsEType edsl (EFix (PListF a))
-  , EConstructable edsl (EFix (PListF a))
+  ( PSOP edsl
+  , IsPType edsl a
+  , IsPType edsl (PFix (PListF a))
+  , PConstructable edsl (PFix (PListF a))
   ) =>
-  EConcrete edsl (PListF a (EFix (PListF a))) ->
+  PConcrete edsl (PListF a (PFix (PListF a))) ->
   Term edsl (PList a)
-mkPList = econ . PList . econ . EFix . econ
+mkPList = pcon . PList . pcon . PFix . pcon
 
 pnil ::
-  ( ESOP edsl
-  , IsEType edsl a
-  , IsEType edsl (EFix (PListF a))
-  , EConstructable edsl (EFix (PListF a))
+  ( PSOP edsl
+  , IsPType edsl a
+  , IsPType edsl (PFix (PListF a))
+  , PConstructable edsl (PFix (PListF a))
   ) =>
   Term edsl (PList a)
 pnil = mkPList PNil
 
 pcons ::
-  ( ESOP edsl
-  , IsEType edsl a
-  , IsEType edsl (EFix (PListF a))
-  , EConstructable edsl (EFix (PListF a))
+  ( PSOP edsl
+  , IsPType edsl a
+  , IsPType edsl (PFix (PListF a))
+  , PConstructable edsl (PFix (PListF a))
   ) =>
   Term edsl a ->
   Term edsl (PList a) ->
   Term edsl (PList a)
-pcons a las = mkPList $ PCons a (ematch las unPList)
+pcons a las = mkPList $ PCons a (pmatch las unPList)

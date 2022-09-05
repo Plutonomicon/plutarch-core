@@ -2,30 +2,30 @@ module Examples.DataKinds2 (F' (..)) where
 
 import Plutarch.Prelude
 
-data EProxy (x :: EHs a) ef = EProxy
+data PProxy (x :: PHs a) ef = PProxy
   deriving stock (Generic)
-instance EHasRepr (EProxy x) where type EReprSort _ = EReprSOP
+instance PHasRepr (PProxy x) where type PReprSort _ = PReprSOP
 
-newtype EIdentity a ef = EIdentity (ef /$ a)
+newtype PIdentity a ef = PIdentity (ef /$ a)
   deriving stock (Generic)
-instance EHasRepr (EIdentity a) where type EReprSort _ = EReprSOP
+instance PHasRepr (PIdentity a) where type PReprSort _ = PReprSOP
 
-newtype F' a x ef = F' (ef /$ EProxy x #-> EUnit)
+newtype F' a x ef = F' (ef /$ PProxy x #-> PUnit)
 
 {-
-newtype F (a :: EType) ef = F (ef /$ EForall (F' a))
+newtype F (a :: PType) ef = F (ef /$ PForall (F' a))
 
-f :: EForall F
-f = econ $ EForall $$ F $$ EForall $$ F' $ elam \_ -> econ EUnit
+f :: PForall F
+f = pcon $ PForall $$ F $$ PForall $$ F' $ elam \_ -> pcon PUnit
 
 --g :: Proxy x -> ()
 --g (Proxy @x) = f (Proxy @(Identity x))
 
-g :: EForall F
-g = econ $ EForall $$ F $$ EForall $$ F' $ elam \(x :: Term edsl (EProxy x)) ->
-  ematch f \EForall f ->
-  ematch f \F f ->
-  ematch f \EForall f ->
-  ematch f \F' f ->
-  f # (econ EProxy :: Term edsl (EProxy ('EIdentity x)))
+g :: PForall F
+g = pcon $ PForall $$ F $$ PForall $$ F' $ elam \(x :: Term edsl (PProxy x)) ->
+  pmatch f \PForall f ->
+  pmatch f \F f ->
+  pmatch f \PForall f ->
+  pmatch f \F' f ->
+  f # (pcon PProxy :: Term edsl (PProxy ('PIdentity x)))
 -}

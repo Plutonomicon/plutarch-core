@@ -2,7 +2,20 @@
 
 set -xe
 
-find -type f -name '*.hs' ! -path '*/dist-newstyle/*' ! -path '*/tmp/*' | xargs fourmolu -o-XTypeApplications -o-XQualifiedDo -o-XOverloadedRecordDot -o-XNondecreasingIndentation -o-XPatternSynonyms -m inplace
+if test "x$1" = "xcheck"
+then
+	fourmolu_mode="check"
+	cabalfmt_mode="-c"
+	nixpkgsfmt_mode="--check"
+	echo check
+else
+	fourmolu_mode="inplace"
+	cabalfmt_mode="-i"
+	nixpkgsfmt_mode=""
+	echo nocheck
+fi
+
+find -type f -name '*.hs' ! -path '*/dist-newstyle/*' ! -path '*/tmp/*' | xargs fourmolu -o-XTypeApplications -o-XQualifiedDo -o-XOverloadedRecordDot -o-XNondecreasingIndentation -o-XPatternSynonyms -m "$fourmolu_mode"
 find -type f -name '*.hs' ! -path '*/dist-newstyle/*' ! -path '*/tmp/*'
-find -type f -name '*.cabal' | xargs cabal-fmt -i
-nixpkgs-fmt *.nix
+find -type f -name '*.cabal' | xargs cabal-fmt "$cabalfmt_mode"
+nixpkgs-fmt $nixpkgsfmt_mode *.nix

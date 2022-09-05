@@ -9,13 +9,13 @@ import Plutarch.Optics.Fix
 import Control.Applicative
 
 plist ::
-  ( ESOP edsl
-  , IsEType edsl a
-  , IsEType edsl b
-  , IsEType edsl r
-  , EConstructable edsl (EFix (PListF a))
-  , EConstructable edsl (EFix (PListF b))
-  , EConstructable edsl r
+  ( PSOP edsl
+  , IsPType edsl a
+  , IsPType edsl b
+  , IsPType edsl r
+  , PConstructable edsl (PFix (PListF a))
+  , PConstructable edsl (PFix (PListF b))
+  , PConstructable edsl r
   ) =>
   CTraversal
     (Term edsl r)
@@ -25,23 +25,23 @@ plist ::
     (Term edsl b)
 plist =
   ctraversal
-    \f -> pmatchCont (\(PList as) -> fmap (econ . PList) <$> plist' f as)
+    \f -> pmatchCont (\(PList as) -> fmap (pcon . PList) <$> plist' f as)
 
 plist' ::
   (
-    EConstructable edsl (EFix (PListF a)),
-    EConstructable edsl (PListF a (EFix (PListF a))),
-    EConstructable edsl (EFix (PListF b)),
-    EConstructable edsl r,
-    EConstructable edsl (PListF b (EFix (PListF b))),
+    PConstructable edsl (PFix (PListF a)),
+    PConstructable edsl (PListF a (PFix (PListF a))),
+    PConstructable edsl (PFix (PListF b)),
+    PConstructable edsl r,
+    PConstructable edsl (PListF b (PFix (PListF b))),
     Applicative f
   ) =>
   (Term edsl a -> f (Term edsl b)) ->
-  Term edsl (EFix (PListF a)) ->
-  Cont (Term edsl r) (f (Term edsl (EFix (PListF b))))
+  Term edsl (PFix (PListF a)) ->
+  Cont (Term edsl r) (f (Term edsl (PFix (PListF b))))
 plist' f =
   pfix
     (\r -> pmatchCont \case
-      PNil -> return $ pure (econ PNil)
-      PCons a as -> fmap econ . liftA2 PCons (f a) <$> r as
+      PNil -> return $ pure (pcon PNil)
+      PCons a as -> fmap pcon . liftA2 PCons (f a) <$> r as
     )

@@ -1,7 +1,7 @@
 module Plutarch.ULC (ULC (..), compile) where
 
 import Plutarch.Core
-import Plutarch.EType
+import Plutarch.PType
 
 newtype Lvl = Lvl Int
 
@@ -11,17 +11,17 @@ data ULC
   | Var Lvl
   | Error
 
-newtype ULCImpl (a :: EType) = ULCImpl {runImpl :: Lvl -> ULC}
+newtype ULCImpl (a :: PType) = ULCImpl {runImpl :: Lvl -> ULC}
 
-class Top (a :: EType)
+class Top (a :: PType)
 instance Top a
 
-data Arrow (a :: EType) (b :: EType) (f :: ETypeF)
+data Arrow (a :: PType) (b :: PType) (f :: ETypeF)
 
-class (forall a b. EConstructable edsl (EPair a b), EUntyped edsl, ELC edsl, EPartial edsl) => EULC edsl
+class (forall a b. PConstructable edsl (PPair a b), EUntyped edsl, ELC edsl, EPartial edsl) => EULC edsl
 
 instance EDSL ULCImpl where
-  type IsEType ULCImpl = Top
+  type IsPType ULCImpl = Top
 
 instance ELC ULCImpl where
   type EArrow ULCImpl = Arrow
@@ -34,8 +34,8 @@ instance EUntyped ULCImpl where
 instance EPartial ULCImpl where
   eerror = ULCImpl . pure $ Error
 
-instance EConstructable ULCImpl (EPair a b) where
-  pcon (EPair x y) = ULCImpl \lvl -> Lam $ Var lvl `App` runImpl x lvl `App` runImpl y lvl
+instance PConstructable ULCImpl (PPair a b) where
+  pcon (PPair x y) = ULCImpl \lvl -> Lam $ Var lvl `App` runImpl x lvl `App` runImpl y lvl
 
 instance EULC ULCImpl
 
