@@ -42,7 +42,7 @@ module Plutarch.Core (
   PAny (PAny),
   PPolymorphic,
   PSOP,
-  PIsSOP (..),
+  PIsSOP,
   PUnit (PUnit),
   punit,
   PDSL,
@@ -59,10 +59,11 @@ module Plutarch.Core (
   PAp,
   papr,
   papl,
-  PIsProduct (..),
-  PIsProductR (..),
-  PIsSum (..),
-  PIsSumR (..),
+  PIsProduct,
+  PIsSum,
+  IsPCodeOf,
+  sopFrom,
+  sopTo,
   (:-->),
 ) where
 
@@ -71,9 +72,8 @@ import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
-import GHC.TypeLits (Symbol, TypeError, pattern ShowType, pattern Text, pattern (:$$:))
+import GHC.TypeLits (Symbol)
 import Generics.SOP qualified as SOP
-import Generics.SOP.GGP qualified as SOPG
 import Plutarch.PType (
   PGeneric,
   PHs,
@@ -330,101 +330,21 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
   pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
 
-data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
-  SOP.All (IsPType edsl) inner =>
-  PIsProductR
-  { inner :: Proxy inner
-  , to :: SOP.NP (Term edsl) inner -> SOP.NP SOP.I a
-  , from :: SOP.NP SOP.I a -> SOP.NP (Term edsl) inner
-  }
+class (forall a. t ~ Term edsl a) => PIsTerm edsl t
+instance (forall a. t ~ Term edsl a) => PIsTerm edsl t
 
-class PIsProduct (edsl :: PDSLKind) (a :: [Type]) where
-  eisProduct :: Proxy edsl -> Proxy a -> PIsProductR edsl a
+class (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
+instance (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
 
-instance PIsProduct edsl '[] where
-  eisProduct _ _ =
-    PIsProductR
-      { inner = Proxy @'[]
-      , to = \SOP.Nil -> SOP.Nil
-      , from = \SOP.Nil -> SOP.Nil
-      }
-
--- TODO: Replace with https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0433-unsatisfiable.rst
--- TODO: Possibly show type in question?
-instance
-  {-# OVERLAPPABLE #-}
-  ( TypeError
-      ( Text "Can not embed type that contains: "
-          :$$: ShowType a
-      )
-  , PIsProduct edsl as
-  ) =>
-  PIsProduct edsl (a : as)
-  where
-  eisProduct edsl _ = error "unreachable" $ eisProduct edsl (Proxy @as)
-
-instance (IsPType edsl a, PIsProduct edsl as) => PIsProduct edsl (Term edsl a : as) where
-  eisProduct edsl _ =
-    let prev = eisProduct edsl (Proxy @as)
-     in case prev of
-          PIsProductR {inner = _ :: Proxy asi, to, from} ->
-            PIsProductR
-              { inner = Proxy @(a : asi)
-              , to = \(x SOP.:* xs) -> SOP.I x SOP.:* to xs
-              , from = \(SOP.I x SOP.:* xs) -> x SOP.:* from xs
-              }
-
-data PIsSumR (edsl :: PDSLKind) (a :: [[Type]]) = forall inner.
-  SOP.All2 (IsPType edsl) inner =>
-  PIsSumR
-  { inner :: Proxy inner
-  , to :: SOP.SOP (Term edsl) inner -> SOP.SOP SOP.I a
-  , from :: SOP.SOP SOP.I a -> SOP.SOP (Term edsl) inner
-  }
-
-class PIsSum (edsl :: PDSLKind) (a :: [[Type]]) where
-  eisSum :: Proxy edsl -> Proxy a -> PIsSumR edsl a
-
-instance PIsSum edsl '[] where
-  eisSum _ _ =
-    PIsSumR
-      { inner = Proxy @'[]
-      , to = \case {}
-      , from = \case {}
-      }
-
-instance (PIsProduct edsl a, PIsSum edsl as) => PIsSum edsl (a : as) where
-  eisSum edsl _ =
-    case eisProduct edsl (Proxy @a) of
-      PIsProductR {inner = _ :: Proxy innerh, to = toh, from = fromh} ->
-        case eisSum edsl (Proxy @as) of
-          PIsSumR {inner = _ :: Proxy innert, to = tot, from = fromt} ->
-            PIsSumR
-              { inner = Proxy @(innerh : innert)
-              , to = \case
-                  SOP.SOP (SOP.Z x) -> SOP.SOP $ SOP.Z $ toh x
-                  SOP.SOP (SOP.S x) -> case tot $ SOP.SOP $ x of SOP.SOP y -> SOP.SOP (SOP.S y)
-              , from = \case
-                  SOP.SOP (SOP.Z x) -> SOP.SOP $ SOP.Z $ fromh x
-                  SOP.SOP (SOP.S x) -> case fromt $ SOP.SOP $ x of SOP.SOP y -> SOP.SOP (SOP.S y)
-              }
+class (SOP.All2 (PIsTerm edsl) as) => PIsSum (edsl :: PDSLKind) (as :: [[Type]])
+instance (SOP.All2 (PIsTerm edsl) as) => PIsSum (edsl :: PDSLKind) (as :: [[Type]])
 
 class
   ( PGeneric a
-  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
+  , PIsSum edsl (SOP.Code (PConcrete edsl a))
   , PReprSort a ~ PReprSOP
   ) =>
   PIsSOP (edsl :: PDSLKind) (a :: PType)
-  where
-  esop :: Proxy edsl -> Proxy a -> PIsSumR edsl (SOPG.GCode (PConcrete edsl a))
-instance
-  ( PGeneric a
-  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
-  , PReprSort a ~ PReprSOP
-  ) =>
-  PIsSOP (edsl :: PDSLKind) (a :: PType)
-  where
-  esop edsl _ = eisSum edsl Proxy
 
 type PSOP :: PDSLKind -> Constraint
 type PSOP edsl =
@@ -434,6 +354,22 @@ type PSOP edsl =
   , forall a. PIsSOP edsl a => PConstructable' edsl (PSOPed a)
   , IsPType edsl PPType
   )
+
+class (t ~ Term edsl p) => IsTermOf edsl p t
+instance (t ~ Term edsl p) => IsTermOf edsl p t
+
+class (t ~ Term edsl p) => FlipIsTermOf edsl t p
+instance (t ~ Term edsl p) => FlipIsTermOf edsl t p
+
+class (SOP.AllZip2 (IsTermOf edsl) pss tss, SOP.AllZip2 (FlipIsTermOf edsl) tss pss) => IsPCodeOf edsl pss tss
+instance (SOP.AllZip2 (IsTermOf edsl) pss tss, SOP.AllZip2 (FlipIsTermOf edsl) tss pss) => IsPCodeOf edsl pss tss
+
+sopTo :: forall edsl pss tss. (IsPCodeOf edsl pss tss) => SOP.SOP SOP.I tss -> SOP.SOP (Term edsl) pss
+sopTo = SOP.htrans (Proxy @(FlipIsTermOf edsl)) SOP.unI
+
+sopFrom :: forall edsl pss tss. (IsPCodeOf edsl pss tss) => SOP.SOP (Term edsl) pss -> SOP.SOP SOP.I tss
+sopFrom = SOP.htrans (Proxy @(IsTermOf edsl)) SOP.I
+
 
 type CompileAp variant output =
   forall a m.
