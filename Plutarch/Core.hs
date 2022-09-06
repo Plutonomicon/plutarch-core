@@ -57,6 +57,7 @@ module Plutarch.Core (
   papl,
   PIsProduct,
   PIsSum,
+  IsPCodeOf,
   sopFrom,
   sopTo,
 ) where
@@ -330,17 +331,21 @@ type PSOP edsl =
   , IsPType edsl PPType
   )
 
-sopTo :: forall edsl xss yss. (SOP.AllZip2 (SopTo edsl) xss yss) => SOP.SOP SOP.I xss -> SOP.SOP (Term edsl) yss
-sopTo = SOP.htrans (Proxy @(SopTo edsl)) SOP.unI
+class (t ~ Term edsl p) => IsTermOf edsl p t
+instance (t ~ Term edsl p) => IsTermOf edsl p t
 
-class (x ~ Term edsl y) => SopTo edsl x y
-instance (x ~ Term edsl y) => SopTo edsl x y
+class (t ~ Term edsl p) => FlipIsTermOf edsl t p
+instance (t ~ Term edsl p) => FlipIsTermOf edsl t p
 
-sopFrom :: forall edsl xss yss. (SOP.AllZip2 (SopFrom edsl) xss yss) => SOP.SOP (Term edsl) xss -> SOP.SOP SOP.I yss
-sopFrom = SOP.htrans (Proxy @(SopFrom edsl)) SOP.I
+class (SOP.AllZip2 (IsTermOf edsl) pss tss, SOP.AllZip2 (FlipIsTermOf edsl) tss pss) => IsPCodeOf edsl pss tss
+instance (SOP.AllZip2 (IsTermOf edsl) pss tss, SOP.AllZip2 (FlipIsTermOf edsl) tss pss) => IsPCodeOf edsl pss tss
 
-class (Term edsl x ~ y) => SopFrom edsl x y
-instance (Term edsl x ~ y) => SopFrom edsl x y
+sopTo :: forall edsl pss tss. (IsPCodeOf edsl pss tss) => SOP.SOP SOP.I tss -> SOP.SOP (Term edsl) pss
+sopTo = SOP.htrans (Proxy @(FlipIsTermOf edsl)) SOP.unI
+
+sopFrom :: forall edsl pss tss. (IsPCodeOf edsl pss tss) => SOP.SOP (Term edsl) pss -> SOP.SOP SOP.I tss
+sopFrom = SOP.htrans (Proxy @(IsTermOf edsl)) SOP.I
+
 
 type CompileAp variant output =
   forall a m.
