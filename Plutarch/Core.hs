@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 
 module Plutarch.Core (
   PGeneric,
@@ -331,21 +332,30 @@ type PSOP edsl =
   , IsPType edsl PPType
   )
 
-class (t ~ Term edsl p) => IsTermOf edsl p t
-instance (t ~ Term edsl p) => IsTermOf edsl p t
+class
+  ( SOP.AllZip2 (SOP.LiftedCoercible SOP.I (Term edsl)) tss pss
+  , SOP.AllZip2 (SOP.LiftedCoercible (Term edsl) SOP.I) pss tss
+  ) =>
+  IsPCodeOf edsl pss tss
+instance
+  ( SOP.AllZip2 (SOP.LiftedCoercible SOP.I (Term edsl)) tss pss
+  , SOP.AllZip2 (SOP.LiftedCoercible (Term edsl) SOP.I) pss tss
+  ) =>
+  IsPCodeOf edsl pss tss
 
-class (t ~ Term edsl p) => FlipIsTermOf edsl t p
-instance (t ~ Term edsl p) => FlipIsTermOf edsl t p
+sopTo ::
+  forall edsl pss tss.
+  (IsPCodeOf edsl pss tss) =>
+  SOP.SOP SOP.I tss ->
+  SOP.SOP (Term edsl) pss
+sopTo = SOP.hcoerce
 
-class (SOP.AllZip2 (IsTermOf edsl) pss tss, SOP.AllZip2 (FlipIsTermOf edsl) tss pss) => IsPCodeOf edsl pss tss
-instance (SOP.AllZip2 (IsTermOf edsl) pss tss, SOP.AllZip2 (FlipIsTermOf edsl) tss pss) => IsPCodeOf edsl pss tss
-
-sopTo :: forall edsl pss tss. (IsPCodeOf edsl pss tss) => SOP.SOP SOP.I tss -> SOP.SOP (Term edsl) pss
-sopTo = SOP.htrans (Proxy @(FlipIsTermOf edsl)) SOP.unI
-
-sopFrom :: forall edsl pss tss. (IsPCodeOf edsl pss tss) => SOP.SOP (Term edsl) pss -> SOP.SOP SOP.I tss
-sopFrom = SOP.htrans (Proxy @(IsTermOf edsl)) SOP.I
-
+sopFrom ::
+  forall edsl pss tss.
+  (IsPCodeOf edsl pss tss) =>
+  SOP.SOP (Term edsl) pss ->
+  SOP.SOP SOP.I tss
+sopFrom = SOP.hcoerce
 
 type CompileAp variant output =
   forall a m.
