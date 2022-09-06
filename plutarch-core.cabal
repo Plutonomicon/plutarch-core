@@ -56,8 +56,8 @@ library
     -Wno-missing-safe-haskell-mode -Wno-missing-local-signatures
     -Wno-prepositive-qualified-module -Wno-missing-import-lists
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
-    -fprint-explicit-kinds -fprint-explicit-coercions
-    -fprint-equality-relations -fprint-explicit-foralls
+    -- -fprint-explicit-kinds -fprint-explicit-coercions
+    -- -fprint-equality-relations -fprint-explicit-foralls
 
   exposed-modules:
     Plutarch.Cont

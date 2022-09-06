@@ -34,9 +34,6 @@ module Plutarch.Core (
   PDelay (PDelay),
   PPair (PPair),
   PEither (PLeft, PRight),
-  peither,
-  pleft,
-  pright,
   PForall (PForall),
   PSome (PSome),
   PFix (PFix),
@@ -45,7 +42,6 @@ module Plutarch.Core (
   PSOP,
   PIsSOP,
   PUnit (PUnit),
-  punit,
   PDSL,
   PLC,
   unTerm,
@@ -65,7 +61,6 @@ module Plutarch.Core (
   IsPCodeOf,
   sopFrom,
   sopTo,
-  (:-->),
 ) where
 
 import Data.Functor.Compose (Compose)
@@ -86,6 +81,8 @@ import Plutarch.PType (
   type (/$),
  )
 import Plutarch.Reduce (NoReduce)
+import Data.Coerce
+import Generics.SOP.NS
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
@@ -273,30 +270,11 @@ instance PHasRepr (PSome ef) where type PReprSort _ = PReprPrimitive
 newtype PFix f ef = PFix (ef /$ f (PFix f))
 instance PHasRepr (PFix f) where type PReprSort _ = PReprPrimitive
 
-punit :: (PConstructable edsl PUnit) => Term edsl PUnit
-punit = pcon PUnit
-
 data PUnit (ef :: PTypeF) = PUnit deriving stock (Generic)
 instance PHasRepr PUnit where type PReprSort _ = PReprPrimitive
 
 data PPair a b ef = PPair (ef /$ a) (ef /$ b) deriving stock (Generic)
 instance PHasRepr (PPair a b) where type PReprSort _ = PReprPrimitive
-
-pleft :: (PSOP edsl, IsPType edsl a, IsPType edsl b) => Term edsl a -> Term edsl (PEither a b)
-pleft = pcon . PLeft
-
-pright :: (PSOP edsl, IsPType edsl a, IsPType edsl b) => Term edsl b -> Term edsl (PEither a b)
-pright = pcon . PRight
-
-peither ::
-  (PSOP edsl, IsPType edsl a, IsPType edsl b, IsPType edsl c) =>
-  (Term edsl a -> Term edsl c) ->
-  (Term edsl b -> Term edsl c) ->
-  Term edsl (PEither a b) ->
-  Term edsl c
-peither f g te = pmatch te \case
-  PLeft x -> f x
-  PRight x -> g x
 
 data PEither a b ef = PLeft (ef /$ a) | PRight (ef /$ b) deriving stock (Generic)
 instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
@@ -392,6 +370,3 @@ type Compile variant output =
   (HasCallStack, Monad m, forall edsl. variant edsl => IsPType edsl a) =>
   (forall edsl. (variant edsl, PEmbeds m edsl) => Term edsl a) ->
   m output
-
--- | Useful combinator for unembedded functions.
-type (:-->) a b edsl = Term edsl a -> Term edsl b

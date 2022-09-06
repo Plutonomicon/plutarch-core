@@ -17,7 +17,6 @@ import Plutarch.Core
 import Plutarch.Cont
 import Plutarch.CPS.Optics.Traversal
 import Generics.SOP.GGP
-import Generics.SOP.NS
 import Data.Kind
 import Plutarch.PType
 
@@ -63,40 +62,34 @@ pfix f =
 --   pfix \r ->
 --     pmatchCont (_ . from)
 
-
--- ptraverse ::
---   _ =>
---   CTraversal
---     (Term edsl r)
---     (Term edsl (PFix (t a)))
---     (Term edsl (PFix (t b)))
---     (Term edsl a)
---     (Term edsl b)
--- ptraverse = ctraversal
---   (\f -> pfix _) 
-
-g ::
-  forall edsl a b (c :: PType -> PType -> Constraint).
-  ( GHC.Generic (PConcrete edsl a)
+pconstrained ::
+  forall edsl f a b (c :: PType -> PType -> Constraint) (ap :: [[PType]]) (bp :: [[PType]]) r.
+  ( PConstructable edsl a
+  , GHC.Generic (PConcrete edsl a)
   , GFrom (PConcrete edsl a)
-  , PIsSOP edsl a
+  , IsPCodeOf edsl ap (GCode (PConcrete edsl a))
+  , PConstructable edsl b
   , GHC.Generic (PConcrete edsl b)
   , GTo (PConcrete edsl b)
-  , PIsSOP edsl b
-  , PConstructable edsl b
-  , _
+  , IsPCodeOf edsl bp (GCode (PConcrete edsl b))
+  , SListI2 bp
+  , AllZip2 c ap bp
+  , IsPType  edsl r
+  , Applicative f
   ) =>
   Proxy c ->
-  (forall x y. c x y => Term edsl x -> Term edsl y) ->
+  (forall x y. c x y => Term edsl x -> f (Term edsl y)) ->
   Term edsl a ->
-  Term edsl b
-g p f a =
-  pmatch a \c ->
-    case esop (Proxy @edsl) (Proxy @a) of
-      PIsSumR _ _ from' ->
-        case esop (Proxy @edsl) (Proxy @b) of
-          PIsSumR _ to' _ ->
-            pcon . gto . to' . htrans (Proxy @(ConstrainedOn edsl c)) f . from' . gfrom $ c
+  Cont (Term edsl r) (f (Term edsl b))
+pconstrained _ f =
+  pmatchCont $
+    return
+      . fmap (pcon . gto . sopFrom @edsl @bp)
+      . hsequence'
+      . htrans (Proxy @c) (Comp . f)
+      . sopTo @edsl @ap
+      . gfrom
 
-class ConstrainedOn edsl c ta tb
-instance (c a b, ta ~ Term edsl a, tb ~ Term edsl b) => ConstrainedOn edsl c ta tb
+pconstrained' :: _ => _
+pconstrained' f =
+  pfix \r -> _
