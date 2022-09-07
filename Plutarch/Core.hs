@@ -325,6 +325,12 @@ class
   , PReprSort a ~ PReprSOP
   ) =>
   PIsSOP (edsl :: PDSLKind) (a :: PType)
+instance
+  ( PGeneric a
+  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
+  , PReprSort a ~ PReprSOP
+  ) =>
+  PIsSOP (edsl :: PDSLKind) (a :: PType)
 
 type PSOP :: PDSLKind -> Constraint
 type PSOP edsl =
