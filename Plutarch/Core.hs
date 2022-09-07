@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 
 module Plutarch.Core (
   PGeneric,
@@ -70,6 +69,7 @@ import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
 import GHC.TypeLits (Symbol)
 import Generics.SOP qualified as SOP
+import Generics.SOP.GGP qualified as SOPG
 import Plutarch.PType (
   PGeneric,
   PHs,
@@ -309,8 +309,11 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
   pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
 
-class (forall a. t ~ Term edsl a) => PIsTerm edsl t
-instance (forall a. t ~ Term edsl a) => PIsTerm edsl t
+type family Unapply a where
+  Unapply (f _) = f
+
+class (Unapply t ~ Term edsl) => PIsTerm edsl t
+instance (Unapply t ~ Term edsl) => PIsTerm edsl t
 
 class (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
 instance (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
@@ -320,7 +323,7 @@ instance (SOP.All2 (PIsTerm edsl) as) => PIsSum (edsl :: PDSLKind) (as :: [[Type
 
 class
   ( PGeneric a
-  , PIsSum edsl (SOP.Code (PConcrete edsl a))
+  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
   , PReprSort a ~ PReprSOP
   ) =>
   PIsSOP (edsl :: PDSLKind) (a :: PType)
