@@ -307,8 +307,11 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
   pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
 
-class (forall a. t ~ Term edsl a) => PIsTerm edsl t
-instance (forall a. t ~ Term edsl a) => PIsTerm edsl t
+type family Unapply a where
+  Unapply (f _) = f
+
+class (Unapply t ~ Term edsl) => PIsTerm edsl t
+instance (Unapply t ~ Term edsl) => PIsTerm edsl t
 
 class (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
 instance (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
