@@ -16,8 +16,6 @@ newtype PList a ef = PList {unPList :: ef /$ PFix (PListF a)}
 
 mkPList ::
   ( PSOP edsl
-  , IsPType edsl a
-  , IsPType edsl (PFix (PListF a))
   , PConstructable edsl (PFix (PListF a))
   ) =>
   PConcrete edsl (PListF a (PFix (PListF a))) ->
@@ -26,8 +24,6 @@ mkPList = pcon . PList . pcon . PFix . pcon
 
 pnil ::
   ( PSOP edsl
-  , IsPType edsl a
-  , IsPType edsl (PFix (PListF a))
   , PConstructable edsl (PFix (PListF a))
   ) =>
   Term edsl (PList a)
@@ -35,7 +31,6 @@ pnil = mkPList PNil
 
 pcons ::
   ( PSOP edsl
-  , IsPType edsl a
   , IsPType edsl (PFix (PListF a))
   , PConstructable edsl (PFix (PListF a))
   ) =>
