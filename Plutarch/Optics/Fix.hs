@@ -2,6 +2,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.Optics.Fix(pfix) where
 
@@ -36,10 +37,10 @@ pfix ::
       PConstructable edsl (a ra),
       PConstructable edsl (b rb)
     ) =>
-    (Term edsl    ra    -> Cont (Term edsl r) (f (Term edsl    rb  ))) ->
-     Term edsl (a ra  ) -> Cont (Term edsl r) (f (Term edsl (b rb  )))
+    (Term edsl    ra    -> PCont edsl r (f (Term edsl    rb  ))) ->
+     Term edsl (a ra  ) -> PCont edsl r (f (Term edsl (b rb  )))
   ) ->
-     Term edsl (PFix a) -> Cont (Term edsl r) (f (Term edsl (PFix b)))
+     Term edsl (PFix a) -> PCont edsl r (f (Term edsl (PFix b)))
 pfix f =
   pmatchCont \(PFix a) ->
     fmap (pcon . PFix)
@@ -57,7 +58,7 @@ pfix f =
 --   ) =>
 --   x ->
 --   Term edsl (PFix a) ->
---   Cont (Term edsl r) (f (Term edsl (PFix b))) 
+--   PCont edsl r (f (Term edsl (PFix b))) 
 -- pconstrained f =
 --   pfix \r ->
 --     pmatchCont (_ . from)
@@ -80,7 +81,7 @@ pconstrained ::
   Proxy c ->
   (forall x y. c x y => Term edsl x -> f (Term edsl y)) ->
   Term edsl a ->
-  Cont (Term edsl r) (f (Term edsl b))
+  PCont edsl r (f (Term edsl b))
 pconstrained _ f =
   pmatchCont $
     return
@@ -88,8 +89,48 @@ pconstrained _ f =
       . hsequence'
       . htrans (Proxy @c) (Comp . f)
       . sopTo @edsl @ap
-      . gfrom
+      . gfrom 
 
-pconstrained' :: _ => _
-pconstrained' f =
-  pfix \r -> _
+class (forall r. PGeneric (a r)) => PGeneric1 a
+instance (forall r. PGeneric (a r)) => PGeneric1 a
+
+class (IsPCodeOf edsl tss (GCode (PConcrete edsl (a r)))) => IsPCodeOf' edsl tss a r 
+instance (IsPCodeOf edsl tss (GCode (PConcrete edsl (a r)))) => IsPCodeOf' edsl tss a r 
+
+pconstrained' ::
+  forall edsl f a b r c (ap :: [[PType]]) (bp :: [[PType]]).
+  ( PConstructable edsl (PFix a)
+  , PConstructable edsl (a (PFix a))
+  , PGeneric1 a
+  , (forall r'. IsPCodeOf' edsl ap a r')
+  , PConstructable edsl (PFix b)
+  , PConstructable edsl (b (PFix b))
+  , PConstructable edsl r
+  , PGeneric1 b
+  , (forall r'. IsPCodeOf' edsl bp b r')
+  , SListI2 bp
+  , Applicative f
+  ) =>
+  Proxy c ->
+  (_ -> _) ->
+  Term edsl (PFix a) ->
+  PCont edsl r (f (Term edsl (PFix b)))
+pconstrained' _ f =
+  pfix fixer
+  where
+    fixer ::
+      forall ra rb.
+      ( PConstructable edsl (a ra)
+      , PConstructable edsl (b rb)
+      ) =>
+      (Term edsl ra -> PCont edsl r (f (Term edsl rb))) ->
+      Term edsl (a ra) ->
+      PCont edsl r (f (Term edsl (b rb)))
+    fixer r =
+      pmatchCont $
+        return
+          . fmap (pcon . gto . sopFrom @edsl @bp)
+          . hsequence'
+          . _
+          . sopTo @edsl @ap
+          . gfrom

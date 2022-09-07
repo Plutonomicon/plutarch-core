@@ -81,8 +81,6 @@ import Plutarch.PType (
   type (/$),
  )
 import Plutarch.Reduce (NoReduce)
-import Data.Coerce
-import Generics.SOP.NS
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
@@ -322,6 +320,12 @@ class (SOP.All2 (PIsTerm edsl) as) => PIsSum (edsl :: PDSLKind) (as :: [[Type]])
 instance (SOP.All2 (PIsTerm edsl) as) => PIsSum (edsl :: PDSLKind) (as :: [[Type]])
 
 class
+  ( PGeneric a
+  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
+  , PReprSort a ~ PReprSOP
+  ) =>
+  PIsSOP (edsl :: PDSLKind) (a :: PType)
+instance
   ( PGeneric a
   , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
   , PReprSort a ~ PReprSOP

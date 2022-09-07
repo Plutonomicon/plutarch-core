@@ -38,7 +38,7 @@ plist' ::
   ) =>
   (Term edsl a -> f (Term edsl b)) ->
   Term edsl (PFix (PListF a)) ->
-  Cont (Term edsl r) (f (Term edsl (PFix (PListF b))))
+  PCont edsl r (f (Term edsl (PFix (PListF b))))
 plist' f =
   pfix
     (\r -> pmatchCont \case
