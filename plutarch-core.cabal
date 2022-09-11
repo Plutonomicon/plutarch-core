@@ -58,7 +58,6 @@ library
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
     -fprint-explicit-kinds -fprint-explicit-coercions
     -fprint-equality-relations -fprint-explicit-foralls
-    -fno-show-valid-hole-fits
 
   exposed-modules:
     Plutarch.Cont

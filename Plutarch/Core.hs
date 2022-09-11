@@ -61,6 +61,7 @@ module Plutarch.Core (
   papl,
   PIsProduct,
   PIsSum,
+  PCode,
   IsPCodeOf,
   sopFrom,
   sopTo,
@@ -364,6 +365,10 @@ type PSOP edsl =
   , forall a. PIsSOP edsl a => PConstructable' edsl (PSOPed a)
   , IsPType edsl PPType
   )
+
+
+type family PCode edsl a where
+  PCode edsl a = SOPG.GCode (PConcrete edsl a)
 
 class
   ( SOP.AllZip2 (SOP.LiftedCoercible SOP.I (Term edsl)) tss pss

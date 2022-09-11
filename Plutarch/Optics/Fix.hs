@@ -4,7 +4,13 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 
-module Plutarch.Optics.Fix(pfix, pconstrained) where
+module Plutarch.Optics.Fix(
+  pfix,
+  PFixable,
+  pconstrained,
+  ptraverse,
+  PTraversible,
+  ) where
 
 import Data.Function
 import Data.Profunctor
@@ -15,15 +21,22 @@ import Plutarch.Core
 import Plutarch.Cont
 import Plutarch.CPS.Optics.Traversal
 import Generics.SOP.GGP
-import Plutarch.PType
+import Data.Kind
+
+class
+  ( PConstructable edsl (PFix a)
+  , PConstructable edsl (a (PFix a))
+  ) => PFixable edsl a
+instance
+  ( PConstructable edsl (PFix a)
+  , PConstructable edsl (a (PFix a))
+  ) => PFixable edsl a
 
 -- | Not a 'Plutarch.CPS.Optics.Traversal.CTraversal', but can be used to construct one.
 pfix ::
   (
-    PConstructable edsl (PFix a),
-    PConstructable edsl (a (PFix a)),
-    PConstructable edsl (PFix b),
-    PConstructable edsl (b (PFix b)),
+    PFixable edsl a,
+    PFixable edsl b,
     PConstructable edsl r,
     Applicative f
   ) =>
@@ -51,26 +64,40 @@ pfix f =
 class (forall r. PGeneric (a r)) => PGeneric1 a
 instance (forall r. PGeneric (a r)) => PGeneric1 a
 
-class (IsPCodeOf edsl tss (GCode (PConcrete edsl (a r)))) => IsPCodeOf' edsl tss a r 
-instance (IsPCodeOf edsl tss (GCode (PConcrete edsl (a r)))) => IsPCodeOf' edsl tss a r 
+class
+  ( AllZip2 (Fixer c (Term edsl ra) (Term edsl rb)) (GCode (PConcrete edsl (a ra))) (GCode (PConcrete edsl (b rb)))
+  , SListI2 (GCode (PConcrete edsl (b rb)))
+  ) => PConstrained' edsl c a b ra rb
+instance
+  ( AllZip2 (Fixer c (Term edsl ra) (Term edsl rb)) (GCode (PConcrete edsl (a ra))) (GCode (PConcrete edsl (b rb)))
+  , SListI2 (GCode (PConcrete edsl (b rb)))
+  ) => PConstrained' edsl c a b ra rb
+
+class
+  ( PFixable edsl a
+  , PFixable edsl b
+  , (forall ra rb. PConstrained' edsl c a b ra rb)
+  , PGeneric1 a
+  , PGeneric1 b
+  ) => PConstrainedFixable edsl c a b
+instance
+  ( PFixable edsl a
+  , PFixable edsl b
+  , PGeneric1 a
+  , PGeneric1 b
+  , (forall ra rb. PConstrained' edsl c a b ra rb)
+  ) => PConstrainedFixable edsl c a b
+
+
 
 pconstrained ::
-  forall edsl f a b r c (ap :: [[PType]]) (bp :: [[PType]]).
-  ( PConstructable edsl (PFix a)
-  , PConstructable edsl (a (PFix a))
-  , PGeneric1 a
-  , (forall r'. IsPCodeOf' edsl ap a r')
-  , PConstructable edsl (PFix b)
-  , PConstructable edsl (b (PFix b))
+  forall edsl f a b r (c :: Type -> Type -> Constraint).
+  ( PConstrainedFixable edsl c a b
   , PConstructable edsl r
-  , PGeneric1 b
-  , (forall r'. IsPCodeOf' edsl bp b r')
-  , (forall ra rb. AllZip2 (Fixer c ra rb) ap bp)
-  , SListI2 bp
   , Applicative f
   ) =>
   Proxy c ->
-  (forall a' b'. c a' b' => Term edsl a' -> PCont edsl r (f (Term edsl b'))) ->
+  (forall a' b'. c a' b' => a' -> PCont edsl r (f b')) ->
   Term edsl (PFix a) ->
   PCont edsl r (f (Term edsl (PFix b)))
 pconstrained _ f =
@@ -80,28 +107,61 @@ pconstrained _ f =
       forall ra rb.
       ( PConstructable edsl (a ra)
       , PConstructable edsl (b rb)
-      , AllZip2 (Fixer c ra rb) ap bp
+      , AllZip2 (Fixer c (Term edsl ra) (Term edsl rb)) (GCode (PConcrete edsl (a ra))) (GCode (PConcrete edsl (b rb)))
+      , SListI2 (GCode (PConcrete edsl (b rb)))
       ) =>
       (Term edsl ra -> PCont edsl r (f (Term edsl rb))) ->
       Term edsl (a ra) ->
       PCont edsl r (f (Term edsl (b rb)))
     fixer r =
       pmatchCont $
-        fmap (fmap (pcon . gto . sopFrom @edsl @bp) . hsequence')
+        fmap (fmap (pcon . gto) . hsequence')
         . hsequence'
-        . htrans (Proxy @(Fixer c ra rb)) (fixerTrans @c @ra @rb r f)
-        . sopTo @edsl @ap
+        . htrans
+          (Proxy @(Fixer c (Term edsl ra) (Term edsl rb)))
+          (Comp . fmap (Comp . fmap I) . fixerTrans @c r f . unI)
         . gfrom
 
-class Fixer c ra rb a b where
+class Fixer c a b a' b' where
   fixerTrans ::
-    (Term edsl ra -> PCont edsl r (f (Term edsl rb))) ->
-    (c a b => Term edsl a -> PCont edsl r (f (Term edsl b))) ->
-    Term edsl a ->
-    (PCont edsl r :.: f :.: Term edsl) b
+    (a -> PCont edsl r (f b)) ->
+    (c a' b' => a' -> PCont edsl r (f b')) ->
+    a' ->
+    PCont edsl r (f b')
 
-instance {-# OVERLAPS #-} Fixer c ra rb ra rb where
-  fixerTrans r _ = Comp . fmap Comp . r
+instance Fixer c a b a b where
+  fixerTrans f _ = f
 
-instance {-# OVERLAPPABLE #-} (c a b) => Fixer c ra rb a b where
-  fixerTrans _ f = Comp . fmap Comp . f
+instance (c a' b') => Fixer c a b a' b' where
+  fixerTrans _ f = f
+
+class (forall a b. PConstrainedFixable edsl (PTraverse (Term edsl a) (Term edsl b)) (t a) (t b)) => PTraversible edsl t 
+instance (forall a b. PConstrainedFixable edsl (PTraverse (Term edsl a) (Term edsl b)) (t a) (t b)) => PTraversible edsl t 
+
+ptraverse ::
+    forall edsl a b t r.
+  ( PTraversible edsl t
+  , PConstructable edsl r
+  ) =>
+  CTraversal
+    (Term edsl r)
+    (Term edsl (PFix (t a)))
+    (Term edsl (PFix (t b)))
+    (Term edsl a)
+    (Term edsl b)
+ptraverse =
+  ctraversal
+    \f -> pconstrained (Proxy @(PTraverse (Term edsl a) (Term edsl b))) (return . ptraverse' f)
+
+class PTraverse a b a' b' where
+  ptraverse' ::
+    Applicative f =>
+    (a -> f b) ->
+    a' ->
+    f b'
+
+instance PTraverse a b a b where
+  ptraverse' = ($)
+
+instance PTraverse a b a' a' where
+  ptraverse' _ = pure
