@@ -39,6 +39,7 @@ module Plutarch.Core (
   PAny (PAny),
   PPolymorphic,
   PSOP,
+  PSOPed (..),
   PIsSOP (..),
   PUnit (PUnit),
   PDSL,
@@ -307,7 +308,7 @@ class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
   pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
 
 data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
-  SOP.All (IsPType edsl) inner =>
+  (SOP.All (IsPType edsl) inner, SOP.SListI a) =>
   PIsProductR
   { inner :: Proxy inner
   , to :: SOP.NP (Term edsl) inner -> SOP.NP SOP.I a
@@ -351,7 +352,7 @@ instance (IsPType edsl a, PIsProduct edsl as) => PIsProduct edsl (Term edsl a : 
               }
 
 data PIsSumR (edsl :: PDSLKind) (a :: [[Type]]) = forall inner.
-  SOP.All2 (IsPType edsl) inner =>
+  (SOP.All2 (IsPType edsl) inner, SOP.SListI2 a) =>
   PIsSumR
   { inner :: Proxy inner
   , to :: SOP.SOP (Term edsl) inner -> SOP.SOP SOP.I a
