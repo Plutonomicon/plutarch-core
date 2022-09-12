@@ -1,7 +1,9 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Plutarch.ULC (ULC (..), compile) where
 
 import Plutarch.Core
-import Plutarch.EType
+import Plutarch.PType
 
 newtype Lvl = Lvl Int
 
@@ -11,33 +13,43 @@ data ULC
   | Var Lvl
   | Error
 
-newtype ULCImpl (a :: EType) = ULCImpl {runImpl :: Lvl -> ULC}
-
-class Top (a :: EType)
+class Top (a :: k)
 instance Top a
 
-data Arrow (a :: EType) (b :: EType) (f :: ETypeF)
+newtype ULCImpl' (a :: PType) = ULCImpl {runImpl :: Lvl -> ULC}
 
-class (forall a b. EConstructable edsl (EPair a b), EUntyped edsl, ELC edsl, EPartial edsl) => EULC edsl
+type ULCImpl = 'PDSLKind ULCImpl'
 
-instance EDSL ULCImpl where
-  type IsEType ULCImpl = Top
+instance PDSL ULCImpl
 
-instance ELC ULCImpl where
-  type EArrow ULCImpl = Arrow
-  elam f = ULCImpl \i -> Lam (runImpl (f $ ULCImpl \_ -> Var i) i)
-  ULCImpl f # ULCImpl g = ULCImpl \lvl -> f lvl `App` g lvl
+instance PConstructable' ULCImpl (a #-> b) where
+  pconImpl (PLam f) = ULCImpl \i -> Lam (runImpl (unTerm . f . Term $ ULCImpl \_ -> Var i) i)
+  pmatchImpl = _
 
-instance EUntyped ULCImpl where
-  eunsafeCoerce (ULCImpl f) = ULCImpl f
+-- data Arrow (a :: EType) (b :: EType) (f :: ETypeF)
 
-instance EPartial ULCImpl where
-  eerror = ULCImpl . pure $ Error
+-- class (forall a b. EConstructable edsl (EPair a b), EUntyped edsl, ELC edsl, EPartial edsl) => EULC edsl
 
-instance EConstructable ULCImpl (EPair a b) where
-  pcon (EPair x y) = ULCImpl \lvl -> Lam $ Var lvl `App` runImpl x lvl `App` runImpl y lvl
+-- instance EDSL ULCImpl where
+--   type IsEType ULCImpl = Top
 
-instance EULC ULCImpl
+-- instance ELC ULCImpl where
+--   type EArrow ULCImpl = Arrow
+--   elam f = ULCImpl \i -> Lam (runImpl (f $ ULCImpl \_ -> Var i) i)
+--   ULCImpl f # ULCImpl g = ULCImpl \lvl -> f lvl `App` g lvl
 
-compile :: forall a. (forall edsl. EULC edsl => edsl a) -> ULC
+-- instance EUntyped ULCImpl where
+--   eunsafeCoerce (ULCImpl f) = ULCImpl f
+
+-- instance EPartial ULCImpl where
+--   eerror = ULCImpl . pure $ Error
+
+-- instance EConstructable ULCImpl (EPair a b) where
+--   pcon (EPair x y) = ULCImpl \lvl -> Lam $ Var lvl `App` runImpl x lvl `App` runImpl y lvl
+
+-- instance EULC ULCImpl
+
+-- compile :: forall a. (forall edsl. EULC edsl => edsl a) -> ULC
+
+compile :: ULCImpl' a -> ULC
 compile term = runImpl term (Lvl 0)

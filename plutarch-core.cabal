@@ -68,6 +68,7 @@ library
     Plutarch.Prelude
     Plutarch.PType
     Plutarch.Reduce
+    Plutarch.ULC
 
   build-depends:
     , base
