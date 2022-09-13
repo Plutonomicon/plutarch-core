@@ -1,9 +1,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Plutarch.ULC where
+module Plutarch.ULC (ULC(..), ULambda, var, expr, lam, app, err, runULambda) where
 
 import Control.Monad.Trans.Reader
-import Control.Arrow
+import Control.Arrow ( Arrow(second) )
 
 data ULC
   = App ULC ULC
