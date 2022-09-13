@@ -1,55 +1,34 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Plutarch.ULC (ULC (..), compile) where
+module Plutarch.ULC where
 
-import Plutarch.Core
-import Plutarch.PType
-
-newtype Lvl = Lvl Int
+import Control.Monad.Trans.Reader
+import Control.Arrow
 
 data ULC
   = App ULC ULC
   | Lam ULC
-  | Var Lvl
+  | Var Int
   | Error
 
-class Top (a :: k)
-instance Top a
+-- | Last 'Int' is the current level, first is the highest visible level, set by 'expr' 
+newtype ULambda = ULambda { unUL :: Reader (Int, Int) ULC }
 
-newtype ULCImpl' (a :: PType) = ULCImpl {runImpl :: Lvl -> ULC}
+-- | The 'Int' passed to 'var' is the level counting the nearest 'expr' as the root
+var :: Int -> ULambda
+var i = ULambda $ Var . (+ i) . fst <$> ask
 
-type ULCImpl = 'PDSLKind ULCImpl'
+expr :: ULambda -> ULambda
+expr = ULambda . local (\(_, i) -> (i, i)) . unUL
 
-instance PDSL ULCImpl
+lam :: ULambda -> ULambda
+lam = ULambda . fmap Lam . local (second (+ 1)) . unUL
 
-instance PConstructable' ULCImpl (a #-> b) where
-  pconImpl (PLam f) = ULCImpl \i -> Lam (runImpl (unTerm . f . Term $ ULCImpl \_ -> Var i) i)
-  pmatchImpl = _
+app :: ULambda -> ULambda -> ULambda
+app f a = ULambda $ App <$> unUL f <*> unUL a
 
--- data Arrow (a :: EType) (b :: EType) (f :: ETypeF)
+err :: ULambda
+err = ULambda $ pure Error
 
--- class (forall a b. EConstructable edsl (EPair a b), EUntyped edsl, ELC edsl, EPartial edsl) => EULC edsl
-
--- instance EDSL ULCImpl where
---   type IsEType ULCImpl = Top
-
--- instance ELC ULCImpl where
---   type EArrow ULCImpl = Arrow
---   elam f = ULCImpl \i -> Lam (runImpl (f $ ULCImpl \_ -> Var i) i)
---   ULCImpl f # ULCImpl g = ULCImpl \lvl -> f lvl `App` g lvl
-
--- instance EUntyped ULCImpl where
---   eunsafeCoerce (ULCImpl f) = ULCImpl f
-
--- instance EPartial ULCImpl where
---   eerror = ULCImpl . pure $ Error
-
--- instance EConstructable ULCImpl (EPair a b) where
---   pcon (EPair x y) = ULCImpl \lvl -> Lam $ Var lvl `App` runImpl x lvl `App` runImpl y lvl
-
--- instance EULC ULCImpl
-
--- compile :: forall a. (forall edsl. EULC edsl => edsl a) -> ULC
-
-compile :: ULCImpl' a -> ULC
-compile term = runImpl term (Lvl 0)
+runULambda :: ULambda -> ULC
+runULambda r = runReader (unUL r) (0, 0)
