@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.ULC (ULC (..), compile) where
 
@@ -76,5 +78,8 @@ class
   ) => PULC edsl
 instance PULC ULCImpl
 
-compile :: forall a. Term ULCImpl a -> ULC
-compile (Term term) = runULambda (runImpl term)
+compile' :: Term ULCImpl a -> ULC
+compile' (Term term) = runULambda (runImpl term)
+
+compile :: forall a. (forall edsl. PULC edsl => Term edsl a) -> ULC
+compile t = compile' t
