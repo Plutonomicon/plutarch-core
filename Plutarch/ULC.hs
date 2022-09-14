@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
@@ -57,7 +56,13 @@ instance PConstructable' ULCImpl (a #-> b) where
 instance PConstructable' ULCImpl (PPair a b) where
   pconImpl (PPair (Term a) (Term b)) =
     ULCImpl $ expr $ lam $ var 0 `app` runImpl a `app` runImpl b
-  pmatchImpl (ULCImpl t) f = f $ PPair (Term . ULCImpl $ fst' t) (Term . ULCImpl $ snd' t)
+  pmatchImpl (ULCImpl t) f =
+    Term . ULCImpl $ expr $ app
+      (lam $ runImpl . unTerm $ f $ PPair
+        (Term . ULCImpl $ fst' (var 0))
+        (Term . ULCImpl $ snd' (var 0))
+      )
+      t
 
 tru, fls :: ULambda
 tru = expr $ lam $ lam $ var 0
