@@ -2,6 +2,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.ULC (ULC (..), compile) where
 
@@ -57,12 +58,35 @@ instance PConstructable' ULCImpl (PPair a b) where
   pconImpl (PPair (Term a) (Term b)) =
     ULCImpl $ expr $ lam $ var 0 `app` runImpl a `app` runImpl b
   pmatchImpl (ULCImpl t) f = f $ PPair (Term . ULCImpl $ fst' t) (Term . ULCImpl $ snd' t)
-    where
-      tru = expr $ lam $ lam $ var 0
-      fls = expr $ lam $ lam $ var 1
 
-      fst' p = app p tru
-      snd' p = app p fls
+tru, fls :: ULambda
+tru = expr $ lam $ lam $ var 0
+fls = expr $ lam $ lam $ var 1
+
+fst', snd' :: ULambda -> ULambda
+fst' p = app p tru
+snd' p = app p fls
+
+instance PConstructable' ULCImpl (PEither a b) where
+  pconImpl e = ULCImpl $ expr $ lam $ app (f (var 0)) t
+    where
+      (f, t) = case e of 
+        PLeft (Term a) -> (fst', runImpl a)
+        PRight (Term b) -> (snd', runImpl b)
+  pmatchImpl (ULCImpl t) f =
+    Term . ULCImpl $
+      expr $ 
+        t `app`
+          (expr $ lam $ runImpl . unTerm . f . PLeft . Term . ULCImpl $ var 0) `app`
+          (expr $ lam $ runImpl . unTerm . f . PRight . Term . ULCImpl $ var 0)
+
+instance PConstructable' ULCImpl PUnit where
+  pconImpl PUnit = ULCImpl $ expr $ lam $ var 0
+  pmatchImpl _ f = f PUnit
+
+instance PConstructable' ULCImpl (PLet a) where
+  pconImpl (PLet t) = ULCImpl $ runImpl . unTerm $ t
+  pmatchImpl (ULCImpl t) f = f $ PLet (Term (ULCImpl t))
 
 instance PUntyped ULCImpl where
   punsafeCoerce (Term (ULCImpl t)) = Term (ULCImpl t)
@@ -75,6 +99,9 @@ class
   , PUntyped edsl
   , PPartial edsl
   , forall a b. PConstructable edsl (PPair a b)
+  , PConstructable edsl PUnit
+  , forall a b. PConstructable edsl (PEither a b)
+  , forall a. PConstructable edsl (PLet a)
   ) => PULC edsl
 instance PULC ULCImpl
 
