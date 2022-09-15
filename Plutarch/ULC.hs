@@ -8,6 +8,8 @@ module Plutarch.ULC (ULC (..), compile) where
 import Control.Monad.Trans.Reader
 import Control.Arrow ( Arrow(second) )
 
+import Data.Proxy
+
 import Plutarch.Core
 import Plutarch.PType
 
@@ -90,11 +92,30 @@ instance PConstructable' ULCImpl PUnit where
   pmatchImpl _ f = f PUnit
 
 instance PConstructable' ULCImpl (PLet a) where
-  pconImpl (PLet t) = ULCImpl $ runImpl . unTerm $ t
-  pmatchImpl (ULCImpl t) f = f $ PLet (Term (ULCImpl t))
+  pconImpl (PLet t) = ULCImpl $ app (expr $ lam $ var 0) (runImpl . unTerm $ t)
+  pmatchImpl (ULCImpl t) f = f $ PLet (Term . ULCImpl $ t)
+
+instance PConstructable' ULCImpl (PFix a) where
+  pconImpl (PFix t) = unsafeCoerceULC . unTerm $ t
+  pmatchImpl t f = f . PFix . Term . unsafeCoerceULC $ t
+
+-- instance PConstructable' ULCImpl (PForall f) where
+--   pconImpl (PForall t) = unsafeCoerceULC . unTerm $ t
+--   pmatchImpl t f = f . PForall . Term . unsafeCoerceULC $ t
+
+-- instance PConstructable' ULCImpl (PSome f) where
+--   pconImpl (PSome t) = unsafeCoerceULC . unTerm $ t
+--   pmatchImpl t f = f . PSome . Term . unsafeCoerceULC $ t
+
+instance PConstructable' ULCImpl PAny where
+  pconImpl (PAny _ t) = unsafeCoerceULC . unTerm $ t
+  pmatchImpl t f = f . PAny Proxy . Term . unsafeCoerceULC $ t
+
+unsafeCoerceULC :: ULCImpl' a -> ULCImpl' b
+unsafeCoerceULC = ULCImpl . runImpl
 
 instance PUntyped ULCImpl where
-  punsafeCoerce (Term (ULCImpl t)) = Term (ULCImpl t)
+  punsafeCoerce = Term . unsafeCoerceULC . unTerm
 
 instance PPartial ULCImpl where
   perror = Term (ULCImpl err)
@@ -107,6 +128,7 @@ class
   , PConstructable edsl PUnit
   , forall a b. PConstructable edsl (PEither a b)
   , forall a. PConstructable edsl (PLet a)
+  , forall a. PConstructable edsl (PFix a)
   ) => PULC edsl
 instance PULC ULCImpl
 
