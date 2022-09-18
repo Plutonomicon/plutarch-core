@@ -413,12 +413,12 @@ type PSOP edsl =
 
 type CompileAp variant output =
   forall a m.
-  (HasCallStack, Applicative m, forall edsl. variant edsl => IsPType edsl a) =>
+  (HasCallStack, Applicative m) =>
   (forall edsl. (variant edsl, PAp m edsl) => Term edsl a) ->
   m output
 
 type Compile variant output =
   forall a m.
-  (HasCallStack, Monad m, forall edsl. variant edsl => IsPType edsl a) =>
+  (HasCallStack, Monad m) =>
   (forall edsl. (variant edsl, PEmbeds m edsl) => Term edsl a) ->
   m output
