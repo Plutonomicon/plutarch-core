@@ -2,6 +2,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Plutarch.ULC (ULC (..), compileAp, compile) where
 
@@ -148,7 +149,7 @@ compile' :: Term (ULCImpl m) a -> m ULC
 compile' (Term term) = runULambda (runImpl term)
 
 compileAp :: CompileAp PULC ULC
-compileAp t = let _unused = callStack in compile' t
+compileAp _ t = let _unused = callStack in compile' t
 
 compile :: Compile PULC ULC
-compile t = let _unused = callStack in  compile' t
+compile _ t = let _unused = callStack in  compile' t
