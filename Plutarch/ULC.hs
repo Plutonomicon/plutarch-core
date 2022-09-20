@@ -14,6 +14,7 @@ import Data.Functor.Compose
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Class
 import GHC.Stack
+import Unsafe.Coerce
 
 data ULC
   = App ULC ULC
@@ -102,13 +103,16 @@ instance PConstructable' (ULCImpl m) (PFix a) where
   pconImpl (PFix t) = unsafeCoerceULC . unTerm $ t
   pmatchImpl t f = f . PFix . Term . unsafeCoerceULC $ t
 
--- instance PConstructable' (ULCImpl m) (PForall f) where
---   pconImpl (PForall t) = unsafeCoerceULC . unTerm $ t
---   pmatchImpl t f = f . PForall . Term . unsafeCoerceULC $ t
+class (PfC (Helper (ULCImpl m)) forallvar) => PCon m a (forallvar :: PHs a)
+instance (PfC (Helper (ULCImpl m)) forallvar) => PCon m a (forallvar :: PHs a)
 
--- instance PConstructable' (ULCImpl m) (PSome f) where
---   pconImpl (PSome t) = unsafeCoerceULC . unTerm $ t
---   pmatchImpl t f = f . PSome . Term . unsafeCoerceULC $ t
+instance (forall (forallvar :: PHs a). PCon m a forallvar) => PConstructable' (ULCImpl m) (PForall (f :: PHs a -> PType)) where
+  pconImpl (PForall t) = unsafeCoerceULC . unTerm $ t
+  pmatchImpl t f = f . PForall . unsafeCoerce . Term @(ULCImpl m) . unsafeCoerceULC $ t
+
+instance (forall (x :: PHs a). PCon m a x) => PConstructable' (ULCImpl m) (PSome (f :: PHs a -> PType)) where
+  pconImpl (PSome t) = unsafeCoerceULC . unTerm $ t
+  pmatchImpl t f = f . PSome . unsafeCoerce . Term @(ULCImpl m) . unsafeCoerceULC $ t
 
 instance PConstructable' (ULCImpl m) PAny where
   pconImpl (PAny _ t) = unsafeCoerceULC . unTerm $ t

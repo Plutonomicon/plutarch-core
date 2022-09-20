@@ -59,6 +59,7 @@ module Plutarch.Core (
   PIsProductR (..),
   PIsSum (..),
   PIsSumR (..),
+  Helper,
 ) where
 
 import Data.Functor.Compose (Compose)
