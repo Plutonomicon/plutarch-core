@@ -4,7 +4,8 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
-module Plutarch.ULC (ULC (..), compileAp, compile) where
+module Plutarch.ULC (ULC, ULCImpl,
+ compileAp, compile) where
 
 import Data.Proxy
 
