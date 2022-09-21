@@ -38,7 +38,6 @@ module Plutarch.Core (
   PFix (PFix),
   PAny (PAny),
   PPolymorphic,
-  PSOP,
   PIsSOP,
   PUnit (PUnit),
   PDSL,
@@ -57,7 +56,6 @@ module Plutarch.Core (
   papl,
   PIsProduct,
   PIsSum,
-  IsPCodeOf,
   sopFrom,
   sopTo,
 ) where
@@ -69,6 +67,7 @@ import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
 import GHC.TypeLits (Symbol)
 import Generics.SOP qualified as SOP
+import Generics.SOP.Constraint qualified as SOP
 import Generics.SOP.GGP qualified as SOPG
 import Plutarch.PType (
   PGeneric,
@@ -307,64 +306,71 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
   pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
 
-type family Unapply a where
-  Unapply (f _) = f
+class
+  ( SOP.AllZip (SOP.LiftedCoercible SOP.I (Term edsl)) ts (PPPTypes ts)
+  , SOP.AllZip (SOP.LiftedCoercible (Term edsl) SOP.I) (PPPTypes ts) ts
+  , SOP.All (IsPType edsl) (PPPTypes ts)
+  ) =>
+  PIsProduct (edsl :: PDSLKind) (ts :: [Type])
+  where
+  type PPPTypes ts :: [PType]
+instance PIsProduct edsl '[] where
+  type PPPTypes '[] = '[]
+instance (IsPType edsl a, PIsProduct edsl ts) => PIsProduct edsl (Term edsl a : ts) where
+  type PPPTypes (Term edsl a : ts) = a : PPPTypes ts
 
-class (Unapply t ~ Term edsl) => PIsTerm edsl t
-instance (Unapply t ~ Term edsl) => PIsTerm edsl t
+class
+  ( SOP.AllZip2 (SOP.LiftedCoercible SOP.I (Term edsl)) tss (PSPTypes tss)
+  , SOP.AllZip2 (SOP.LiftedCoercible (Term edsl) SOP.I) (PSPTypes tss) tss
+  , SOP.SameShapeAs tss (PSPTypes tss)
+  , SOP.SameShapeAs (PSPTypes tss) tss
+  , SOP.AllZipF (SOP.AllZip (SOP.LiftedCoercible (Term edsl) SOP.I)) (PSPTypes tss) tss
+  , SOP.AllZipF (SOP.AllZip (SOP.LiftedCoercible SOP.I (Term edsl))) tss (PSPTypes tss)
+  , SOP.All2 (IsPType edsl) (PSPTypes tss)
+  , SOP.SListI2 tss
+  ) =>
+  PIsSum (edsl :: PDSLKind) (tss :: [[Type]])
+  where
+  type PSPTypes (tss :: [[Type]]) :: [[PType]]
+instance PIsSum edsl '[] where
+  type PSPTypes '[] = '[]
+instance (PIsProduct edsl ts, PIsSum edsl tss) => PIsSum edsl (ts : tss) where
+  type PSPTypes (ts : tss) = PPPTypes ts : PSPTypes tss
 
-class (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
-instance (SOP.All (PIsTerm edsl) as) => PIsProduct (edsl :: PDSLKind) (as :: [Type])
-
-class (SOP.All2 (PIsTerm edsl) as) => PIsSum (edsl :: PDSLKind) (as :: [[Type]])
-instance (SOP.All2 (PIsTerm edsl) as) => PIsSum (edsl :: PDSLKind) (as :: [[Type]])
+type PSOPTerms edsl a = SOPG.GCode (PConcrete edsl a)
+type PSOPPTypes edsl a = PSPTypes (PSOPTerms edsl a)
 
 class
   ( PGeneric a
-  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
+  , PIsSum edsl (PSOPTerms edsl a)
   , PReprSort a ~ PReprSOP
   ) =>
   PIsSOP (edsl :: PDSLKind) (a :: PType)
+
 instance
   ( PGeneric a
-  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
+  , PIsSum edsl (PSOPTerms edsl a)
   , PReprSort a ~ PReprSOP
   ) =>
   PIsSOP (edsl :: PDSLKind) (a :: PType)
-
-type PSOP :: PDSLKind -> Constraint
-type PSOP edsl =
-  ( PConstructable edsl PUnit
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PPair a b)
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PEither a b)
-  , forall a. PIsSOP edsl a => PConstructable' edsl (PSOPed a)
-  , IsPType edsl PPType
-  )
-
-class
-  ( SOP.AllZip2 (SOP.LiftedCoercible SOP.I (Term edsl)) tss pss
-  , SOP.AllZip2 (SOP.LiftedCoercible (Term edsl) SOP.I) pss tss
-  ) =>
-  IsPCodeOf edsl pss tss
-instance
-  ( SOP.AllZip2 (SOP.LiftedCoercible SOP.I (Term edsl)) tss pss
-  , SOP.AllZip2 (SOP.LiftedCoercible (Term edsl) SOP.I) pss tss
-  ) =>
-  IsPCodeOf edsl pss tss
-
-sopTo ::
-  forall edsl pss tss.
-  (IsPCodeOf edsl pss tss) =>
-  SOP.SOP SOP.I tss ->
-  SOP.SOP (Term edsl) pss
-sopTo = SOP.hcoerce
 
 sopFrom ::
-  forall edsl pss tss.
-  (IsPCodeOf edsl pss tss) =>
-  SOP.SOP (Term edsl) pss ->
-  SOP.SOP SOP.I tss
-sopFrom = SOP.hcoerce
+  forall edsl a.
+  PIsSOP edsl a =>
+  Proxy edsl ->
+  Proxy a ->
+  SOP.SOP SOP.I (PSOPTerms edsl a) ->
+  SOP.SOP (Term edsl) (PSOPPTypes edsl a)
+sopFrom _ _ = SOP.hcoerce
+
+sopTo ::
+  forall edsl a.
+  PIsSOP edsl a =>
+  Proxy edsl ->
+  Proxy a ->
+  SOP.SOP (Term edsl) (PSOPPTypes edsl a) ->
+  SOP.SOP SOP.I (PSOPTerms edsl a)
+sopTo _ _ = SOP.hcoerce
 
 type CompileAp variant output =
   forall a m.
