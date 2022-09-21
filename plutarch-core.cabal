@@ -70,6 +70,8 @@ library
     Plutarch.Reduce
     Plutarch.ULC
 
+    Examples.ULC
+
   build-depends:
     , base
     , generics-sop
