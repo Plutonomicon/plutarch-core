@@ -8,5 +8,5 @@ import Data.Proxy
 import Data.Functor.Identity
 import Plutarch.PType
 
-x :: forall (a :: PType) m. (IsPTypeBackend (ULCImpl m) a) => Proxy a -> ULC
+x :: forall (a :: PType). (PHasRepr a) => Proxy a -> ULC
 x _ = runIdentity . compile (Proxy @(a #-> a)) $ pcon (PLam id)
