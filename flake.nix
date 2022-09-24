@@ -8,16 +8,16 @@
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = nixpkgs.lib.genAttrs supportedSystems;
       pkgsFor = system: nixpkgs.legacyPackages.${system};
-      hsOverlay = hsPkgs: hsPkgs.override {
+      hsOverlay = hLib: hsPkgs: hsPkgs.override {
         overrides = final: prev: {
           plutarch-core = final.callPackage ./plutarch-core.nix { };
         };
       };
-      hsPkgsFor = system: hsOverlay (pkgsFor system).haskell.packages.ghc923;
+      hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskell.packages.ghc924; # ghc942
       formattersFor = system: with (pkgsFor system); [
         nixpkgs-fmt
         haskellPackages.cabal-fmt
-        (hsPkgsFor system).fourmolu_0_7_0_1
+        (haskell.lib.compose.dontCheck (hsPkgsFor system).fourmolu_0_8_0_0)
       ];
       regen = system: (pkgsFor system).writeShellApplication {
         name = "regen";
