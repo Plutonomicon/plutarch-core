@@ -1,12 +1,15 @@
-{-# LANGUAGE PartialTypeSignatures #-}
-module Examples.ULC where
+{-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
-import Plutarch.Core
-import Plutarch.ULC
+module Examples.ULC (result) where
 
-import Data.Proxy
-import Data.Functor.Identity
-import Plutarch.PType
+import Plutarch.Prelude
+import Plutarch.ULC (compile, ULC)
+import Data.Functor.Identity (runIdentity)
 
-x :: forall (a :: PType). (PHasRepr a) => Proxy a -> ULC
-x _ = runIdentity . compile (Proxy @(a #-> a)) $ pcon (PLam id)
+pid :: PConstructable edsl (PUnit #-> PUnit) => Term edsl (PUnit #-> PUnit)
+pid = pcon $ PLam \x -> x
+
+result :: ULC
+result = runIdentity $ compile pid

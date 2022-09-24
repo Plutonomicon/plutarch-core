@@ -144,13 +144,25 @@ class
   , forall a. PConstructable edsl (PLet a)
   , forall a. PConstructable edsl (PFix a)
   ) => PULC edsl
-instance (Applicative m) => PULC (ULCImpl m)
+instance
+  ( PLC edsl
+  , PUntyped edsl
+  , PPartial edsl
+  , forall a b. PConstructable edsl (PPair a b)
+  , PConstructable edsl PUnit
+  , forall a b. PConstructable edsl (PEither a b)
+  , forall a. PConstructable edsl (PLet a)
+  , forall a. PConstructable edsl (PFix a)
+  ) => PULC edsl
 
 compile' :: Term (ULCImpl m) a -> m ULC
 compile' (Term term) = runULambda (runImpl term)
 
+class (forall edsl. IsPType edsl a) => FF a
+instance (forall edsl. IsPType edsl a) => FF a
+
 compileAp :: CompileAp PULC ULC
-compileAp _ t = let _unused = callStack in compile' t
+compileAp t = let _unused = callStack in compile' t
 
 compile :: Compile PULC ULC
-compile _ t = let _unused = callStack in  compile' t
+compile t = let _unused = callStack in  compile' t
