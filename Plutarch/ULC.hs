@@ -109,9 +109,9 @@ class
   ( PLC edsl
   , PUntyped edsl
   , PPartial edsl
-  , forall a b. PConstructable edsl (PPair a b)
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PPair a b)
   , PConstructable edsl PUnit
-  , forall a b. PConstructable edsl (PEither a b)
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PEither a b)
   , forall a. PConstructable edsl (PLet a)
   , forall a. PConstructable edsl (PFix a)
   ) => PULC edsl
@@ -119,9 +119,9 @@ instance
   ( PLC edsl
   , PUntyped edsl
   , PPartial edsl
-  , forall a b. PConstructable edsl (PPair a b)
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PPair a b)
   , PConstructable edsl PUnit
-  , forall a b. PConstructable edsl (PEither a b)
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PEither a b)
   , forall a. PConstructable edsl (PLet a)
   , forall a. PConstructable edsl (PFix a)
   ) => PULC edsl
