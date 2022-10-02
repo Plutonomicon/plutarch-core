@@ -63,7 +63,7 @@ instance (Applicative m) => PConstructable' (ULCImpl m) PUnit where
   pconImpl PUnit = unsafeCoerceULC . unTerm @(ULCImpl m) $ pcon $ PLam id
   pmatchImpl _ f = f PUnit
 
-instance (Applicative m) => PConstructable' (ULCImpl m) (PLet a) where
+instance (Applicative m, IsPType (ULCImpl m) a) => PConstructable' (ULCImpl m) (PLet a) where
   pconImpl (PLet t) = unsafeCoerceULC . unTerm $ pcon (PLam id) # t
   pmatchImpl t f = f $ PLet (unsafeULCTerm t)
 
@@ -112,7 +112,7 @@ class
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PPair a b)
   , PConstructable edsl PUnit
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PEither a b)
-  , forall a. PConstructable edsl (PLet a)
+  , forall a. (IsPType edsl a) => PConstructable edsl (PLet a)
   , forall a. PConstructable edsl (PFix a)
   ) => PULC edsl
 instance
@@ -122,7 +122,7 @@ instance
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PPair a b)
   , PConstructable edsl PUnit
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PEither a b)
-  , forall a. PConstructable edsl (PLet a)
+  , forall a. (IsPType edsl a) => PConstructable edsl (PLet a)
   , forall a. PConstructable edsl (PFix a)
   ) => PULC edsl
 
