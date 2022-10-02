@@ -2,14 +2,16 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Plutarch.ULC (ULC, ULCImpl,
  compileAp, compile, compile') where
 
+import Data.Proxy
+
+import GHC.Stack
+
 import Plutarch.Core
 import Plutarch.PType
-import GHC.Stack
 
 data ULC
   = App ULC ULC
@@ -28,18 +30,46 @@ type ULCImpl m = 'PDSLKind (ULCImpl' m)
 instance PDSL (ULCImpl m)
 
 instance (Applicative m) => PConstructable' (ULCImpl m) (a #-> b) where
-  pconImpl (PLam f) = ULCImpl \i -> Lam <$> runImpl (unTerm . f . Term $ ULCImpl $ \_ -> pure $ Var i) (i + 1)
-  pmatchImpl (ULCImpl t) f = f $ PLam \(Term (ULCImpl x)) -> Term . ULCImpl $ \lvl -> App <$> t lvl <*> x lvl
+  pconImpl (PLam f) =
+    ULCImpl \i ->
+      Lam <$> runImpl (unTerm . f . Term $ ULCImpl $ \_ -> pure $ Var i) (i + 1)
+  pmatchImpl (ULCImpl t) f =
+    f $ PLam \(Term (ULCImpl x)) ->
+      Term . ULCImpl $ \lvl -> App <$> t lvl <*> x lvl
 
-instance (Applicative m) => PConstructable' (ULCImpl m) (PPair a b) where
+instance (Applicative m, IsPType (ULCImpl m) a, IsPType (ULCImpl m) b) => PConstructable' (ULCImpl m) (PPair a b) where
+  pconImpl (PPair a b) = unsafeCoerceULC . unTerm $ pcon $ PLam \p -> p # a # b
+  pmatchImpl t f = f $ PPair (pfst (Term t)) (psnd (Term t))
 
-instance (Applicative m) => PConstructable' (ULCImpl m) (PEither a b) where
+tru, fls :: (Applicative m) => Term (ULCImpl m) (a #-> a #-> a)
+tru = pcon $ PLam \t -> pcon $ PLam \_ -> t
+fls = pcon $ PLam \_ -> pcon $ PLam \f -> f
+
+pfst :: (Applicative m, IsPType (ULCImpl m) a) =>  Term (ULCImpl m) (PPair a b) -> Term (ULCImpl m) a
+pfst p = (unsafeCoerceULCTerm p) # tru
+
+psnd :: (Applicative m, IsPType (ULCImpl m) b) =>  Term (ULCImpl m) (PPair a b) -> Term (ULCImpl m) b
+psnd p = (unsafeCoerceULCTerm p) # fls
+
+instance (Applicative m, IsPType (ULCImpl m) a, IsPType (ULCImpl m) b) => PConstructable' (ULCImpl m) (PEither a b) where
+  pconImpl t = unsafeCoerceULC . unTerm $ pcon $
+    PLam \l -> pcon $ PLam \r -> case t of
+      PLeft a -> l # a
+      PRight b -> r # b
+
+  pmatchImpl t f = unsafeULCTerm t # (pcon . PLam $ f . PLeft) # (pcon . PLam $ f . PRight)
 
 instance (Applicative m) => PConstructable' (ULCImpl m) PUnit where
+  pconImpl PUnit = unsafeCoerceULC . unTerm @(ULCImpl m) $ pcon $ PLam id
+  pmatchImpl _ f = f PUnit
 
 instance (Applicative m) => PConstructable' (ULCImpl m) (PLet a) where
+  pconImpl (PLet t) = unsafeCoerceULC . unTerm $ pcon (PLam id) # t
+  pmatchImpl t f = f $ PLet (unsafeULCTerm t)
 
 instance PConstructable' (ULCImpl m) (PFix a) where
+  pconImpl (PFix t) = unsafeCoerceULC . unTerm $ t
+  pmatchImpl t f = f $ PFix (unsafeULCTerm t)
 
 -- instance PConstructable' (ULCImpl m) (PForall f) where
 --   pconImpl (PForall t) = unsafeCoerceULC . unTerm $ t
@@ -50,9 +80,17 @@ instance PConstructable' (ULCImpl m) (PFix a) where
 --   pmatchImpl t f = f . PSome . Term . unsafeCoerceULC $ t
 
 instance PConstructable' (ULCImpl m) PAny where
+  pconImpl (PAny _ t) = unsafeCoerceULC . unTerm $ t
+  pmatchImpl t f = f $ PAny Proxy (unsafeULCTerm t)
 
 unsafeCoerceULC :: ULCImpl' m a -> ULCImpl' m b
 unsafeCoerceULC = ULCImpl . runImpl
+
+unsafeULCTerm :: ULCImpl' m a -> Term (ULCImpl m) b
+unsafeULCTerm = Term . unsafeCoerceULC
+
+unsafeCoerceULCTerm :: Term (ULCImpl m) a -> Term (ULCImpl m) b
+unsafeCoerceULCTerm = unsafeULCTerm . unTerm
 
 instance PUntyped (ULCImpl m) where
   punsafeCoerce = Term . unsafeCoerceULC . unTerm
@@ -61,8 +99,11 @@ instance (Applicative m) => PPartial (ULCImpl m) where
   perror = Term (ULCImpl $ const $ pure Error)
 
 instance (Applicative m) =>  PAp m (ULCImpl m) where
+  papr x y = Term . ULCImpl $ \i -> x *> runImpl (unTerm y) i
+  papl x y = Term . ULCImpl $ \i -> runImpl (unTerm x) i <* y
 
 instance (Monad m) => PEmbeds m (ULCImpl m) where
+  pembed mt = Term . ULCImpl $ \i -> mt >>= \t -> runImpl (unTerm t) i
 
 class
   ( PLC edsl
