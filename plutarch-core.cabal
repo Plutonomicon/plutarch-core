@@ -75,4 +75,3 @@ library
   build-depends:
     , base
     , generics-sop
-    , transformers
