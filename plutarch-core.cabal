@@ -60,6 +60,7 @@ library
     -fprint-equality-relations -fprint-explicit-foralls
 
   exposed-modules:
+    Examples.ULC
     Plutarch.Core
     Plutarch.Experimental
     Plutarch.Internal.WithDictHack
@@ -69,8 +70,6 @@ library
     Plutarch.PType
     Plutarch.Reduce
     Plutarch.ULC
-
-    Examples.ULC
 
   build-depends:
     , base

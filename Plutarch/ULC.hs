@@ -3,8 +3,12 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
-module Plutarch.ULC (ULC, ULCImpl,
- compileAp, compile, compile') where
+module Plutarch.ULC (
+  ULC,
+  PULC,
+  compileAp,
+  compile,
+) where
 
 import Data.Proxy
 
@@ -23,11 +27,14 @@ data ULC
 runULambda :: ULCImpl' m a -> m ULC
 runULambda r = runImpl r 0
 
-newtype ULCImpl' m (a :: PType) = ULCImpl { runImpl :: Int -> m ULC }
+newtype ULCImpl' m (a :: PType) = ULCImpl {runImpl :: Int -> m ULC}
 
 type ULCImpl m = 'PDSLKind (ULCImpl' m)
 
 instance PDSL (ULCImpl m)
+
+unT :: Term (ULCImpl m) a -> ULCImpl' m (PRepr a)
+unT = unTerm
 
 instance (Applicative m) => PConstructable' (ULCImpl m) (a #-> b) where
   pconImpl (PLam f) =
@@ -37,25 +44,26 @@ instance (Applicative m) => PConstructable' (ULCImpl m) (a #-> b) where
     f $ PLam \(Term (ULCImpl x)) ->
       Term . ULCImpl $ \lvl -> App <$> t lvl <*> x lvl
 
-instance (Applicative m, IsPType (ULCImpl m) a, IsPType (ULCImpl m) b) => PConstructable' (ULCImpl m) (PPair a b) where
-  pconImpl (PPair a b) = unsafeCoerceULC . unTerm $ pcon $ PLam \p -> p # a # b :: Term (ULCImpl m) PUnit
+instance (Applicative m, PHasRepr a, PHasRepr b) => PConstructable' (ULCImpl m) (PPair a b) where
+  pconImpl (PPair a b) = unsafeCoerceULC . unT $ pcon $ PLam \p -> p # a # b :: Term (ULCImpl m) PUnit
   pmatchImpl t f = f $ PPair (pfst (Term t)) (psnd (Term t))
 
 tru, fls :: (Applicative m) => Term (ULCImpl m) (a #-> a #-> a)
 tru = pcon $ PLam \t -> pcon $ PLam \_ -> t
 fls = pcon $ PLam \_ -> pcon $ PLam \f -> f
 
-pfst :: (Applicative m, IsPType (ULCImpl m) a) =>  Term (ULCImpl m) (PPair a b) -> Term (ULCImpl m) a
+pfst :: (Applicative m, IsPType (ULCImpl m) a) => Term (ULCImpl m) (PPair a b) -> Term (ULCImpl m) a
 pfst p = (unsafeCoerceULCTerm p) # tru
 
-psnd :: (Applicative m, IsPType (ULCImpl m) b) =>  Term (ULCImpl m) (PPair a b) -> Term (ULCImpl m) b
+psnd :: (Applicative m, IsPType (ULCImpl m) b) => Term (ULCImpl m) (PPair a b) -> Term (ULCImpl m) b
 psnd p = (unsafeCoerceULCTerm p) # fls
 
-instance (Applicative m, IsPType (ULCImpl m) a, IsPType (ULCImpl m) b) => PConstructable' (ULCImpl m) (PEither a b) where
-  pconImpl t = unsafeCoerceULC . unTerm $ pcon $
-    PLam \l -> pcon $ PLam \r -> case t of
-      PLeft a -> l # a  :: Term (ULCImpl m) PUnit
-      PRight b -> r # b
+instance (Applicative m, PHasRepr a, PHasRepr b) => PConstructable' (ULCImpl m) (PEither a b) where
+  pconImpl t = unsafeCoerceULC . unTerm $
+    pcon $
+      PLam \l -> pcon $ PLam \r -> case t of
+        PLeft a -> l # a :: Term (ULCImpl m) PUnit
+        PRight b -> r # b
 
   pmatchImpl t f = unsafeULCTerm t # (pcon . PLam $ f . PLeft) # (pcon . PLam $ f . PRight)
 
@@ -98,7 +106,7 @@ instance PUntyped (ULCImpl m) where
 instance (Applicative m) => PPartial (ULCImpl m) where
   perror = Term (ULCImpl $ const $ pure Error)
 
-instance (Applicative m) =>  PAp m (ULCImpl m) where
+instance (Applicative m) => PAp m (ULCImpl m) where
   papr x y = Term . ULCImpl $ \i -> x *> runImpl (unTerm y) i
   papl x y = Term . ULCImpl $ \i -> runImpl (unTerm x) i <* y
 
@@ -109,22 +117,22 @@ class
   ( PLC edsl
   , PUntyped edsl
   , PPartial edsl
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PPair a b)
   , PConstructable edsl PUnit
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PEither a b)
-  , forall a. (IsPType edsl a) => PConstructable edsl (PLet a)
+  , -- FIXME: add PSOP
+    -- FIXME: add PPolymorphic
+    forall a. (IsPType edsl a) => PConstructable edsl (PLet a)
   , forall a. PConstructable edsl (PFix a)
-  ) => PULC edsl
+  ) =>
+  PULC edsl
 instance
   ( PLC edsl
   , PUntyped edsl
   , PPartial edsl
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PPair a b)
   , PConstructable edsl PUnit
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (PEither a b)
   , forall a. (IsPType edsl a) => PConstructable edsl (PLet a)
   , forall a. PConstructable edsl (PFix a)
-  ) => PULC edsl
+  ) =>
+  PULC edsl
 
 compile' :: Term (ULCImpl m) a -> m ULC
 compile' (Term term) = runULambda term
@@ -133,4 +141,4 @@ compileAp :: CompileAp PULC ULC
 compileAp t = let _unused = callStack in compile' t
 
 compile :: Compile PULC ULC
-compile t = let _unused = callStack in  compile' t
+compile t = let _unused = callStack in compile' t
