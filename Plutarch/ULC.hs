@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Plutarch.ULC (ULC, ULCImpl,
  compileAp, compile, compile') where
@@ -38,7 +38,7 @@ instance (Applicative m) => PConstructable' (ULCImpl m) (a #-> b) where
       Term . ULCImpl $ \lvl -> App <$> t lvl <*> x lvl
 
 instance (Applicative m, IsPType (ULCImpl m) a, IsPType (ULCImpl m) b) => PConstructable' (ULCImpl m) (PPair a b) where
-  pconImpl (PPair a b) = unsafeCoerceULC . unTerm $ pcon $ PLam \p -> p # a # b
+  pconImpl (PPair a b) = unsafeCoerceULC . unTerm $ pcon $ PLam \p -> p # a # b :: Term (ULCImpl m) PUnit
   pmatchImpl t f = f $ PPair (pfst (Term t)) (psnd (Term t))
 
 tru, fls :: (Applicative m) => Term (ULCImpl m) (a #-> a #-> a)
@@ -54,7 +54,7 @@ psnd p = (unsafeCoerceULCTerm p) # fls
 instance (Applicative m, IsPType (ULCImpl m) a, IsPType (ULCImpl m) b) => PConstructable' (ULCImpl m) (PEither a b) where
   pconImpl t = unsafeCoerceULC . unTerm $ pcon $
     PLam \l -> pcon $ PLam \r -> case t of
-      PLeft a -> l # a
+      PLeft a -> l # a  :: Term (ULCImpl m) PUnit
       PRight b -> r # b
 
   pmatchImpl t f = unsafeULCTerm t # (pcon . PLam $ f . PLeft) # (pcon . PLam $ f . PRight)

@@ -8,7 +8,7 @@ import Plutarch.Prelude
 import Plutarch.ULC ( ULC, compile )
 import Data.Functor.Identity ( Identity(runIdentity) )
 
-pid :: (forall a b. PConstructable edsl (a #-> b)) => Term edsl (a #-> a)
+pid :: (PConstructable edsl (PUnit #-> PUnit)) => Term edsl (PUnit #-> PUnit)
 pid = pcon $ PLam \x -> x
 
 -- | >>> runIdentity . compile $ pid
