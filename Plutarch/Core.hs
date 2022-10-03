@@ -3,6 +3,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.Core (
+  PSOP,
   PGeneric,
   Compile,
   CompileAp,
@@ -144,7 +145,8 @@ instance PHasRepr PPType where
   type PReprSort _ = PReprPrimitive
 
 type PRepr :: PType -> PType
-type PRepr a = PReprApply (PReprSort a) a
+type family PRepr a where
+  PRepr a = PReprApply (PReprSort a) a
 
 type NoTypeInfo :: forall k. PHs k -> Constraint
 class NoTypeInfo a
@@ -176,7 +178,8 @@ type family TypeOrVal (a :: PType) :: Bool where
 
 type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
 class IsPType edsl (x :: PHs a) where
-  isPType :: forall y.
+  isPType ::
+    forall y.
     Proxy edsl ->
     Proxy x ->
     (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> y) ->
@@ -199,8 +202,8 @@ type H2 :: PDSLKind -> forall (a :: Type). a -> Constraint
 class H1 edsl a x => H2 edsl (x :: a)
 instance H1 edsl a x => H2 edsl (x :: a)
 
-type family Helper (edsl :: PDSLKind) :: PTypeF where
-  Helper edsl = MkETypeF (H2 edsl) (Compose NoReduce (Term edsl))
+type Helper :: PDSLKind -> PTypeF
+type Helper edsl = MkETypeF (H2 edsl) (Compose NoReduce (Term edsl))
 
 type PConcrete (edsl :: PDSLKind) (a :: PType) = a (Helper edsl)
 
@@ -366,6 +369,15 @@ sopTo ::
   SOP.SOP (Term edsl) (PSOPPTypes edsl a) ->
   SOP.SOP SOP.I (PSOPTerms edsl a)
 sopTo _ _ = SOP.hcoerce
+
+type PSOP :: PDSLKind -> Constraint
+type PSOP edsl =
+  ( PConstructable edsl PUnit
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PPair a b)
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PEither a b)
+  , forall a. PIsSOP edsl a => PConstructable' edsl (PSOPed a)
+  , IsPType edsl PPType
+  )
 
 type CompileAp variant output =
   forall a m.
