@@ -11,7 +11,7 @@ module Plutarch.Core (
   UnPDSLKind,
   Term (Term),
   ClosedTerm,
-  IsPTypeBackend,
+  IsPType',
   PHasRepr (..),
   PIsRepr (..),
   IsPType,
@@ -104,7 +104,7 @@ class PIsRepr (r :: PReprKind) where
     Proxy r ->
     Proxy edsl ->
     Proxy x ->
-    (forall a' (x' :: PHs a'). IsPTypeBackend edsl x' => Proxy x' -> y) ->
+    (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> y) ->
     y
 
 data PReprPrimitive'
@@ -115,7 +115,7 @@ type PReprPrimitive = 'PReprKind PReprPrimitive'
 instance PIsRepr PReprPrimitive where
   type PReprApply PReprPrimitive a = a
   type PReprC PReprPrimitive _ = ()
-  type PReprIsPType PReprPrimitive _ edsl x = IsPTypeBackend edsl x
+  type PReprIsPType PReprPrimitive _ edsl x = IsPType' edsl x
   prfrom = id
   prto = id
   prIsPType _ _ x f = f x
@@ -132,7 +132,7 @@ type family Unimplemented (t :: Symbol) :: Constraint where
 instance PIsRepr PReprSOP where
   type PReprApply PReprSOP a = PSOPed a
   type PReprC PReprSOP a = PGeneric a
-  type PReprIsPType _ _ _ _ = Unimplemented "It is not yet clear how to handle this" -- Known x => IsPTypeBackend edsl x
+  type PReprIsPType _ _ _ _ = Unimplemented "It is not yet clear how to handle this" -- Known x => IsPType' edsl x
   prfrom = PSOPed
   prto (PSOPed x) = x
   prIsPType _ _ _ _ = error "unimplemented"
@@ -152,9 +152,8 @@ class NoTypeInfo a
 instance NoTypeInfo a
 
 class Monad (ET edsl) => PDSL (edsl :: PDSLKind) where
-  type IsPTypeBackend edsl :: forall (a :: PType). PHs a -> Constraint
-  type IsPTypeBackend _ = NoTypeInfo
-  type ET edsl :: Type -> Type
+  type IsPType' edsl :: forall (a :: PType). PHs a -> Constraint
+  type IsPType' _ = NoTypeInfo
 
 type role T nominal nominal
 newtype T (edsl :: PDSLKind) (a :: PType) where
@@ -168,9 +167,9 @@ type ClosedETerm (c :: PDSLKind -> Constraint) (a :: Type) = forall edsl. c edsl
 
 type IsPTypeWrapper :: Bool -> PDSLKind -> forall (a :: PType). PHs a -> Constraint
 class IsPTypeWrapper typeorval edsl x where
-  isPTypeWrapper :: Proxy typeorval -> Proxy edsl -> Proxy x -> (forall a' (x' :: PHs a'). IsPTypeBackend edsl x' => Proxy x' -> y) -> y
+  isPTypeWrapper :: Proxy typeorval -> Proxy edsl -> Proxy x -> (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> y) -> y
 
-instance (PHasRepr a, IsPTypeBackend edsl @PPType (PRepr a)) => IsPTypeWrapper 'True edsl (a :: PType) where
+instance (PHasRepr a, IsPType' edsl @PPType (PRepr a)) => IsPTypeWrapper 'True edsl (a :: PType) where
   isPTypeWrapper _ _ _ f = f (Proxy @(PRepr a))
 
 instance (PHasRepr a, PReprIsPType (PReprSort a) a edsl x) => IsPTypeWrapper 'False edsl (x :: PHs a) where
@@ -181,11 +180,14 @@ type family TypeOrVal (a :: PType) :: Bool where
   TypeOrVal _ = 'False
 
 type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
-class (IsPTypeWrapper (TypeOrVal a) edsl x) => IsPType edsl (x :: PHs a)
-instance (IsPTypeWrapper (TypeOrVal a) edsl x) => IsPType edsl (x :: PHs a)
-
-isPType :: forall edsl a (x :: PHs a) y. IsPType edsl x => Proxy edsl -> Proxy x -> (forall a' (x' :: PHs a'). IsPTypeBackend edsl x' => Proxy x' -> y) -> y
-isPType = isPTypeWrapper (Proxy @(TypeOrVal a))
+class IsPType edsl (x :: PHs a) where
+  isPType :: forall y.
+    Proxy edsl ->
+    Proxy x ->
+    (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> y) ->
+    y
+instance (IsPTypeWrapper (TypeOrVal a) edsl x) => IsPType edsl (x :: PHs a) where
+  isPType = isPTypeWrapper (Proxy @(TypeOrVal a))
 
 type CoerceTo :: forall a. forall (b :: Type) -> a -> b
 type family CoerceTo (b :: Type) (x :: a) :: b where
@@ -207,34 +209,95 @@ type family Helper (edsl :: PDSLKind) :: PTypeF where
 
 type PConcrete (edsl :: PDSLKind) (a :: PType) = a (Helper edsl)
 
-class (PDSL edsl, IsPTypeBackend edsl a) => PConstructable' edsl (a :: PType) where
-  -- NB!!! Caller expects argument to be consumed linearly.
-  unsafePConImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
-
-  -- If this didn't return `Term`, implementing it would be a lot harder.
-  -- NB!!! Caller expects arguments to be consumed linearly.
-  unsafePMatchImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> Term edsl b) -> Term edsl b
+class (PDSL edsl, IsPType' edsl a) => PConstructable' edsl (a :: PType) where
+  pconImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
+  pmatchImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> Term edsl b) -> Term edsl b
 
 -- | The crux of what an eDSL is.
-class (PConstructable' edsl (PRepr a), PHasRepr a) => PConstructable edsl (a :: PType)
+class IsPType edsl a => PConstructable edsl (a :: PType) where
+  pcon :: HasCallStack => PConcrete edsl a -> Term edsl a
+  pmatch ::
+    forall b.
+    (HasCallStack, IsPType edsl b) =>
+    Term edsl a ->
+    (PConcrete edsl a -> Term edsl b) ->
+    Term edsl b
 
-instance (PConstructable' edsl (PRepr a), PHasRepr a) => PConstructable edsl a
+-- duplicate IsPType' constraint because otherwise GHC complains
+instance (PHasRepr a, IsPType' edsl (PRepr a), PConstructable' edsl (PRepr a)) => PConstructable edsl a where
+  pcon x = Term $ pconImpl (prfrom x)
+  pmatch (Term t) f = pmatchImpl t \x -> f (prto x)
 
--- | The handling of effects depends on the type.
-pcon :: forall edsl a. (HasCallStack, PConstructable edsl a) => PConcrete edsl a %m -> Term edsl a
-pcon x = Term $ unsafePConImpl (prfrom x)
+data PVoid ef
+instance PHasRepr PVoid where type PReprSort _ = PReprPrimitive
 
-{- | For `pmatch x \y -> z`, all effects in `x` and `z` must happen in the result.
- The effects in `x` must happen before the effects in `z`.
- `y` must be effectless.
--}
-pmatch ::
-  forall edsl a b.
-  (HasCallStack, PConstructable edsl a, IsPType edsl b) =>
-  Term edsl a %m ->
-  (PConcrete edsl a -> Term edsl b) %m ->
-  Term edsl b
-pmatch (Term t) f = unsafePMatchImpl t \x -> f (prto x)
+-- | Pffects of `pcon` are effects of the argument.
+data PLet a ef = PLet (ef /$ a)
+
+instance PHasRepr (PLet a) where type PReprSort _ = PReprPrimitive
+
+-- | `pcon` has no effects.
+data PDelay a ef = PDelay (ef /$ a)
+
+instance PHasRepr (PDelay a) where type PReprSort _ = PReprPrimitive
+
+-- | '=>' embedded into an eDSL.
+data (#=>) (a :: Constraint) (b :: PType) ef = PConstrained (a => ef /$ b)
+
+instance PHasRepr (a #=> b) where type PReprSort _ = PReprPrimitive
+
+infixr 0 #=>
+
+-- | '->' embedded into an eDSL.
+data (#->) a b ef = PLam ((ef /$ a) -> (ef /$ b)) deriving stock (Generic)
+
+instance PHasRepr (a #-> b) where type PReprSort _ = PReprPrimitive
+
+infixr 0 #->
+
+data PAny ef = forall a. PAny (Proxy a) (ef /$ a)
+instance PHasRepr PAny where type PReprSort _ = PReprPrimitive
+
+newtype PForall (f :: PHs a -> PType) ef = PForall (forall (forallvar :: PHs a). PfC ef forallvar => ef /$ f forallvar)
+instance PHasRepr (PForall ef) where type PReprSort _ = PReprPrimitive
+
+data PSome (f :: PHs a -> PType) ef = forall (x :: PHs a). PSome (PfC ef x => ef /$ f x)
+instance PHasRepr (PSome ef) where type PReprSort _ = PReprPrimitive
+
+newtype PFix f ef = PFix (ef /$ f (PFix f))
+instance PHasRepr (PFix f) where type PReprSort _ = PReprPrimitive
+
+data PUnit (ef :: PTypeF) = PUnit deriving stock (Generic)
+instance PHasRepr PUnit where type PReprSort _ = PReprPrimitive
+
+data PPair a b ef = PPair (ef /$ a) (ef /$ b) deriving stock (Generic)
+instance PHasRepr (PPair a b) where type PReprSort _ = PReprPrimitive
+
+data PEither a b ef = PLeft (ef /$ a) | PRight (ef /$ b) deriving stock (Generic)
+instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
+
+type PLC :: PDSLKind -> Constraint
+type PLC edsl = forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (a #-> b)
+
+(#) :: (HasCallStack, PLC edsl, IsPType edsl a, IsPType edsl b) => Term edsl (a #-> b) -> Term edsl a -> Term edsl b
+(#) f x = pmatch f (\(PLam f') -> f' x)
+
+infixl 8 #
+
+plet :: forall edsl a b. (HasCallStack, PConstructable edsl (PLet a), IsPType edsl b) => Term edsl a -> (Term edsl a -> Term edsl b) -> Term edsl b
+plet x f = pmatch (pcon $ PLet x) \(PLet y) -> f y
+
+class PDSL edsl => PUntyped edsl where
+  punsafeCoerce :: (HasCallStack, IsPType edsl a, IsPType edsl b) => Term edsl a -> Term edsl b
+
+type PPolymorphic :: PDSLKind -> Constraint
+type PPolymorphic edsl =
+  ( forall a (f :: PHs a -> PType). IsPType edsl ( 'PLam f :: PHs (a #-> PPType)) => PConstructable edsl (PForall f)
+  , forall a b (f :: PHs a -> PHs b). (forall xVd. IsPType edsl xVd => IsPType edsl (f xVd)) => IsPType edsl ( 'PLam f :: PHs (a #-> b))
+  )
+
+class PDSL edsl => PPartial edsl where
+  perror :: IsPType edsl a => Term edsl a
 
 class PDSL edsl => PAp (f :: Type -> Type) edsl where
   papr :: HasCallStack => f a -> Term edsl b -> Term edsl b
@@ -350,12 +413,12 @@ type PSOP edsl =
 
 type CompileAp variant output =
   forall a m.
-  (HasCallStack, Applicative m, forall edsl. variant edsl => IsPType edsl a) =>
+  (PHasRepr a, HasCallStack, Applicative m, (forall edsl. variant edsl => IsPType edsl a)) =>
   (forall edsl. (variant edsl, PAp m edsl) => Term edsl a) ->
   m output
 
 type Compile variant output =
   forall a m.
-  (HasCallStack, Monad m, forall edsl. variant edsl => IsPType edsl a) =>
+  (PHasRepr a, HasCallStack, Monad m, (forall edsl. variant edsl => IsPType edsl a)) =>
   (forall edsl. (variant edsl, PEmbeds m edsl) => Term edsl a) ->
   m output
