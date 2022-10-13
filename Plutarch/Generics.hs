@@ -1,3 +1,16 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+
+module Plutarch.Generics (PIsSOP (..)) where
+
+import Data.Kind (Type)
+import Data.Proxy (Proxy (Proxy))
+import GHC.TypeLits (ErrorMessage (ShowType, Text, (:$$:)), TypeError)
+import Generics.SOP qualified as SOP
+import Generics.SOP.GGP qualified as SOPG
+import Plutarch.Core (IsPType, PConcrete, PDSLKind, PReprSOP, PReprSort, Term)
+import Plutarch.PType (PGeneric, PType)
+
 data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
   (SOP.All (IsPType edsl) inner, SOP.SListI a) =>
   PIsProductR
@@ -7,10 +20,10 @@ data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
   }
 
 class PIsProduct (edsl :: PDSLKind) (a :: [Type]) where
-  eisProduct :: Proxy edsl -> Proxy a -> PIsProductR edsl a
+  pisProduct :: Proxy edsl -> Proxy a -> PIsProductR edsl a
 
 instance PIsProduct edsl '[] where
-  eisProduct _ _ =
+  pisProduct _ _ =
     PIsProductR
       { inner = Proxy @'[]
       , to = \SOP.Nil -> SOP.Nil
@@ -29,11 +42,11 @@ instance
   ) =>
   PIsProduct edsl (a : as)
   where
-  eisProduct edsl _ = error "unreachable" $ eisProduct edsl (Proxy @as)
+  pisProduct edsl _ = error "unreachable" $ pisProduct edsl (Proxy @as)
 
 instance (IsPType edsl a, PIsProduct edsl as) => PIsProduct edsl (Term edsl a : as) where
-  eisProduct edsl _ =
-    let prev = eisProduct edsl (Proxy @as)
+  pisProduct edsl _ =
+    let prev = pisProduct edsl (Proxy @as)
      in case prev of
           PIsProductR {inner = _ :: Proxy asi, to, from} ->
             PIsProductR
@@ -51,10 +64,10 @@ data PIsSumR (edsl :: PDSLKind) (a :: [[Type]]) = forall inner.
   }
 
 class PIsSum (edsl :: PDSLKind) (a :: [[Type]]) where
-  eisSum :: Proxy edsl -> Proxy a -> PIsSumR edsl a
+  pisSum :: Proxy edsl -> Proxy a -> PIsSumR edsl a
 
 instance PIsSum edsl '[] where
-  eisSum _ _ =
+  pisSum _ _ =
     PIsSumR
       { inner = Proxy @'[]
       , to = \case {}
@@ -62,10 +75,10 @@ instance PIsSum edsl '[] where
       }
 
 instance (PIsProduct edsl a, PIsSum edsl as) => PIsSum edsl (a : as) where
-  eisSum edsl _ =
-    case eisProduct edsl (Proxy @a) of
+  pisSum edsl _ =
+    case pisProduct edsl (Proxy @a) of
       PIsProductR {inner = _ :: Proxy innerh, to = toh, from = fromh} ->
-        case eisSum edsl (Proxy @as) of
+        case pisSum edsl (Proxy @as) of
           PIsSumR {inner = _ :: Proxy innert, to = tot, from = fromt} ->
             PIsSumR
               { inner = Proxy @(innerh : innert)
@@ -84,7 +97,7 @@ class
   ) =>
   PIsSOP (edsl :: PDSLKind) (a :: PType)
   where
-  esop :: Proxy edsl -> Proxy a -> PIsSumR edsl (SOPG.GCode (PConcrete edsl a))
+  psop :: Proxy edsl -> Proxy a -> PIsSumR edsl (SOPG.GCode (PConcrete edsl a))
 instance
   ( PGeneric a
   , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
@@ -92,4 +105,4 @@ instance
   ) =>
   PIsSOP (edsl :: PDSLKind) (a :: PType)
   where
-  esop edsl _ = eisSum edsl Proxy
+  psop edsl _ = pisSum edsl Proxy

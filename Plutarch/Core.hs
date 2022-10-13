@@ -3,7 +3,6 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.Core (
-  PGeneric,
   Compile,
   CompileAp,
   PRepr,

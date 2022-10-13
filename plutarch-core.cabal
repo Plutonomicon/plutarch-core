@@ -73,6 +73,7 @@ library
     Plutarch.Prelude
     Plutarch.PType
     Plutarch.Reduce
+    Plutarch.Generics
 
   build-depends:
     , base
