@@ -27,9 +27,9 @@ module Plutarch.Prelude (
 
 import GHC.Generics (Generic)
 import Plutarch.Core
-import Plutarch.Lam
-import Plutarch.PType
+import Plutarch.Frontends.Data
 import Plutarch.Helpers
+import Plutarch.PType
 
 ($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b
 f $$ x = f (pcon x)

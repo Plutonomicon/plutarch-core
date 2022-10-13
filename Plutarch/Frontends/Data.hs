@@ -1,20 +1,23 @@
 module Plutarch.Frontends.Data (
   PVoid,
-  PLet(..),
-  PDelay(..),
-  type (#=>)(..),
-  type (#->)(..),
-  PAny(..),
-  PForall(..),
-  PSome(..),
-  PFix(..),
-  PUnit(..),
-  PPair(..),
-  PEither(..),
-)
+  PLet (..),
+  PDelay (..),
+  type (#=>) (..),
+  type (#->) (..),
+  PAny (..),
+  PForall (..),
+  PSome (..),
+  PFix (..),
+  PUnit (..),
+  PPair (..),
+  PEither (..),
+) where
 
-import Plutarch.PType (PHs, PType, type (/$), PTypeF)
+import Data.Kind (Constraint)
+import Data.Proxy (Proxy)
+import GHC.Generics (Generic)
 import Plutarch.Core (PHasRepr, PReprPrimitive, PReprSort)
+import Plutarch.PType (PHs, PType, PTypeF, PfC, type (/$))
 
 data PVoid ef
 instance PHasRepr PVoid where type PReprSort _ = PReprPrimitive
