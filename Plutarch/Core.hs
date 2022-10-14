@@ -3,7 +3,6 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.Core (
-  PGeneric,
   Compile,
   CompileAp,
   PRepr,
@@ -11,7 +10,6 @@ module Plutarch.Core (
   UnPDSLKind,
   Term (Term),
   ClosedTerm,
-  IsPType',
   PHasRepr (..),
   PIsRepr (..),
   IsPType,
@@ -20,65 +18,29 @@ module Plutarch.Core (
   PReprSOP,
   PHs,
   PConcrete,
-  PConstructable' (pconImpl, pmatchImpl),
-  PConstructable,
-  pcon,
-  pmatch,
-  type (#->),
-  pattern PLam,
-  type (#=>),
-  pattern PConstrained,
-  PVoid,
-  PLet (..),
-  PDelay (PDelay),
-  PPair (PPair),
-  PEither (PLeft, PRight),
-  PForall (PForall),
-  PSome (PSome),
-  PFix (PFix),
-  PAny (PAny),
-  PPolymorphic,
-  PSOP,
-  PSOPed (..),
-  PIsSOP (..),
-  PUnit (PUnit),
-  PDSL,
-  PLC,
+  PConstructable' (..),
+  PConstructable (..),
+  PDSL (..),
   unTerm,
-  (#),
-  plet,
-  punsafeCoerce,
-  PUntyped,
-  PPartial,
-  perror,
   PEmbeds,
   pembed,
   PAp,
   papr,
   papl,
-  PIsProduct (..),
-  PIsProductR (..),
-  PIsSum (..),
-  PIsSumR (..),
 ) where
 
 import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
-import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack)
-import GHC.TypeLits (Symbol, TypeError, pattern ShowType, pattern Text, pattern (:$$:))
-import Generics.SOP qualified as SOP
-import Generics.SOP.GGP qualified as SOPG
+import GHC.TypeLits (Symbol)
 import Plutarch.PType (
   PGeneric,
   PHs,
   PPType,
   PType,
   PTypeF,
-  PfC,
   pattern MkETypeF,
-  type (/$),
  )
 import Plutarch.Reduce (NoReduce)
 
@@ -145,13 +107,15 @@ instance PHasRepr PPType where
   type PReprSort _ = PReprPrimitive
 
 type PRepr :: PType -> PType
-type PRepr a = PReprApply (PReprSort a) a
+type family PRepr a where
+  PRepr a = PReprApply (PReprSort a) a
 
 type NoTypeInfo :: forall k. PHs k -> Constraint
 class NoTypeInfo a
 instance NoTypeInfo a
 
-class PDSL (edsl :: PDSLKind) where
+class Monad (PEffect edsl) => PDSL (edsl :: PDSLKind) where
+  type PEffect edsl :: Type -> Type
   type IsPType' edsl :: forall (a :: PType). PHs a -> Constraint
   type IsPType' _ = NoTypeInfo
 
@@ -176,13 +140,14 @@ type family TypeOrVal (a :: PType) :: Bool where
   TypeOrVal _ = 'False
 
 type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
-class IsPType edsl (x :: PHs a) where
-  isPType :: forall y.
+class PDSL edsl => IsPType edsl (x :: PHs a) where
+  isPType ::
+    forall y.
     Proxy edsl ->
     Proxy x ->
     (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> y) ->
     y
-instance (IsPTypeWrapper (TypeOrVal a) edsl x) => IsPType edsl (x :: PHs a) where
+instance (PDSL edsl, IsPTypeWrapper (TypeOrVal a) edsl x) => IsPType edsl (x :: PHs a) where
   isPType = isPTypeWrapper (Proxy @(TypeOrVal a))
 
 type CoerceTo :: forall a. forall (b :: Type) -> a -> b
@@ -208,6 +173,7 @@ type PConcrete (edsl :: PDSLKind) (a :: PType) = a (Helper edsl)
 class (PDSL edsl, IsPType' edsl a) => PConstructable' edsl (a :: PType) where
   pconImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
   pmatchImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> Term edsl b) -> Term edsl b
+  pcaseImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> PEffect edsl (Term edsl b)) -> PEffect edsl (Term edsl b)
 
 -- | The crux of what an eDSL is.
 class IsPType edsl a => PConstructable edsl (a :: PType) where
@@ -218,82 +184,18 @@ class IsPType edsl a => PConstructable edsl (a :: PType) where
     Term edsl a ->
     (PConcrete edsl a -> Term edsl b) ->
     Term edsl b
+  pcase ::
+    forall b.
+    (HasCallStack, IsPType edsl b) =>
+    Term edsl a ->
+    (PConcrete edsl a -> PEffect edsl (Term edsl b)) ->
+    PEffect edsl (Term edsl b)
 
 -- duplicate IsPType' constraint because otherwise GHC complains
 instance (PHasRepr a, IsPType' edsl (PRepr a), PConstructable' edsl (PRepr a)) => PConstructable edsl a where
   pcon x = Term $ pconImpl (prfrom x)
   pmatch (Term t) f = pmatchImpl t \x -> f (prto x)
-
-data PVoid ef
-instance PHasRepr PVoid where type PReprSort _ = PReprPrimitive
-
--- | Pffects of `pcon` are effects of the argument.
-data PLet a ef = PLet (ef /$ a)
-
-instance PHasRepr (PLet a) where type PReprSort _ = PReprPrimitive
-
--- | `pcon` has no effects.
-data PDelay a ef = PDelay (ef /$ a)
-
-instance PHasRepr (PDelay a) where type PReprSort _ = PReprPrimitive
-
--- | '=>' embedded into an eDSL.
-data (#=>) (a :: Constraint) (b :: PType) ef = PConstrained (a => ef /$ b)
-
-instance PHasRepr (a #=> b) where type PReprSort _ = PReprPrimitive
-
-infixr 0 #=>
-
--- | '->' embedded into an eDSL.
-data (#->) a b ef = PLam ((ef /$ a) -> (ef /$ b)) deriving stock (Generic)
-
-instance PHasRepr (a #-> b) where type PReprSort _ = PReprPrimitive
-
-infixr 0 #->
-
-data PAny ef = forall a. PAny (Proxy a) (ef /$ a)
-instance PHasRepr PAny where type PReprSort _ = PReprPrimitive
-
-newtype PForall (f :: PHs a -> PType) ef = PForall (forall (forallvar :: PHs a). PfC ef forallvar => ef /$ f forallvar)
-instance PHasRepr (PForall ef) where type PReprSort _ = PReprPrimitive
-
-data PSome (f :: PHs a -> PType) ef = forall (x :: PHs a). PSome (PfC ef x => ef /$ f x)
-instance PHasRepr (PSome ef) where type PReprSort _ = PReprPrimitive
-
-newtype PFix f ef = PFix (ef /$ f (PFix f))
-instance PHasRepr (PFix f) where type PReprSort _ = PReprPrimitive
-
-data PUnit (ef :: PTypeF) = PUnit deriving stock (Generic)
-instance PHasRepr PUnit where type PReprSort _ = PReprPrimitive
-
-data PPair a b ef = PPair (ef /$ a) (ef /$ b) deriving stock (Generic)
-instance PHasRepr (PPair a b) where type PReprSort _ = PReprPrimitive
-
-data PEither a b ef = PLeft (ef /$ a) | PRight (ef /$ b) deriving stock (Generic)
-instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
-
-type PLC :: PDSLKind -> Constraint
-type PLC edsl = forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable edsl (a #-> b)
-
-(#) :: (HasCallStack, PLC edsl, IsPType edsl a, IsPType edsl b) => Term edsl (a #-> b) -> Term edsl a -> Term edsl b
-(#) f x = pmatch f (\(PLam f') -> f' x)
-
-infixl 8 #
-
-plet :: forall edsl a b. (HasCallStack, PConstructable edsl (PLet a), IsPType edsl b) => Term edsl a -> (Term edsl a -> Term edsl b) -> Term edsl b
-plet x f = pmatch (pcon $ PLet x) \(PLet y) -> f y
-
-class PDSL edsl => PUntyped edsl where
-  punsafeCoerce :: (HasCallStack, IsPType edsl a, IsPType edsl b) => Term edsl a -> Term edsl b
-
-type PPolymorphic :: PDSLKind -> Constraint
-type PPolymorphic edsl =
-  ( forall a (f :: PHs a -> PType). IsPType edsl ( 'PLam f :: PHs (a #-> PPType)) => PConstructable edsl (PForall f)
-  , forall a b (f :: PHs a -> PHs b). (forall xVd. IsPType edsl xVd => IsPType edsl (f xVd)) => IsPType edsl ( 'PLam f :: PHs (a #-> b))
-  )
-
-class PDSL edsl => PPartial edsl where
-  perror :: IsPType edsl a => Term edsl a
+  pcase (Term t) f = pcaseImpl t \x -> f (prto x)
 
 class PDSL edsl => PAp (f :: Type -> Type) edsl where
   papr :: HasCallStack => f a -> Term edsl b -> Term edsl b
@@ -301,111 +203,6 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
 
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
   pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
-
-data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
-  (SOP.All (IsPType edsl) inner, SOP.SListI a) =>
-  PIsProductR
-  { inner :: Proxy inner
-  , to :: SOP.NP (Term edsl) inner -> SOP.NP SOP.I a
-  , from :: SOP.NP SOP.I a -> SOP.NP (Term edsl) inner
-  }
-
-class PIsProduct (edsl :: PDSLKind) (a :: [Type]) where
-  eisProduct :: Proxy edsl -> Proxy a -> PIsProductR edsl a
-
-instance PIsProduct edsl '[] where
-  eisProduct _ _ =
-    PIsProductR
-      { inner = Proxy @'[]
-      , to = \SOP.Nil -> SOP.Nil
-      , from = \SOP.Nil -> SOP.Nil
-      }
-
--- TODO: Replace with https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0433-unsatisfiable.rst
--- TODO: Possibly show type in question?
-instance
-  {-# OVERLAPPABLE #-}
-  ( TypeError
-      ( Text "Can not embed type that contains: "
-          :$$: ShowType a
-      )
-  , PIsProduct edsl as
-  ) =>
-  PIsProduct edsl (a : as)
-  where
-  eisProduct edsl _ = error "unreachable" $ eisProduct edsl (Proxy @as)
-
-instance (IsPType edsl a, PIsProduct edsl as) => PIsProduct edsl (Term edsl a : as) where
-  eisProduct edsl _ =
-    let prev = eisProduct edsl (Proxy @as)
-     in case prev of
-          PIsProductR {inner = _ :: Proxy asi, to, from} ->
-            PIsProductR
-              { inner = Proxy @(a : asi)
-              , to = \(x SOP.:* xs) -> SOP.I x SOP.:* to xs
-              , from = \(SOP.I x SOP.:* xs) -> x SOP.:* from xs
-              }
-
-data PIsSumR (edsl :: PDSLKind) (a :: [[Type]]) = forall inner.
-  (SOP.All2 (IsPType edsl) inner, SOP.SListI2 a) =>
-  PIsSumR
-  { inner :: Proxy inner
-  , to :: SOP.SOP (Term edsl) inner -> SOP.SOP SOP.I a
-  , from :: SOP.SOP SOP.I a -> SOP.SOP (Term edsl) inner
-  }
-
-class PIsSum (edsl :: PDSLKind) (a :: [[Type]]) where
-  eisSum :: Proxy edsl -> Proxy a -> PIsSumR edsl a
-
-instance PIsSum edsl '[] where
-  eisSum _ _ =
-    PIsSumR
-      { inner = Proxy @'[]
-      , to = \case {}
-      , from = \case {}
-      }
-
-instance (PIsProduct edsl a, PIsSum edsl as) => PIsSum edsl (a : as) where
-  eisSum edsl _ =
-    case eisProduct edsl (Proxy @a) of
-      PIsProductR {inner = _ :: Proxy innerh, to = toh, from = fromh} ->
-        case eisSum edsl (Proxy @as) of
-          PIsSumR {inner = _ :: Proxy innert, to = tot, from = fromt} ->
-            PIsSumR
-              { inner = Proxy @(innerh : innert)
-              , to = \case
-                  SOP.SOP (SOP.Z x) -> SOP.SOP $ SOP.Z $ toh x
-                  SOP.SOP (SOP.S x) -> case tot $ SOP.SOP $ x of SOP.SOP y -> SOP.SOP (SOP.S y)
-              , from = \case
-                  SOP.SOP (SOP.Z x) -> SOP.SOP $ SOP.Z $ fromh x
-                  SOP.SOP (SOP.S x) -> case fromt $ SOP.SOP $ x of SOP.SOP y -> SOP.SOP (SOP.S y)
-              }
-
-class
-  ( PGeneric a
-  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
-  , PReprSort a ~ PReprSOP
-  ) =>
-  PIsSOP (edsl :: PDSLKind) (a :: PType)
-  where
-  esop :: Proxy edsl -> Proxy a -> PIsSumR edsl (SOPG.GCode (PConcrete edsl a))
-instance
-  ( PGeneric a
-  , PIsSum edsl (SOPG.GCode (PConcrete edsl a))
-  , PReprSort a ~ PReprSOP
-  ) =>
-  PIsSOP (edsl :: PDSLKind) (a :: PType)
-  where
-  esop edsl _ = eisSum edsl Proxy
-
-type PSOP :: PDSLKind -> Constraint
-type PSOP edsl =
-  ( PConstructable edsl PUnit
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PPair a b)
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PEither a b)
-  , forall a. PIsSOP edsl a => PConstructable' edsl (PSOPed a)
-  , IsPType edsl PPType
-  )
 
 type CompileAp variant output =
   forall a m.

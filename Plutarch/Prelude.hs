@@ -20,11 +20,15 @@ module Plutarch.Prelude (
   PHs,
   PType,
   PPType,
+  IsPType1,
+  IsPType2,
+  IsPType3,
 ) where
 
 import GHC.Generics (Generic)
 import Plutarch.Core
-import Plutarch.Lam
+import Plutarch.Frontends.Data
+import Plutarch.Helpers
 import Plutarch.PType
 
 ($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b

@@ -56,18 +56,24 @@ library
     -Wno-missing-safe-haskell-mode -Wno-missing-local-signatures
     -Wno-prepositive-qualified-module -Wno-missing-import-lists
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
-    -fprint-explicit-kinds -fprint-explicit-coercions
-    -fprint-equality-relations -fprint-explicit-foralls
+    -fprint-explicit-kinds -fprint-equality-relations
+    -fprint-explicit-foralls
 
   exposed-modules:
     Plutarch.Core
     Plutarch.Experimental
+    Plutarch.Frontends.Data
+    Plutarch.Frontends.LC
+    Plutarch.Frontends.Partial
+    Plutarch.Frontends.Untyped
+    Plutarch.Generics
+    Plutarch.Helpers
     Plutarch.Internal.WithDictHack
     Plutarch.Internal.Witness
-    Plutarch.Lam
     Plutarch.Prelude
     Plutarch.PType
     Plutarch.Reduce
+    Plutarch.TermCont
 
   build-depends:
     , base
