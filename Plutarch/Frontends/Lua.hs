@@ -15,7 +15,7 @@ data (#!->) (a :: PType) (b :: PType) (ef :: PTypeF)
   deriving (PHasRepr) via PHasReprDerive PReprPrimitive
 
 f :: PLua e => T e (PMutableTable PInteger PInteger) -> ETC e (T e PInteger)
-f :: \(t :: T _ (PMutableTable PInteger PInteger)) P.do
+f = \(t :: T _ (PMutableTable PInteger PInteger)) -> P.do
   x <- pbind $ plam \(_ :: T _ PUnit) -> plamImpure \i -> pshareTable t \t' -> ppureTerm $ pgetField t' i
   x <- P.do
     t <- pshareTable t
@@ -38,7 +38,9 @@ class
   , IsPType2 e PMutableTable
   , PConstructable2 e (#!->)
   , PMutable e
-  ) => PLuaTerm e where
+  ) =>
+  PLuaTerm e
+  where
   pmkTable :: [(T e k, T e v)] -> T e (PTable k v)
   pgetField :: T e (PTable k v) -> T e k -> T e v
   pshareTable :: T e (PMutableTable k v) -> ETC e (PTable k v)
