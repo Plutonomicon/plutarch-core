@@ -4,15 +4,17 @@
 
 module Plutarch.PType (
   PGeneric,
-  egto,
-  egfrom,
-  PTypeF (MkETypeF),
+  PCode,
+  pgto,
+  pgfrom,
+  PTypeF (MkPTypeF),
   PType,
   PPType (PPType),
   Pf,
   Pf' (..),
   PfC,
   PHs,
+  PHs',
   PHsW,
   type (/$),
 ) where
@@ -37,7 +39,7 @@ import Unsafe.Coerce (unsafeCoerce)
 -- This form of (higher) HKDs is useful for eDSLs, as you can replace the
 -- the fields with eDSL terms.
 
-data PTypeF = MkETypeF
+data PTypeF = MkPTypeF
   { _constraint :: forall (a :: Type). a -> Constraint
   , _concretise :: (PTypeF -> Type) -> Type
   }
@@ -47,17 +49,19 @@ type PType = PTypeF -> Type
 
 newtype PPType (ef :: PTypeF) = PPType PType
 
+type PHs' a = a (MkPTypeF Top PHsW)
+
 type PHs :: PType -> Type
 type family PHs (a :: PType) = r | r -> a where
-  PHs PPType = (PTypeF -> Type)
-  PHs a = a (MkETypeF Top PHsW)
+  PHs PPType = PType
+  PHs a = PHs' a
 
 type PHsW :: PType -> Type
 newtype PHsW a = PHsW (NoReduce (PHs a)) deriving stock (Generic)
 
 type family Pf (f :: PTypeF) (x :: PType) :: Type where
   forall (_constraint :: forall (a :: Type). a -> Constraint) (concretise :: PType -> Type) (x :: PType).
-    Pf (MkETypeF _constraint concretise) x =
+    Pf (MkPTypeF _constraint concretise) x =
       Reduce (concretise x)
 
 type (/$) ef a = Pf ef a
@@ -67,7 +71,7 @@ newtype Pf' ef a = Pf' (ef /$ a)
 
 type family PfC (f :: PTypeF) :: PHs a -> Constraint where
   forall (constraint :: forall (a :: Type). a -> Constraint) (_concretise :: PType -> Type).
-    PfC (MkETypeF constraint _concretise) =
+    PfC (MkPTypeF constraint _concretise) =
       constraint
 
 class
@@ -93,34 +97,34 @@ instance (forall ef. PGeneric' a ef) => PGeneric a
 
 data Dummy (a :: PType) deriving stock (Generic)
 
-type ToEType :: [Type] -> [PType]
-type family ToEType as where
-  ToEType '[] = '[]
-  ToEType (a ': as) = UnDummy a ': ToEType as
+type ToPType :: [Type] -> [PType]
+type family ToPType as where
+  ToPType '[] = '[]
+  ToPType (a ': as) = UnDummy a ': ToPType as
 
-type ToEType2 :: [[Type]] -> [[PType]]
-type family ToEType2 as where
-  ToEType2 '[] = '[]
-  ToEType2 (a ': as) = ToEType a ': ToEType2 as
+type ToPType2 :: [[Type]] -> [[PType]]
+type family ToPType2 as where
+  ToPType2 '[] = '[]
+  ToPType2 (a ': as) = ToPType a ': ToPType2 as
 
 type UnDummy :: Type -> PType
 type family UnDummy a where
   UnDummy (Dummy a) = a
 
 type DummyInst :: PType -> Type
-type DummyInst a = a (MkETypeF Top Dummy)
+type DummyInst a = a (MkPTypeF Top Dummy)
 
 -- FIXME: This doesn't work if the data type definition matches
 -- on the `ef` using a type family.
 type family PCode (a :: PType) :: [[PType]] where
-  PCode a = ToEType2 (GCode (DummyInst a))
+  PCode a = ToPType2 (GCode (DummyInst a))
 
-egfrom :: forall a ef. PGeneric a => Proxy a -> SOP I (GCode (a ef)) -> SOP (Pf' ef) (PCode a)
+pgfrom :: forall a ef. PGeneric a => Proxy a -> SOP I (GCode (a ef)) -> SOP (Pf' ef) (PCode a)
 -- This could be done safely, but it's a PITA.
 -- Depends on `All` constraint above.
-egfrom = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
+pgfrom = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
 
-egto :: forall a ef. PGeneric a => Proxy a -> SOP (Pf' ef) (PCode a) -> SOP I (GCode (a ef))
+pgto :: forall a ef. PGeneric a => Proxy a -> SOP (Pf' ef) (PCode a) -> SOP I (GCode (a ef))
 -- This could be done safely, but it's a PITA.
 -- Depends on `All` constraint above.
-egto = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
+pgto = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce

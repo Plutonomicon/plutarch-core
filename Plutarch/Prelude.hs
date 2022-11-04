@@ -5,7 +5,7 @@ module Plutarch.Prelude (
   PHasRepr (..),
   PConstructable,
   IsPType,
-  PReprSOP,
+  PReprNewtype,
   PForall (..),
   PSome (..),
   PUnit (..),
@@ -23,6 +23,8 @@ module Plutarch.Prelude (
   IsPType1,
   IsPType2,
   IsPType3,
+  T,
+  pany,
 ) where
 
 import GHC.Generics (Generic)
@@ -30,6 +32,8 @@ import Plutarch.Core
 import Plutarch.Frontends.Data
 import Plutarch.Helpers
 import Plutarch.PType
+import Plutarch.Repr
+import Plutarch.Repr.Newtype
 
 ($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b
 f $$ x = f (pcon x)

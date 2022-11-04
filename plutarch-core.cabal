@@ -1,11 +1,11 @@
-cabal-version:      3.0
+cabal-version:      3.4
 name:               plutarch-core
 version:            0.1.0
 author:             Las Safin <me@las.rs>
 license:            MIT
 extra-source-files: README.md
 
-library
+common c
   default-language:   GHC2021
   default-extensions:
     NoFlexibleInstances
@@ -59,6 +59,14 @@ library
     -fprint-explicit-kinds -fprint-equality-relations
     -fprint-explicit-foralls
 
+  build-depends:
+    , base
+    , generics-sop
+    , text
+
+library
+  import: c
+
   exposed-modules:
     Plutarch.Core
     Plutarch.Experimental
@@ -74,7 +82,18 @@ library
     Plutarch.PType
     Plutarch.Reduce
     Plutarch.TermCont
+    -- Plutarch.Frontends.Nix
+    -- Plutarch.Backends.Nix
+
+test-suite examples
+  import: c
+
+  type: exitcode-stdio-1.0
+
+  main-is: Examples/Main.hs
+
+  other-modules:
+    Examples.Simple
 
   build-depends:
-    , base
-    , generics-sop
+    plutarch-core

@@ -12,15 +12,18 @@ module Plutarch.Helpers (
   pbind,
   (#),
   plam,
+  T,
+  pany,
 ) where
 
 import Data.Kind (Constraint, Type)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
 import Plutarch.Core (IsPType, PConcrete, PConstructable, PDSLKind, PEffect, Term, pcase, pcon, pmatch)
-import Plutarch.Frontends.Data (PLet (PLet), type (#->) (PLam))
+import Plutarch.Frontends.Data (PLet (PLet), type (#->) (PLam), PAny (PAny))
 import Plutarch.Frontends.LC (PLC)
 import Plutarch.PType (PType)
 import Plutarch.TermCont (TermCont, tcont)
+import Data.Proxy (Proxy (Proxy))
 
 type IsPType1 :: PDSLKind -> (PType -> PType) -> Constraint
 type IsPType1 e f = forall a. IsPType e a => IsPType e (f a)
@@ -58,3 +61,10 @@ instance {-# OVERLAPPABLE #-} (a' ~ Term edsl a) => PLamN a' a edsl where
 
 instance (PConstructable edsl (a #-> b), a' ~ Term edsl a, PLamN b' b edsl) => PLamN (a' -> b') (a #-> b) edsl where
   plam f = withFrozenCallStack $ plam' $ \x -> plam (f x)
+
+type T :: forall (e :: PDSLKind). PType -> Type
+type family T (a :: PType) where
+  T @e a = Term e a
+
+pany :: PConstructable e PAny => Term e a -> Term e PAny
+pany x = pcon $ PAny Proxy x

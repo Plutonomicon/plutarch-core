@@ -1,39 +1,40 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Examples.Simple (eid_alt, eid, efalse) where
+module Examples.Simple (pid_alt, pid, pfalse) where
 
-import Plutarch.Core (PLC, PPolymorphic, PSOP)
-import Plutarch.Prelude
+import "plutarch-core" Plutarch.Prelude
+import "plutarch-core" Plutarch.Frontends.LC (PLC, PPolymorphic)
+import "plutarch-core" Plutarch.Frontends.Data (PSOP)
 
 type PSystemF edsl = (PLC edsl, PPolymorphic edsl, PSOP edsl)
 
 data PBool ef = PTrue | PFalse
   deriving stock (Generic)
-instance PHasRepr PBool where type PReprSort _ = PReprSOP
+  deriving anyclass (PHasRepr)
 
 newtype PId' a ef = PId' (ef /$ (a #-> a))
   deriving stock (Generic)
-instance PHasRepr (PId' a) where type PReprSort _ = PReprSOP
+  deriving anyclass (PHasRepr)
 
 newtype PId ef = PId (ef /$ PForall PId')
   deriving stock (Generic)
-instance PHasRepr PId where type PReprSort _ = PReprSOP
+  deriving anyclass (PHasRepr)
 
-efalse :: PSystemF edsl => Term edsl PBool
-efalse = pcon PFalse
+pfalse :: PSystemF edsl => Term edsl PBool
+pfalse = pcon PFalse
 
-eid''' :: (PSystemF edsl, IsPType edsl a) => Term edsl $ a #-> a
-eid''' = elam \x -> x
+pid''' :: (PLC edsl, IsPType edsl a) => Term edsl $ a #-> a
+pid''' = plam \x -> x
 
-eid'' :: (PSystemF edsl, IsPType edsl a) => Term edsl $ PId' a
-eid'' = pcon $ PId' eid'''
+pid'' :: (PSOP edsl, PLC edsl, IsPType edsl a) => Term edsl $ PId' a
+pid'' = pcon $ PId' pid'''
 
-eid' :: PSystemF edsl => Term edsl (PForall PId')
-eid' = pcon $ PForall eid''
+pid' :: PSystemF edsl => Term edsl (PForall PId')
+pid' = pcon $ PForall pid''
 
-eid :: PSystemF edsl => Term edsl PId
-eid = pcon $ PId eid'
+pid :: PSystemF edsl => Term edsl PId
+pid = pcon $ PId pid'
 
-eid_alt :: PSystemF edsl => Term edsl PId
-eid_alt = pcon $ PId $$ PForall $ pcon $ PId' $ elam \x -> x
+pid_alt :: PSystemF edsl => Term edsl (PForall PId')
+pid_alt = pcon $ PForall $ pcon $ PId' $ plam \x -> x

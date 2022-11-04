@@ -1,7 +1,8 @@
 module Plutarch.Experimental (PEq (..), PSingle) where
 
-import Plutarch.Core (PHasRepr (..), PHs, PReprPrimitive)
-import Plutarch.PType (PType, type (/$))
+import Plutarch.Repr (PHasRepr (PReprSort))
+import Plutarch.Repr.Primitive (PReprPrimitive)
+import Plutarch.PType (PType, type (/$), PHs)
 
 data PEq (x :: a) (y :: a) ef where
   PRefl :: PEq x x ef

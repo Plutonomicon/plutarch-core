@@ -8,7 +8,9 @@ import Data.Proxy (Proxy (Proxy))
 import GHC.TypeLits (ErrorMessage (ShowType, Text, (:$$:)), TypeError)
 import Generics.SOP qualified as SOP
 import Generics.SOP.GGP qualified as SOPG
-import Plutarch.Core (IsPType, PConcrete, PDSLKind, PReprSOP, PReprSort, Term)
+import Plutarch.Core (IsPType, PConcrete, PDSLKind, Term)
+import Plutarch.Repr (PReprSort)
+import Plutarch.Repr.SOP (PReprSOP)
 import Plutarch.PType (PGeneric, PType)
 
 data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
