@@ -4,7 +4,7 @@
 module Plutarch.Repr.Newtype (PReprNewtype) where
 
 import Plutarch.Repr (
-  PIsRepr0 (PReprApply, PReprIsPType), PIsRepr (PReprApplyVal0, prIsPType, PReprC))
+  PIsRepr0 (PReprApply, PReprIsPType), PIsRepr (PReprApplyVal0, prIsPType, PReprC, prfrom, prto))
 import Plutarch.Repr (PReprKind (PReprKind))
 import Plutarch.Internal.Unimplemented (Unimplemented, Error)
 import Plutarch.PType (
@@ -12,6 +12,7 @@ import Plutarch.PType (
   PType,
   PCode,
  )
+import Data.Coerce (coerce, Coercible)
 
 type family GetPNewtype' (a :: [[PType]]) :: PType where
   GetPNewtype' '[ '[a]] = a
@@ -29,6 +30,8 @@ instance PIsRepr0 PReprNewtype where
   type PReprIsPType _ _ _ _ = Unimplemented "PReprIsPType PReprNewtype"
 
 instance PIsRepr PReprNewtype where
-  type PReprC PReprNewtype a = PGeneric a
+  type PReprC PReprNewtype a = (PGeneric a, Coercible a (GetPNewtype a))
   type PReprApplyVal0 _ _ _ _ = Error "PReprApplyVal0 PReprNewtype"
   prIsPType _ _ _ = error "unimplemented"
+  prfrom = coerce
+  prto = coerce

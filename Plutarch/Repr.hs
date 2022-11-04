@@ -3,23 +3,13 @@
 
 module Plutarch.Repr (PHasRepr (..), PReprKind (..), PIsRepr0 (..), PIsRepr (..), PRepr) where
   
-import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
-import Data.Proxy (Proxy (Proxy))
-import GHC.Records (HasField (getField))
-import GHC.Stack (HasCallStack)
-import GHC.TypeLits (Symbol)
+import Data.Proxy (Proxy)
 import Plutarch.PType (
-  PGeneric,
   PHs,
-  PHs',
   PPType,
   PType,
-  PTypeF,
-  pattern MkPTypeF,
  )
-import Plutarch.Reduce (NoReduce)
-import Plutarch.Internal.CoerceTo (CoerceTo)
 import {-# SOURCE #-} Plutarch.Repr.SOP (PReprSOP)
 import {-# SOURCE #-} Plutarch.Core (IsPType', PDSLKind)
 
@@ -65,6 +55,8 @@ instance PIsRepr0 PReprPPType where
 instance PIsRepr PReprPPType where
   type PReprApplyVal0 PReprPPType PPType x _ = PReprApply (PReprSort x) x
   type PReprC PReprPPType a = a ~ PPType
+  prfrom = error "invalid"
+  prto = error "invalid"
   prIsPType _ _ f = f
 
 instance PHasRepr PPType where

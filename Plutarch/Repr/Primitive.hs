@@ -3,10 +3,9 @@
 
 module Plutarch.Repr.Primitive (PReprPrimitive) where
 
-
-import {-# SOURCE #-} Plutarch.Core (IsPType')
+import Plutarch.Core (IsPType')
 import Plutarch.Repr (
-  PIsRepr0 (PReprApply, PReprIsPType), PIsRepr (PReprApplyVal0, prIsPType, PReprC))
+  PIsRepr0 (PReprApply, PReprIsPType), PIsRepr (PReprApplyVal0, prIsPType, PReprC, prto, prfrom))
 import Plutarch.Repr (PReprKind (PReprKind))
 import Plutarch.PType (PHs', PHs, PPType)
 import Plutarch.Internal.CoerceTo (CoerceTo)
@@ -26,4 +25,6 @@ instance PIsRepr PReprPrimitive where
   type PReprApplyVal0 PReprPrimitive PPType x _ = x
   type PReprApplyVal0 PReprPrimitive a x (PHs' a) = CoerceTo (PHs' a) x
   type PReprC PReprPrimitive _ = ()
+  prto = id
+  prfrom = id
   prIsPType _ _ f = f

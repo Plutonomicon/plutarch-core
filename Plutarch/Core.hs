@@ -6,6 +6,7 @@ module Plutarch.Core (
   PDSL (..),
   PDSLKind (..),
   Term (..),
+  ClosedTerm,
   unTerm,
   PConcrete,
   IsPType (..),
@@ -22,12 +23,8 @@ import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
-import GHC.TypeLits (Symbol)
 import Plutarch.PType (
-  PGeneric,
   PHs,
-  PHs',
-  PPType,
   PType,
   PTypeF,
   pattern MkPTypeF,
