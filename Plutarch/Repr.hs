@@ -1,17 +1,17 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.Repr (PHasRepr (..), PReprKind (..), PIsRepr0 (..), PIsRepr (..), PRepr) where
-  
+
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy)
+import {-# SOURCE #-} Plutarch.Core (IsPType', PDSLKind)
 import Plutarch.PType (
   PHs,
   PPType,
   PType,
  )
 import {-# SOURCE #-} Plutarch.Repr.SOP (PReprSOP)
-import {-# SOURCE #-} Plutarch.Core (IsPType', PDSLKind)
 
 newtype PReprKind = PReprKind Type
 

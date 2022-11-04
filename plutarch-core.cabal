@@ -65,8 +65,7 @@ common c
     , text
 
 library
-  import: c
-
+  import:          c
   exposed-modules:
     Plutarch.Core
     Plutarch.Experimental
@@ -82,18 +81,13 @@ library
     Plutarch.PType
     Plutarch.Reduce
     Plutarch.TermCont
-    -- Plutarch.Frontends.Nix
-    -- Plutarch.Backends.Nix
+
+-- Plutarch.Frontends.Nix
+-- Plutarch.Backends.Nix
 
 test-suite examples
-  import: c
-
-  type: exitcode-stdio-1.0
-
-  main-is: Examples/Main.hs
-
-  other-modules:
-    Examples.Simple
-
-  build-depends:
-    plutarch-core
+  import:        c
+  type:          exitcode-stdio-1.0
+  main-is:       Examples/Main.hs
+  other-modules: Examples.Simple
+  build-depends: plutarch-core

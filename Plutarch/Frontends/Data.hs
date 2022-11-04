@@ -17,12 +17,12 @@ module Plutarch.Frontends.Data (
 import Data.Kind (Constraint)
 import Data.Proxy (Proxy)
 import GHC.Generics (Generic)
+import Plutarch.Core (IsPType, PConstructable, PConstructable', PDSLKind)
 import Plutarch.Generics (PIsSOP)
-import Plutarch.Core (PDSLKind, PConstructable, PConstructable', IsPType)
+import Plutarch.PType (PHs, PPType, PType, PTypeF, PfC, type (/$))
 import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.Repr.SOP (PSOPed)
-import Plutarch.PType (PHs, PPType, PType, PTypeF, PfC, type (/$))
 
 data PVoid ef
 instance PHasRepr PVoid where type PReprSort _ = PReprPrimitive

@@ -4,11 +4,9 @@
 module Plutarch.Repr.Primitive (PReprPrimitive) where
 
 import Plutarch.Core (IsPType')
-import Plutarch.Repr (
-  PIsRepr0 (PReprApply, PReprIsPType), PIsRepr (PReprApplyVal0, prIsPType, PReprC, prto, prfrom))
-import Plutarch.Repr (PReprKind (PReprKind))
-import Plutarch.PType (PHs', PHs, PPType)
 import Plutarch.Internal.CoerceTo (CoerceTo)
+import Plutarch.PType (PHs, PHs', PPType)
+import Plutarch.Repr (PIsRepr (PReprApplyVal0, PReprC, prIsPType, prfrom, prto), PIsRepr0 (PReprApply, PReprIsPType), PReprKind (PReprKind))
 
 data PReprPrimitive'
 

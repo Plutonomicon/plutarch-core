@@ -3,9 +3,9 @@
 
 module Examples.Simple (pid_alt, pid, pfalse) where
 
-import "plutarch-core" Plutarch.Prelude
-import "plutarch-core" Plutarch.Frontends.LC (PLC, PPolymorphic)
 import "plutarch-core" Plutarch.Frontends.Data (PSOP)
+import "plutarch-core" Plutarch.Frontends.LC (PLC, PPolymorphic)
+import "plutarch-core" Plutarch.Prelude
 
 type PSystemF edsl = (PLC edsl, PPolymorphic edsl, PSOP edsl)
 

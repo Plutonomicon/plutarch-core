@@ -18,13 +18,13 @@ module Plutarch.Helpers (
 ) where
 
 import Data.Kind (Constraint, Type)
+import Data.Proxy (Proxy (Proxy))
 import GHC.Stack (HasCallStack, withFrozenCallStack)
 import Plutarch.Core (IsPType, PConcrete, PConstructable, PDSLKind, PEffect, Term, pcase, pcon, pmatch)
-import Plutarch.Frontends.Data (PLet (PLet), type (#->) (PLam), PAny (PAny))
+import Plutarch.Frontends.Data (PAny (PAny), PLet (PLet), type (#->) (PLam))
 import Plutarch.Frontends.LC (PLC)
 import Plutarch.PType (PType)
 import Plutarch.TermCont (TermCont, tcont)
-import Data.Proxy (Proxy (Proxy))
 
 type IsPType1 :: PDSLKind -> (PType -> PType) -> Constraint
 type IsPType1 e f = forall a. IsPType e a => IsPType e (f a)

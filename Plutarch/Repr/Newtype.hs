@@ -3,16 +3,14 @@
 
 module Plutarch.Repr.Newtype (PReprNewtype) where
 
-import Plutarch.Repr (
-  PIsRepr0 (PReprApply, PReprIsPType), PIsRepr (PReprApplyVal0, prIsPType, PReprC, prfrom, prto))
-import Plutarch.Repr (PReprKind (PReprKind))
-import Plutarch.Internal.Unimplemented (Unimplemented, Error)
+import Data.Coerce (Coercible, coerce)
+import Plutarch.Internal.Unimplemented (Error, Unimplemented)
 import Plutarch.PType (
+  PCode,
   PGeneric,
   PType,
-  PCode,
  )
-import Data.Coerce (coerce, Coercible)
+import Plutarch.Repr (PIsRepr (PReprApplyVal0, PReprC, prIsPType, prfrom, prto), PIsRepr0 (PReprApply, PReprIsPType), PReprKind (PReprKind))
 
 type family GetPNewtype' (a :: [[PType]]) :: PType where
   GetPNewtype' '[ '[a]] = a

@@ -23,6 +23,7 @@ import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
+import Plutarch.Internal.CoerceTo (CoerceTo)
 import Plutarch.PType (
   PHs,
   PType,
@@ -30,8 +31,7 @@ import Plutarch.PType (
   pattern MkPTypeF,
  )
 import Plutarch.Reduce (NoReduce)
-import Plutarch.Internal.CoerceTo (CoerceTo)
-import Plutarch.Repr (PRepr, PReprIsPType, PReprSort, prIsPType, PIsRepr, PReprC, prto, prfrom)
+import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprIsPType, PReprSort, prIsPType, prfrom, prto)
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
@@ -64,9 +64,14 @@ class PDSL edsl => IsPType edsl (x :: PHs a) where
     Proxy x ->
     (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> y) ->
     y
-instance (
-  PDSL edsl,
-  PReprC (PReprSort a) a, PIsRepr (PReprSort a), PReprIsPType (PReprSort a) a edsl x) => IsPType edsl (x :: PHs a) where
+instance
+  ( PDSL edsl
+  , PReprC (PReprSort a) a
+  , PIsRepr (PReprSort a)
+  , PReprIsPType (PReprSort a) a edsl x
+  ) =>
+  IsPType edsl (x :: PHs a)
+  where
   isPType edsl x f = prIsPType edsl x (f (Proxy @(PRepr x)))
 
 type H1 :: PDSLKind -> forall (a :: Type) -> a -> Constraint

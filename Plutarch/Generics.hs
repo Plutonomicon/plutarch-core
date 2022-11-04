@@ -9,9 +9,9 @@ import GHC.TypeLits (ErrorMessage (ShowType, Text, (:$$:)), TypeError)
 import Generics.SOP qualified as SOP
 import Generics.SOP.GGP qualified as SOPG
 import Plutarch.Core (IsPType, PConcrete, PDSLKind, Term)
+import Plutarch.PType (PGeneric, PType)
 import Plutarch.Repr (PReprSort)
 import Plutarch.Repr.SOP (PReprSOP)
-import Plutarch.PType (PGeneric, PType)
 
 data PIsProductR (edsl :: PDSLKind) (a :: [Type]) = forall inner.
   (SOP.All (IsPType edsl) inner, SOP.SListI a) =>
