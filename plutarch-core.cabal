@@ -75,11 +75,17 @@ library
     Plutarch.Frontends.Untyped
     Plutarch.Generics
     Plutarch.Helpers
+    Plutarch.Internal.CoerceTo
+    Plutarch.Internal.Unimplemented
     Plutarch.Internal.WithDictHack
     Plutarch.Internal.Witness
     Plutarch.Prelude
     Plutarch.PType
     Plutarch.Reduce
+    Plutarch.Repr
+    Plutarch.Repr.Newtype
+    Plutarch.Repr.Primitive
+    Plutarch.Repr.SOP
     Plutarch.TermCont
 
 -- Plutarch.Frontends.Nix
