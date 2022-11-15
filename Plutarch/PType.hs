@@ -22,23 +22,21 @@ module Plutarch.PType (
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Generics (Generic)
-import Generics.SOP (All2, I, SOP, Top)
+import Generics.SOP (I, SOP, Top)
 import Generics.SOP.GGP (GCode, GDatatypeInfo, GFrom, GTo)
 import Plutarch.Internal.Witness (witness)
 import Plutarch.Reduce (NoReduce, Reduce)
 import Unsafe.Coerce (unsafeCoerce)
 
--- PType
-
--- What is an PType? It's a type that represents higher HKDs,
--- in the sense that their elements are applied to a type-level function,
--- but the core difference is that the following type is made legal:
--- `data A f = A (Pf f A)` which is isomorphic to `data A f = A (f A)`.
--- Simple HKDs don't allow this, as you'd have to do `data A f = A (f (A Identity))`
--- or similar, which doesn't convey the same thing.
--- This form of (higher) HKDs is useful for eDSLs, as you can replace the
--- the fields with eDSL terms.
-
+{- | What is a PType? It's a type that represents higher HKDs,
+ in the sense that their elements are applied to a type-level function,
+ but the core difference is that the following type is made legal:
+ `data A f = A (Pf f A)` which is isomorphic to `data A f = A (f A)`.
+ Simple HKDs don't allow this, as you'd have to do `data A f = A (f (A Identity))`
+ or similar, which doesn't convey the same thing.
+ This form of (higher) HKDs is useful for eDSLs, as you can replace the
+ the fields with eDSL terms.
+-}
 data PTypeF = MkPTypeF
   { _constraint :: forall (a :: Type). a -> Constraint
   , _concretise :: (PTypeF -> Type) -> Type
@@ -108,9 +106,10 @@ type family VerifyPCode (pss :: [[PType]]) (ass :: [[Type]]) :: Constraint where
   VerifyPCode '[] '[] = ()
   VerifyPCode (ps ': pss) (as ': ass) = (VerifyPCode' ps as, VerifyPCode pss ass)
 
--- NB: This doesn't work if the data type definition matches
--- on the `ef` using a type family.
--- You need to use `VerifyPCode` to make sure it's correct.
+{- | NB: This doesn't work if the data type definition matches
+ on the `ef` using a type family.
+ You need to use `VerifyPCode` to make sure it's correct.
+-}
 type family PCode (a :: PType) :: [[PType]] where
   PCode a = ToPType2 (GCode (a DummyEf))
 

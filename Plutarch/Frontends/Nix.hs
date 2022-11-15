@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.Frontends.Nix (PNix) where
 
@@ -11,8 +12,8 @@ class
   ( PDSL e
   , PUntyped e
   , PLC e
-  , -- , PPolymorphic e
-    PConstructable e PAny
+  , PPolymorphic e
+  , PConstructable e PAny
   , PSOP e
   ) =>
   PNix e

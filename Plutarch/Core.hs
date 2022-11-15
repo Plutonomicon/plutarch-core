@@ -11,7 +11,7 @@ module Plutarch.Core (
   PConcrete,
   IsPType (..),
   PConstructable (..),
-  PConstructable' (..),
+  PConstructablePrim (..),
   PAp (..),
   PEmbeds (..),
   Compile,
@@ -44,8 +44,8 @@ instance NoTypeInfo a
 
 class Monad (PEffect edsl) => PDSL (edsl :: PDSLKind) where
   data PEffect edsl :: Type -> Type
-  type IsPType' edsl :: forall (a :: PType). PHs a -> Constraint
-  type IsPType' _ = NoTypeInfo
+  type IsPTypePrim edsl :: forall (a :: PType). PHs a -> Constraint
+  type IsPTypePrim _ = NoTypeInfo
 
 type role Term nominal nominal
 newtype Term (edsl :: PDSLKind) (a :: PType) where
@@ -62,7 +62,7 @@ class PDSL edsl => IsPType edsl (x :: PHs a) where
     forall y.
     Proxy edsl ->
     Proxy x ->
-    (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> y) ->
+    (forall a' (x' :: PHs a'). IsPTypePrim edsl x' => Proxy x' -> y) ->
     y
 instance
   ( PDSL edsl
@@ -91,7 +91,7 @@ type family Helper (edsl :: PDSLKind) :: PTypeF where
 type PConcrete :: PDSLKind -> PType -> Type
 type PConcrete edsl a = a (Helper edsl)
 
-class (PDSL edsl, IsPType' edsl a) => PConstructable' edsl (a :: PType) where
+class (PDSL edsl, IsPTypePrim edsl a) => PConstructablePrim edsl (a :: PType) where
   pconImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
   pmatchImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> Term edsl b) -> Term edsl b
   pcaseImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> PEffect edsl (Term edsl b)) -> PEffect edsl (Term edsl b)
@@ -112,8 +112,8 @@ class IsPType edsl a => PConstructable edsl (a :: PType) where
     (PConcrete edsl a -> PEffect edsl (Term edsl b)) ->
     PEffect edsl (Term edsl b)
 
--- duplicate IsPType' constraint because otherwise GHC complains
-instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, IsPType' edsl (PRepr a), PConstructable' edsl (PRepr a)) => PConstructable edsl a where
+-- duplicate IsPTypePrim constraint because otherwise GHC complains
+instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, IsPTypePrim edsl (PRepr a), PConstructablePrim edsl (PRepr a)) => PConstructable edsl a where
   pcon x = Term $ pconImpl (prfrom x)
   pmatch (Term t) f = pmatchImpl t \x -> f (prto x)
   pcase (Term t) f = pcaseImpl t \x -> f (prto x)

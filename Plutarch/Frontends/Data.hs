@@ -17,9 +17,8 @@ module Plutarch.Frontends.Data (
 import Data.Kind (Constraint)
 import Data.Proxy (Proxy)
 import GHC.Generics (Generic)
-import Plutarch.Core (IsPType, PConstructable, PConstructable', PDSLKind)
-import Plutarch.Generics (PIsSOP)
-import Plutarch.PType (PHs, PPType, PType, PTypeF, PfC, type (/$))
+import Plutarch.Core (IsPType, IsPTypePrim, PConstructable, PConstructablePrim, PDSLKind)
+import Plutarch.PType (PGeneric, PHs, PPType, PType, PTypeF, PfC, type (/$))
 import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.Repr.SOP (PSOPed)
@@ -74,9 +73,9 @@ instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
 
 type PSOP :: PDSLKind -> Constraint
 type PSOP edsl =
-  ( PConstructable edsl PUnit
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PPair a b)
-  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructable' edsl (PEither a b)
-  , forall a. PIsSOP edsl a => PConstructable' edsl (PSOPed a)
-  , IsPType edsl PPType
+  ( PConstructablePrim edsl PUnit
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructablePrim edsl (PPair a b)
+  , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructablePrim edsl (PEither a b)
+  , forall a. PGeneric a => PConstructablePrim edsl (PSOPed a)
+  , IsPTypePrim edsl PPType
   )

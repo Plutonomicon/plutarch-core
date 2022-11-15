@@ -5,7 +5,7 @@ module Plutarch.Repr (PHasRepr (..), PReprKind (..), PIsRepr0 (..), PIsRepr (..)
 
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy)
-import {-# SOURCE #-} Plutarch.Core (IsPType', PDSLKind)
+import {-# SOURCE #-} Plutarch.Core (IsPTypePrim, PDSLKind)
 import Plutarch.PType (
   PHs,
   PPType,
@@ -36,8 +36,8 @@ class PIsRepr0 r => PIsRepr (r :: PReprKind) where
     (PReprC r a, PReprSort a ~ r, PReprIsPType r a edsl x) =>
     Proxy edsl ->
     Proxy x ->
-    -- (forall a' (x' :: PHs a'). IsPType' edsl x' => Proxy x' -> (forall p. p x -> p x') -> y) ->
-    (IsPType' edsl (PReprApplyVal r a x) => y) ->
+    -- (forall a' (x' :: PHs a'). IsPTypePrim edsl x' => Proxy x' -> (forall p. p x -> p x') -> y) ->
+    (IsPTypePrim edsl (PReprApplyVal r a x) => y) ->
     y
 
 type PReprApplyVal :: forall (r :: PReprKind) -> forall (a :: PType) -> PHs a -> PHs (PReprApply r a)
@@ -50,7 +50,7 @@ type PReprPPType = 'PReprKind PReprPPType'
 
 instance PIsRepr0 PReprPPType where
   type PReprApply PReprPPType PPType = PPType
-  type PReprIsPType PReprPPType PPType edsl x = IsPType' edsl (PReprApply (PReprSort x) x)
+  type PReprIsPType PReprPPType PPType edsl x = IsPTypePrim edsl (PReprApply (PReprSort x) x)
 
 instance PIsRepr PReprPPType where
   type PReprApplyVal0 PReprPPType PPType x _ = PReprApply (PReprSort x) x

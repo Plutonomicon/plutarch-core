@@ -67,13 +67,14 @@ common c
 library
   import:          c
   exposed-modules:
+    Plutarch.Backends.Nix
     Plutarch.Core
     Plutarch.Experimental
     Plutarch.Frontends.Data
     Plutarch.Frontends.LC
+    Plutarch.Frontends.Nix
     Plutarch.Frontends.Partial
     Plutarch.Frontends.Untyped
-    Plutarch.Generics
     Plutarch.Helpers
     Plutarch.Internal.CoerceTo
     Plutarch.Internal.Unimplemented
@@ -87,9 +88,6 @@ library
     Plutarch.Repr.Primitive
     Plutarch.Repr.SOP
     Plutarch.TermCont
-
--- Plutarch.Frontends.Nix
--- Plutarch.Backends.Nix
 
 test-suite examples
   import:        c
