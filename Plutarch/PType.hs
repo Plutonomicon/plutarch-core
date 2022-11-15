@@ -74,28 +74,11 @@ type family PfC (f :: PTypeF) :: PHs a -> Constraint where
     PfC (MkPTypeF constraint _concretise) =
       constraint
 
-class
-  ( Generic (a ef)
-  , GFrom (a ef)
-  , GTo (a ef)
-  , GDatatypeInfo (a ef)
-  , All2 Top (PCode a) -- DO NOT REMOVE! Will cause unsound behavior otherwise. See `unsafeCoerce` below.
-  ) =>
-  PGeneric' a ef
-instance
-  ( Generic (a ef)
-  , GFrom (a ef)
-  , GTo (a ef)
-  , GDatatypeInfo (a ef)
-  , All2 Top (PCode a)
-  ) =>
-  PGeneric' a ef
-
-type PGeneric :: PType -> Constraint
-class (forall ef. PGeneric' a ef) => PGeneric a
-instance (forall ef. PGeneric' a ef) => PGeneric a
-
 data Dummy (a :: PType) deriving stock (Generic)
+
+type UnDummy :: Type -> PType
+type family UnDummy a where
+  UnDummy (Dummy a) = a
 
 type ToPType :: [Type] -> [PType]
 type family ToPType as where
@@ -107,24 +90,60 @@ type family ToPType2 as where
   ToPType2 '[] = '[]
   ToPType2 (a ': as) = ToPType a ': ToPType2 as
 
-type UnDummy :: Type -> PType
-type family UnDummy a where
-  UnDummy (Dummy a) = a
+type DummyEf :: PTypeF
+type DummyEf = MkPTypeF Top Dummy
 
-type DummyInst :: PType -> Type
-type DummyInst a = a (MkPTypeF Top Dummy)
+type family OpaqueEf :: PTypeF where
 
--- FIXME: This doesn't work if the data type definition matches
+type family VerifyPCode'' (p :: PType) (a :: Type) :: Constraint where
+  VerifyPCode'' p a = a ~ Pf OpaqueEf p
+
+type family VerifyPCode' (ps :: [PType]) (as :: [Type]) :: Constraint where
+  VerifyPCode' '[] '[] = ()
+  VerifyPCode' (p ': ps) (a ': as) = (VerifyPCode'' p a, VerifyPCode' ps as)
+
+-- Makes sure that user doesn't match on `PTypeF` passed in, because otherwise
+-- `PCode` will return the wrong thing potentially.
+type family VerifyPCode (pss :: [[PType]]) (ass :: [[Type]]) :: Constraint where
+  VerifyPCode '[] '[] = ()
+  VerifyPCode (ps ': pss) (as ': ass) = (VerifyPCode' ps as, VerifyPCode pss ass)
+
+-- NB: This doesn't work if the data type definition matches
 -- on the `ef` using a type family.
+-- You need to use `VerifyPCode` to make sure it's correct.
 type family PCode (a :: PType) :: [[PType]] where
-  PCode a = ToPType2 (GCode (DummyInst a))
+  PCode a = ToPType2 (GCode (a DummyEf))
 
+class
+  ( Generic (a ef)
+  , GFrom (a ef)
+  , GTo (a ef)
+  , GDatatypeInfo (a ef)
+  , VerifyPCode (PCode a) (GCode (a OpaqueEf))
+  ) =>
+  PGeneric' a ef
+instance
+  ( Generic (a ef)
+  , GFrom (a ef)
+  , GTo (a ef)
+  , GDatatypeInfo (a ef)
+  , VerifyPCode (PCode a) (GCode (a OpaqueEf))
+  ) =>
+  PGeneric' a ef
+
+type PGeneric :: PType -> Constraint
+class (forall ef. PGeneric' a ef) => PGeneric a
+instance (forall ef. PGeneric' a ef) => PGeneric a
+
+{- | Does `unsafeCoerce` underneath the hood, but is a safe use of it.
+ This and `pgto` could be implemented safely, but it's quite complex and not really worth it.
+ We know this is correct because 'VerifyPCode' checks this exact claim, i.e.,
+ every element of @GCode (a ef)@ is @ef /$ p@ where @p@ is from @PCode a@.
+ This function is useful for operating over 'PType's generically.
+-}
 pgfrom :: forall a ef. PGeneric a => Proxy a -> SOP I (GCode (a ef)) -> SOP (Pf' ef) (PCode a)
--- This could be done safely, but it's a PITA.
--- Depends on `All` constraint above.
 pgfrom = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
 
+-- | See 'pgto'.
 pgto :: forall a ef. PGeneric a => Proxy a -> SOP (Pf' ef) (PCode a) -> SOP I (GCode (a ef))
--- This could be done safely, but it's a PITA.
--- Depends on `All` constraint above.
 pgto = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
