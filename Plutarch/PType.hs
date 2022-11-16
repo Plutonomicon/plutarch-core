@@ -5,6 +5,7 @@
 module Plutarch.PType (
   PGeneric,
   PCode,
+  PDatatypeInfoOf,
   pgto,
   pgfrom,
   PTypeF (MkPTypeF),
@@ -23,7 +24,7 @@ import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Generics (Generic)
 import Generics.SOP (I, SOP, Top)
-import Generics.SOP.GGP (GCode, GDatatypeInfo, GFrom, GTo)
+import Generics.SOP.GGP (GCode, GDatatypeInfo, GDatatypeInfoOf, GFrom, GTo)
 import Plutarch.Internal.Witness (witness)
 import Plutarch.Reduce (NoReduce, Reduce)
 import Unsafe.Coerce (unsafeCoerce)
@@ -146,3 +147,5 @@ pgfrom = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
 -- | See 'pgto'.
 pgto :: forall a ef. PGeneric a => Proxy a -> SOP (Pf' ef) (PCode a) -> SOP I (GCode (a ef))
 pgto = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
+
+type PDatatypeInfoOf a = GDatatypeInfoOf (a OpaqueEf)

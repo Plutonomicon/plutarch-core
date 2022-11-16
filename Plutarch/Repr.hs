@@ -5,19 +5,28 @@ module Plutarch.Repr (PHasRepr (..), PReprKind (..), PIsRepr0 (..), PIsRepr (..)
 
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy)
+import Generics.SOP.Type.Metadata (DatatypeInfo (ADT, Newtype))
 import {-# SOURCE #-} Plutarch.Core (IsPTypePrim, PDSLKind)
 import Plutarch.PType (
+  PDatatypeInfoOf,
   PHs,
   PPType,
   PType,
  )
+import {-# SOURCE #-} Plutarch.Repr.Newtype (PReprNewtype)
 import {-# SOURCE #-} Plutarch.Repr.SOP (PReprSOP)
 
 newtype PReprKind = PReprKind Type
 
+type family F (a :: DatatypeInfo) :: PReprKind where
+  F ( 'ADT _ _ _ _) = PReprSOP
+  F ( 'Newtype _ _ _) = PReprNewtype
+
 class PHasRepr (a :: PType) where
   type PReprSort a :: PReprKind
-  type PReprSort _ = PReprSOP
+
+  -- FIXME: Use more direct check for better performance
+  type PReprSort a = F (PDatatypeInfoOf a)
 
 class PIsRepr0 (r :: PReprKind) where
   type PReprApply r (a :: PType) :: PType

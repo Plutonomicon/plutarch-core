@@ -1,5 +1,10 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
+
 module Plutarch.Frontends.Data (
   PVoid,
+  IsPTypeSOP (..),
   PLet (..),
   PDelay (..),
   type (#=>) (..),
@@ -17,8 +22,10 @@ module Plutarch.Frontends.Data (
 import Data.Kind (Constraint)
 import Data.Proxy (Proxy)
 import GHC.Generics (Generic)
+import Generics.SOP (All2)
+import Generics.SOP.Dict (Dict)
 import Plutarch.Core (IsPType, IsPTypePrim, PConstructable, PConstructablePrim, PDSLKind)
-import Plutarch.PType (PGeneric, PHs, PPType, PType, PTypeF, PfC, type (/$))
+import Plutarch.PType (PCode, PGeneric, PHs, PPType, PType, PTypeF, PfC, type (/$))
 import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.Repr.SOP (PSOPed)
@@ -71,11 +78,16 @@ instance PHasRepr (PPair a b) where type PReprSort _ = PReprPrimitive
 data PEither a b ef = PLeft (ef /$ a) | PRight (ef /$ b) deriving stock (Generic)
 instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
 
+class IsPTypeSOP edsl a where
+  isPTypeSOP :: Proxy edsl -> Proxy a -> ((PGeneric a, All2 (IsPType edsl) (PCode a)) => b) -> b
+instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
+  isPTypeSOP _ _ x = x
+
 type PSOP :: PDSLKind -> Constraint
 type PSOP edsl =
   ( PConstructablePrim edsl PUnit
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructablePrim edsl (PPair a b)
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructablePrim edsl (PEither a b)
-  , forall a. PGeneric a => PConstructablePrim edsl (PSOPed a)
+  , forall a. IsPTypeSOP edsl a => PConstructablePrim edsl (PSOPed a)
   , IsPTypePrim edsl PPType
   )

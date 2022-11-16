@@ -1,4 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+-- FIXME remove
+{-# OPTIONS_GHC -Wno-missing-methods #-}
 
 module Plutarch.Backends.Nix (compileAp) where
 
@@ -9,6 +12,13 @@ import Data.List (foldl')
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text (Text)
+import Generics.SOP (
+  All2,
+  ConstructorInfo (Constructor, Infix, Record),
+  DatatypeInfo (ADT, Newtype),
+  NP (Nil, (:*)),
+ )
+import Generics.SOP.GGP (gdatatypeInfo)
 import Plutarch.Core (
   CompileAp,
   IsPTypePrim,
@@ -17,13 +27,14 @@ import Plutarch.Core (
   PDSL (PEffect),
   PDSLKind (PDSLKind),
   Term (Term),
+  isPType,
   unTerm,
  )
-import Plutarch.Frontends.Data (PAny (PAny), PEither (PLeft, PRight), PPair (PPair))
+import Plutarch.Frontends.Data (IsPTypeSOP (isPTypeSOP), PAny (PAny), PEither (PLeft, PRight), PPair (PPair))
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
-import Plutarch.PType (PGeneric)
+import Plutarch.PType (PCode, PGeneric, PTypeF)
 import Plutarch.Prelude
 import Plutarch.Repr.SOP (PSOPed)
 
@@ -38,7 +49,20 @@ data NixType
   | NForallTy Text NixType
   | NTyVar Text
   | NSetTy [(Text, NixType)]
+  | NAnyTy
+  | NUnionTy NixType NixType
+  | NFixedStringTy Text
   deriving stock (Show)
+
+serialiseTy :: NixType -> Text
+serialiseTy (NFunTy a b) = serialiseTy a <> " -> " <> serialiseTy b
+serialiseTy (NSetTy kvs) = foldl' f "{" kvs <> "}"
+  where
+    f acc (k, v) = acc <> k <> " = " <> serialiseTy v <> ";\n"
+serialiseTy (NTyVar v) = v
+serialiseTy (NForallTy v x) = "(forall " <> v <> ". " <> serialiseTy x <> ")"
+serialiseTy NAnyTy = "Any"
+serialiseTy (NUnionTy a b) = "(" <> serialiseTy a <> "|" <> serialiseTy b <> ")"
 
 data NOp
   = NApp
@@ -65,14 +89,6 @@ data NixAST
   | NIfThenElse NixAST NixAST NixAST
   | NDot NixAST NixAST
   deriving stock (Show)
-
-serialiseTy :: NixType -> Text
-serialiseTy (NFunTy a b) = serialiseTy a <> " -> " <> serialiseTy b
-serialiseTy (NSetTy kvs) = foldl' f "{" kvs <> "}"
-  where
-    f acc (k, v) = acc <> k <> " = " <> serialiseTy v <> ";\n"
-serialiseTy (NTyVar v) = v
-serialiseTy (NForallTy v x) = "(forall " <> v <> ". " <> serialiseTy x <> ")"
 
 serialise :: NixAST -> Text
 serialise (NLam ty v a) = "(" <> v <> " /* :: " <> serialiseTy ty <> " */ : " <> serialise a <> ")"
@@ -106,30 +122,51 @@ newtype Impl' m (a :: PType) = Impl {runImpl :: Lvl -> m NixAST}
 type Impl m = 'PDSLKind (Impl' m)
 
 type TypeInfo :: (Type -> Type) -> forall k. PHs k -> Constraint
-class TypeInfo (m :: Type -> Type) (x :: PHs a)
+class TypeInfo (m :: Type -> Type) (x :: PHs a) where
+  getTy' :: Proxy m -> Proxy x -> NixType
 
-instance TypeInfo m (a #-> b)
+getTy :: forall m a. IsPType (Impl m) a => Proxy m -> Proxy a -> NixType
+getTy m a = isPType (Proxy @(Impl m)) a \a' -> getTy' m a'
 
-instance TypeInfo m PAny
+instance (IsPType (Impl m) a, IsPType (Impl m) b) => TypeInfo m (a #-> b) where
+  getTy' m _ = NFunTy (getTy m (Proxy @a)) (getTy m (Proxy @b))
 
-instance TypeInfo m PUnit
+instance TypeInfo m PAny where
+  getTy' _ _ = NAnyTy
 
-instance TypeInfo m PPType
+instance TypeInfo m PUnit where
+  getTy' _ _ = NSetTy []
 
-instance (IsPType (Impl m) a, IsPType (Impl m) b) => TypeInfo m (PEither a b)
+instance TypeInfo m PPType where
+  getTy' _ _ = error "PPType has no type info"
 
-instance (IsPType (Impl m) a, IsPType (Impl m) b) => TypeInfo m (PPair a b)
+instance (IsPType (Impl m) a, IsPType (Impl m) b) => TypeInfo m (PEither a b) where
+  getTy' m _ =
+    NUnionTy
+      (NSetTy [("left", getTy m (Proxy @a))])
+      (NSetTy [("right", getTy m (Proxy @b))])
 
-instance PGeneric a => TypeInfo m (PSOPed a)
+instance (IsPType (Impl m) a, IsPType (Impl m) b) => TypeInfo m (PPair a b) where
+  getTy' m _ = NSetTy [("x", getTy m (Proxy @a)), ("y", getTy m (Proxy @b))]
+
+type family OpaqueEf :: PTypeF where
+
+instance (IsPTypeSOP (Impl m) a) => TypeInfo m (PSOPed a) where
+  getTy' _ _ = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) $ case gdatatypeInfo (Proxy @(a OpaqueEf)) of
+    ADT _ _ (Constructor _ :* Nil) _ -> undefined
+    ADT _ _ (Infix _ _ _ :* Nil) _ -> undefined
+    ADT _ _ (Record _ fields :* Nil) _ -> undefined
+    ADT _ _ names _ -> undefined
+    Newtype _ _ _ -> error "impossible"
 
 instance TypeInfo m (PForall f)
 
 instance TypeInfo m @(a #-> b) ( 'PLam f)
 
-instance Applicative m => PConstructablePrim (Impl m) (a #-> b) where
+instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructablePrim (Impl m) (a #-> b) where
   pconImpl (PLam f) = Impl \l ->
     let n = fromString $ 'x' : show l
-     in NLam undefined n <$> (flip runImpl (sc l) $ unTerm $ f $ Term $ Impl $ const $ pure $ NVar n)
+     in NLam (getTy (Proxy @m) (Proxy @a)) n <$> (flip runImpl (sc l) $ unTerm $ f $ Term $ Impl $ const $ pure $ NVar n)
   pmatchImpl x f = f (PLam g)
     where
       g :: Term (Impl m) a -> Term (Impl m) b
@@ -160,7 +197,7 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m)
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PPair a b)
 
-instance PGeneric a => PConstructablePrim (Impl m) (PSOPed a)
+instance (IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (PSOPed a)
 
 instance PConstructablePrim (Impl m) (PForall f)
 
@@ -170,4 +207,4 @@ compile' :: forall a m. (Applicative m, IsPType (Impl m) a) => Term (Impl m) a -
 compile' (Term t) = serialise <$> runImpl t (Lvl 0)
 
 compileAp :: CompileAp PNix Text
-compileAp x = compile' x
+compileAp _ x = compile' x

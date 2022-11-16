@@ -127,12 +127,14 @@ class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
 
 type CompileAp variant output =
   forall a m.
+  Proxy a ->
   (HasCallStack, Applicative m, (forall edsl. variant edsl => IsPType edsl a)) =>
   (forall edsl. (variant edsl, PAp m edsl) => Term edsl a) ->
   m output
 
 type Compile variant output =
   forall a m.
+  Proxy a ->
   (HasCallStack, Monad m, (forall edsl. variant edsl => IsPType edsl a)) =>
   (forall edsl. (variant edsl, PEmbeds m edsl) => Term edsl a) ->
   m output
