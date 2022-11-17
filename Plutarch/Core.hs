@@ -16,6 +16,7 @@ module Plutarch.Core (
   PEmbeds (..),
   Compile,
   CompileAp,
+  IsPTypePrim (..),
 ) where
 
 import Data.Functor.Compose (Compose)
@@ -44,8 +45,11 @@ instance NoTypeInfo a
 
 class Monad (PEffect edsl) => PDSL (edsl :: PDSLKind) where
   data PEffect edsl :: Type -> Type
-  type IsPTypePrim edsl :: forall (a :: PType). PHs a -> Constraint
-  type IsPTypePrim _ = NoTypeInfo
+  data IsPTypePrimData edsl :: forall (a :: PType). PHs a -> Type
+
+type IsPTypePrim :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
+class IsPTypePrim (edsl :: PDSLKind) (x :: PHs a) where
+  isPTypePrim :: IsPTypePrimData edsl x
 
 type role Term nominal nominal
 newtype Term (edsl :: PDSLKind) (a :: PType) where
@@ -62,7 +66,7 @@ class PDSL edsl => IsPType edsl (x :: PHs a) where
     forall y.
     Proxy edsl ->
     Proxy x ->
-    (forall a' (x' :: PHs a'). IsPTypePrim edsl x' => Proxy x' -> y) ->
+    (forall a' (x' :: PHs a'). IsPTypePrimData edsl x' -> y) ->
     y
 instance
   ( PDSL edsl
@@ -72,7 +76,7 @@ instance
   ) =>
   IsPType edsl (x :: PHs a)
   where
-  isPType edsl x f = prIsPType edsl x (f (Proxy @(PRepr x)))
+  isPType edsl x f = prIsPType edsl x (f (isPTypePrim :: IsPTypePrimData edsl (PRepr x)))
 
 type H1 :: PDSLKind -> forall (a :: Type) -> a -> Constraint
 type family H1 (edsl :: PDSLKind) (a :: Type) (x :: a) :: Constraint where

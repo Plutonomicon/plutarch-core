@@ -23,7 +23,7 @@ module Plutarch.PType (
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Generics (Generic)
-import Generics.SOP (I, SOP, Top)
+import Generics.SOP (I, SListI2, SOP, Top)
 import Generics.SOP.GGP (GCode, GDatatypeInfo, GDatatypeInfoOf, GFrom, GTo)
 import Plutarch.Internal.Witness (witness)
 import Plutarch.Reduce (NoReduce, Reduce)
@@ -120,6 +120,7 @@ class
   , GTo (a ef)
   , GDatatypeInfo (a ef)
   , VerifyPCode (PCode a) (GCode (a OpaqueEf))
+  , SListI2 (PCode a)
   ) =>
   PGeneric' a ef
 instance
@@ -128,6 +129,7 @@ instance
   , GTo (a ef)
   , GDatatypeInfo (a ef)
   , VerifyPCode (PCode a) (GCode (a OpaqueEf))
+  , SListI2 (PCode a)
   ) =>
   PGeneric' a ef
 
