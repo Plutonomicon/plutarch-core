@@ -24,6 +24,7 @@ import Generics.SOP.GGP (gdatatypeInfo)
 import Generics.SOP.NP (POP (POP), collapse_NP, collapse_POP, liftA2_NP, liftA_NP, liftA_POP)
 import Plutarch.Core (
   CompileAp,
+  IsPTypeData (IsPTypeData),
   IsPTypePrim (isPTypePrim),
   PAp (papl, papr),
   PConstructablePrim (pcaseImpl, pconImpl, pmatchImpl),
@@ -133,7 +134,7 @@ newtype Impl' m (a :: PType) = Impl {runImpl :: Lvl -> m NixAST}
 type Impl m = 'PDSLKind (Impl' m)
 
 getTy :: forall m a. IsPType (Impl m) a => Proxy m -> Proxy a -> NixType
-getTy m a = isPType (Proxy @(Impl m)) a \(IsPTypePrimData t) -> t
+getTy _ _ = case isPType :: IsPTypeData (Impl m) a of IsPTypeData (IsPTypePrimData t) -> t
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (a #-> b) where
   isPTypePrim = IsPTypePrimData $ NFunTy (getTy (Proxy @m) (Proxy @a)) (getTy (Proxy @m) (Proxy @b))
@@ -199,7 +200,7 @@ instance PConstructablePrim (Impl m) PAny where
 instance PDSL (Impl m) where
   newtype PEffect (Impl m) a = PEffect (Identity a)
     deriving newtype (Functor, Applicative, Monad)
-  newtype IsPTypePrimData (Impl m) x = IsPTypePrimData NixType
+  newtype IsPTypePrimData (Impl m) _ = IsPTypePrimData NixType
 
 instance Applicative m => PAp m (Impl m) where
   papr x (Term (Impl y)) = Term $ Impl \lvl -> x *> y lvl

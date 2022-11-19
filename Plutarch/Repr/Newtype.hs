@@ -11,8 +11,8 @@ import Plutarch.PType (
   PType,
  )
 import Plutarch.Repr (
-  PIsRepr (PReprApplyVal0, PReprC, prIsPType, prfrom, prto),
-  PIsRepr0 (PReprApply, PReprIsPType),
+  PIsRepr (PReprApplyVal0, PReprC, prfrom, prto),
+  PIsRepr0 (PReprApply),
   PReprKind (PReprKind),
   PReprSort,
  )
@@ -30,7 +30,6 @@ type PReprNewtype = 'PReprKind PReprNewtype'
 
 instance PIsRepr0 PReprNewtype where
   type PReprApply PReprNewtype a = PReprApply (PReprSort (GetPNewtype a)) (GetPNewtype a)
-  type PReprIsPType _ _ _ _ = Unimplemented "PReprIsPType PReprNewtype"
 
 instance PIsRepr PReprNewtype where
   type
@@ -41,7 +40,6 @@ instance PIsRepr PReprNewtype where
       , PReprC (PReprSort (GetPNewtype a)) (GetPNewtype a)
       )
   type PReprApplyVal0 _ _ _ _ = Error "PReprApplyVal0 PReprNewtype"
-  prIsPType _ _ _ = error "unimplemented"
   prfrom (x :: a ef) = prfrom (coerce x :: GetPNewtype a ef)
   prto :: forall a ef. PReprC PReprNewtype a => PReprApply PReprNewtype a ef -> a ef
   prto x = coerce $ (prto x :: GetPNewtype a ef) :: a ef

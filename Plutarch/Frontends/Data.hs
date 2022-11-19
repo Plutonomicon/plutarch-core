@@ -24,28 +24,33 @@ import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Generics (Generic)
 import Generics.SOP (
+  All,
   All2,
+  ConstructorInfo (Constructor, Infix, Record),
   ConstructorName,
   DatatypeName,
+  FieldInfo (FieldInfo),
   FieldName,
   K (K),
   ModuleName,
-  NP,
-  POP,
+  NP (Nil, (:*)),
+  POP (POP),
   SListI,
   constructorInfo,
   constructorName,
+  cpara_SList,
   datatypeName,
   moduleName,
  )
 import Generics.SOP.Dict (Dict)
-import Generics.SOP.GGP (gdatatypeInfo)
+import Generics.SOP.GGP (GCode, gdatatypeInfo)
 import Generics.SOP.NP (liftA_NP)
 import Plutarch.Core (IsPType, IsPTypePrim, IsPTypePrimData, PConstructable, PConstructablePrim, PDSLKind)
 import Plutarch.PType (PCode, PGeneric, PHs, PPType, PType, PTypeF, PfC, type (/$))
 import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.Repr.SOP (PSOPed)
+import Unsafe.Coerce (unsafeCoerce)
 
 data PVoid ef
 instance PHasRepr PVoid where type PReprSort _ = PReprPrimitive
@@ -96,9 +101,9 @@ data PEither a b ef = PLeft (ef /$ a) | PRight (ef /$ b) deriving stock (Generic
 instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
 
 data PConstructorInfo ps :: Type where
-  PConstructor :: SListI ps => PConstructorInfo ps
+  PConstructor :: PConstructorInfo ps
   PInfix :: PConstructorInfo '[a, b]
-  PRecord :: SListI ps => NP (K FieldName) ps -> PConstructorInfo ps
+  PRecord :: NP (K FieldName) ps -> PConstructorInfo ps
 
 data IsPTypeSOPData pss = IsPTypeSOPData ModuleName DatatypeName (NP (K ConstructorName) pss) (NP PConstructorInfo pss)
 
@@ -111,12 +116,38 @@ class IsPTypeSOP edsl a where
 
 type family OpaqueEf :: PTypeF where
 
+-- TODO: implement safely
+coercer :: Proxy p -> NP (K a) (GCode (p OpaqueEf)) -> NP (K a) (PCode p)
+coercer _ = unsafeCoerce
+
+-- TODO: implement safely
+coercer2 :: Proxy p -> NP PConstructorInfo (GCode (p OpaqueEf)) -> NP PConstructorInfo (PCode p)
+coercer2 _ = unsafeCoerce
+
+newtype T2 (edsl :: PDSLKind) (pss :: [[PType]]) = T2 (POP (IsPTypePrimData edsl) pss)
+
 instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
   isPTypeSOP _ _ x =
-    let i = gdatatypeInfo (Proxy @(a OpaqueEf))
-     in -- names = liftA_NP (\con -> K (constructorName con)) $ constructorInfo i
-
-        x (IsPTypeSOPData (moduleName i) (datatypeName i) undefined undefined) undefined
+    case gdatatypeInfo (Proxy @(a OpaqueEf)) of
+      i ->
+        let names = liftA_NP (\con -> K (constructorName con)) $ constructorInfo i
+            info = liftA_NP f (constructorInfo i)
+            f :: ConstructorInfo as -> PConstructorInfo as
+            f (Constructor _) = PConstructor
+            f (Infix _ _ _) = PInfix
+            f (Record _ fields) = PRecord (liftA_NP (\(FieldInfo n) -> K n) fields)
+            d = IsPTypeSOPData
+              do moduleName i
+              do datatypeName i
+              do coercer (Proxy @a) names
+              do coercer2 (Proxy @a) info
+            t :: T2 edsl (PCode a)
+            t = cpara_SList
+              (Proxy @(All (IsPType edsl)))
+              (T2 $ POP $ Nil)
+              \(T2 (POP prev)) -> T2 (POP (undefined :* prev))
+            T2 t' = t
+         in x d t'
 
 type PSOP :: PDSLKind -> Constraint
 type PSOP edsl =

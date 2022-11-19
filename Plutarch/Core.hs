@@ -10,6 +10,7 @@ module Plutarch.Core (
   unTerm,
   PConcrete,
   IsPType (..),
+  IsPTypeData (IsPTypeData),
   PConstructable (..),
   PConstructablePrim (..),
   PAp (..),
@@ -26,13 +27,13 @@ import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
 import Plutarch.Internal.CoerceTo (CoerceTo)
 import Plutarch.PType (
+  MkPTypeF,
   PHs,
   PType,
   PTypeF,
-  pattern MkPTypeF,
  )
 import Plutarch.Reduce (NoReduce)
-import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprIsPType, PReprSort, prIsPType, prfrom, prto)
+import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprSort, prfrom, prto)
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
@@ -60,40 +61,22 @@ unTerm (Term t) = t
 
 type ClosedTerm (c :: PDSLKind -> Constraint) (a :: PType) = forall edsl. c edsl => Term edsl a
 
+type IsPTypeData :: PDSLKind -> forall (a :: PType). PHs a -> Type
+newtype IsPTypeData edsl x = IsPTypeData (IsPTypePrimData edsl (PRepr x))
+
 type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
 class PDSL edsl => IsPType edsl (x :: PHs a) where
-  isPType ::
-    forall y.
-    Proxy edsl ->
-    Proxy x ->
-    (forall a' (x' :: PHs a'). IsPTypePrimData edsl x' -> y) ->
-    y
+  isPType :: IsPTypeData edsl x
 instance
   ( PDSL edsl
-  , PReprC (PReprSort a) a
-  , PIsRepr (PReprSort a)
-  , PReprIsPType (PReprSort a) a edsl x
+  , IsPTypePrim edsl (PRepr x)
   ) =>
   IsPType edsl (x :: PHs a)
   where
-  isPType edsl x f = prIsPType edsl x (f (isPTypePrim :: IsPTypePrimData edsl (PRepr x)))
-
-type H1 :: PDSLKind -> forall (a :: Type) -> a -> Constraint
-type family H1 (edsl :: PDSLKind) (a :: Type) (x :: a) :: Constraint where
-  H1 edsl PType x = IsPType edsl x
-  forall (edsl :: PDSLKind) (a :: PType) (_ef :: PTypeF) (x :: a _ef).
-    H1 edsl (a _ef) x =
-      IsPType edsl (CoerceTo (PHs a) x)
-
-type H2 :: PDSLKind -> forall (a :: Type). a -> Constraint
-class H1 edsl a x => H2 edsl (x :: a)
-instance H1 edsl a x => H2 edsl (x :: a)
-
-type family Helper (edsl :: PDSLKind) :: PTypeF where
-  Helper edsl = MkPTypeF (H2 edsl) (Compose NoReduce (Term edsl))
+  isPType = IsPTypeData isPTypePrim
 
 type PConcrete :: PDSLKind -> PType -> Type
-type PConcrete edsl a = a (Helper edsl)
+type PConcrete edsl a = a (MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl)))
 
 class (PDSL edsl, IsPTypePrim edsl a) => PConstructablePrim edsl (a :: PType) where
   pconImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
@@ -117,7 +100,7 @@ class IsPType edsl a => PConstructable edsl (a :: PType) where
     PEffect edsl (Term edsl b)
 
 -- duplicate IsPTypePrim constraint because otherwise GHC complains
-instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, IsPTypePrim edsl (PRepr a), PConstructablePrim edsl (PRepr a)) => PConstructable edsl a where
+instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, PConstructablePrim edsl (PRepr a)) => PConstructable edsl a where
   pcon x = Term $ pconImpl (prfrom x)
   pmatch (Term t) f = pmatchImpl t \x -> f (prto x)
   pcase (Term t) f = pcaseImpl t \x -> f (prto x)
