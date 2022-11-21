@@ -60,9 +60,11 @@ common c
     -fprint-explicit-foralls
 
   build-depends:
-    , base
+    , base                 >=4.15
     , generics-sop
-    , text
+    , text                 >=2
+    , text-builder-linear  >=0.1
+    , transformers
 
 library
   import:          c
@@ -89,9 +91,8 @@ library
     Plutarch.Repr.SOP
     Plutarch.TermCont
 
-test-suite examples
+executable examples
   import:        c
-  type:          exitcode-stdio-1.0
   main-is:       Examples/Main.hs
-  other-modules: Examples.Simple
-  build-depends: plutarch-core
+  build-depends: directory
+  ghc-options:   -Wno-missing-home-modules -Wwarn

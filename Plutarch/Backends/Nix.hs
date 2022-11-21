@@ -1,32 +1,36 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
--- FIXME remove
-{-# OPTIONS_GHC -Wno-missing-methods #-}
 
 module Plutarch.Backends.Nix (compileAp) where
 
+import Control.Monad.Trans.Reader (ReaderT, ask, runReaderT, withReaderT)
 import Data.Coerce (coerce)
-import Data.Functor.Identity (Identity)
+import Data.Functor.Identity (Identity (Identity), runIdentity)
 import Data.Kind (Constraint, Type)
 import Data.List (foldl')
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text (Text, pack)
+import Data.Text.Builder.Linear qualified as TB
 import Generics.SOP (
   All2,
   ConstructorInfo (Constructor, Infix, Record),
   DatatypeInfo (ADT, Newtype),
   FieldInfo (FieldInfo),
+  FieldName,
   K (K),
   NP (Nil, (:*)),
+  NS (Z),
+  SOP (SOP),
  )
-import Generics.SOP.GGP (gdatatypeInfo)
+import Generics.SOP.GGP (gdatatypeInfo, gfrom, gto)
 import Generics.SOP.NP (POP (POP), collapse_NP, collapse_POP, liftA2_NP, liftA_NP, liftA_POP)
 import Plutarch.Core (
   CompileAp,
   IsPTypeData (IsPTypeData),
   IsPTypePrim (isPTypePrim),
   PAp (papl, papr),
+  PConcreteEf,
   PConstructablePrim (pcaseImpl, pconImpl, pmatchImpl),
   PDSL (IsPTypePrimData, PEffect),
   PDSLKind (PDSLKind),
@@ -45,15 +49,12 @@ import Plutarch.Frontends.Data (
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
-import Plutarch.PType (PCode, PGeneric, PTypeF)
+import Plutarch.PType (PCode, PGeneric, PTypeF, Pf' (Pf'), pgfrom, pgto)
 import Plutarch.Prelude
-import Plutarch.Repr.SOP (PSOPed)
+import Plutarch.Repr.SOP (PSOPed (PSOPed))
 
 newtype Lvl = Lvl Int
   deriving newtype (Show)
-
-sc :: Lvl -> Lvl
-sc (Lvl l) = Lvl (l + 1)
 
 data NixType
   = NFunTy NixType NixType
@@ -65,16 +66,43 @@ data NixType
   | NFixedStringTy Text
   deriving stock (Show)
 
+getTabs :: ReaderT Int Identity TB.Builder
+getTabs = do
+  n <- ask
+  pure $ fromString $ take (n * 2) $ repeat ' '
+
+succTabs :: ReaderT Int Identity a -> ReaderT Int Identity a
+succTabs = withReaderT (+ 1)
+
+serialiseTy' :: NixType -> ReaderT Int Identity TB.Builder
+serialiseTy' (NFunTy a b) = do
+  tabs <- getTabs
+  l <- serialiseTy' a
+  r <- serialiseTy' b
+  pure $ l <> " ->\n" <> tabs <> r
+serialiseTy' (NSetTy kvs) = do
+  let f acc (k, v) = do
+        acc <- acc
+        tabs <- getTabs
+        tabs' <- succTabs getTabs
+        v' <- succTabs $ serialiseTy' v
+        pure $ acc <> tabs <> TB.fromText k <> " ::\n" <> tabs' <> v' <> ";\n"
+  kvs' <- succTabs $ foldl' f (pure mempty) kvs
+  tabs <- getTabs
+  pure $ "{\n" <> kvs' <> tabs <> "}"
+serialiseTy' (NTyVar v) = pure $ TB.fromText v
+serialiseTy' (NForallTy v x) = do
+  x' <- serialiseTy' x
+  pure $ "(forall " <> TB.fromText v <> ". " <> x' <> ")"
+serialiseTy' NAnyTy = pure $ "Any"
+serialiseTy' (NUnionTy a b) = do
+  a' <- serialiseTy' a
+  b' <- serialiseTy' b
+  pure $ "(" <> a' <> "|" <> b' <> ")"
+serialiseTy' (NFixedStringTy s) = pure $ "\"" <> TB.fromText s <> "\""
+
 serialiseTy :: NixType -> Text
-serialiseTy (NFunTy a b) = serialiseTy a <> " -> " <> serialiseTy b
-serialiseTy (NSetTy kvs) = foldl' f "{" kvs <> "}"
-  where
-    f acc (k, v) = acc <> k <> " = " <> serialiseTy v <> ";\n"
-serialiseTy (NTyVar v) = v
-serialiseTy (NForallTy v x) = "(forall " <> v <> ". " <> serialiseTy x <> ")"
-serialiseTy NAnyTy = "Any"
-serialiseTy (NUnionTy a b) = "(" <> serialiseTy a <> "|" <> serialiseTy b <> ")"
-serialiseTy (NFixedStringTy s) = "\"" <> s <> "\""
+serialiseTy t = TB.runBuilder $ runIdentity $ runReaderT (serialiseTy' t) 0
 
 data NOp
   = NApp
@@ -102,19 +130,21 @@ data NixAST
   | NDot NixAST NixAST
   deriving stock (Show)
 
-serialise :: NixAST -> Text
-serialise (NLam ty v a) = "(" <> v <> " /* :: " <> serialiseTy ty <> " */ : " <> serialise a <> ")"
-serialise (NMkSet kvs) = foldl' f "{" kvs <> "}"
+serialise' :: NixAST -> TB.Builder
+serialise' (NLam ty v a) = "(" <> TB.fromText v <> " /* :: " <> (runIdentity $ runReaderT (serialiseTy' ty) 0) <> " */ : " <> serialise' a <> ")"
+serialise' (NMkSet kvs) = foldl' f "{" kvs <> "}"
   where
-    f acc (k, v) = acc <> "${" <> serialise k <> "} = " <> serialise v <> ";\n"
-serialise (NString t) = "\"" <> t <> "\"" -- FIXME escape string
-serialise (NVar v) = v
-serialise (NLet kvs k) = foldl' f "(let " kvs <> "in " <> serialise k <> ")"
+    f acc (NString k, v) = acc <> TB.fromText k <> " = " <> serialise' v <> ";\n"
+    f acc (k, v) = acc <> "${" <> serialise' k <> "} = " <> serialise' v <> ";\n"
+serialise' (NString t) = "\"" <> TB.fromText t <> "\"" -- FIXME escape string
+serialise' (NVar v) = TB.fromText v
+serialise' (NLet kvs k) = foldl' f "(let " kvs <> "in " <> serialise' k <> ")"
   where
-    f acc (k, v) = acc <> k <> " = " <> serialise v <> ";\n"
-serialise (NIfThenElse cond x y) = "(if " <> serialise cond <> " then " <> serialise x <> " else " <> serialise y <> ")"
-serialise (NDot x y) = serialise x <> ".{" <> serialise y <> "}"
-serialise (NOpApp op x y) = "(" <> serialise x <> s <> serialise y <> ")"
+    f acc (k, v) = acc <> TB.fromText k <> " = " <> serialise' v <> ";\n"
+serialise' (NIfThenElse cond x y) = "(if " <> serialise' cond <> " then " <> serialise' x <> " else " <> serialise' y <> ")"
+serialise' (NDot x (NString y)) = serialise' x <> "." <> TB.fromText y
+serialise' (NDot x y) = serialise' x <> ".${" <> serialise' y <> "}"
+serialise' (NOpApp op x y) = "(" <> serialise' x <> s <> serialise' y <> ")"
   where
     s = case op of
       NApp -> " "
@@ -130,8 +160,37 @@ serialise (NOpApp op x y) = "(" <> serialise x <> s <> serialise y <> ")"
       NAnd -> " && "
       NOr -> " || "
 
-newtype Impl' m (a :: PType) = Impl {runImpl :: Lvl -> m NixAST}
+serialise :: NixAST -> Text
+serialise v = TB.runBuilder $ serialise' v
+
+newtype State = State {lvl :: Lvl}
+
+initialState :: State
+initialState = State {lvl = Lvl 0}
+
+newtype M a = M (ReaderT State Identity a)
+  deriving newtype (Functor, Applicative, Monad)
+
+runM :: M a -> State -> a
+runM (M x) s = coerce $ runReaderT x s
+
+varify :: Lvl -> Text
+varify l = pack $ 'x' : show l
+
+getLvl :: M Lvl
+getLvl = (.lvl) <$> M ask
+
+succLvl :: M a -> M a
+succLvl (M x) = M $ flip withReaderT x \(State (Lvl lvl)) -> (State $ Lvl $ lvl + 1)
+
+mkTerm :: Applicative m => NixAST -> Term (Impl m) a
+mkTerm x = Term $ Impl $ pure $ pure $ x
+
+newtype Impl' m (a :: PType) = Impl {runImpl :: M (m NixAST)}
 type Impl m = 'PDSLKind (Impl' m)
+
+runTerm :: Term (Impl m) a -> M (m NixAST)
+runTerm = runImpl . unTerm
 
 getTy :: forall m a. IsPType (Impl m) a => Proxy m -> Proxy a -> NixType
 getTy _ _ = case isPType :: IsPTypeData (Impl m) a of IsPTypeData (IsPTypePrimData t) -> t
@@ -158,39 +217,30 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PEith
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PPair a b) where
   isPTypePrim = IsPTypePrimData $ NSetTy [("x", getTy (Proxy @m) (Proxy @a)), ("y", getTy (Proxy @m) (Proxy @b))]
 
-type family OpaqueEf :: PTypeF where
-
 instance (IsPTypeSOP (Impl m) a) => IsPTypePrim (Impl m) (PSOPed a) where
   isPTypePrim = IsPTypePrimData t
     where
-      -- TODO: improve type
-      elms :: [[NixType]]
-      elms = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \_ x -> collapse_POP $ liftA_POP (\(IsPTypePrimData t) -> K t) x
       t :: NixType
       t = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info elems -> case (info, elems) of
-        (IsPTypeSOPData _ _ (K con :* Nil) (PRecord fields :* Nil), POP (tys :* Nil)) -> NSetTy $ collapse_NP $ liftA2_NP (\(K name) (IsPTypePrimData ty) -> K (pack name, ty)) fields tys
-
-{-
-ADT _ _ (Constructor _ :* Nil) _ -> NSetTy $ zip (pack . ('_' :) . show <$> iterate (+ 1) (0 :: Integer)) (head elms)
-ADT _ _ (Infix _ _ _ :* Nil) _ -> let [[x, y]] = elms in NSetTy [("left", x), ("right", y)]
-ADT _ _ (Record _ fields :* Nil) _ ->
-  NSetTy $ zip (collapse_NP $ liftA_NP (\(FieldInfo x) -> K (pack x)) fields) (head elms)
-ADT _ _ _ _ -> error "sums not supported yet"
-Newtype _ _ _ -> error "impossible"
--}
+        (IsPTypeSOPData _ _ _ (PRecord fields :* Nil), POP (tys :* Nil)) ->
+          NSetTy $ collapse_NP $ liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, ty)) fields tys
 
 instance IsPTypePrim (Impl m) (PForall f)
 
 instance IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f)
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructablePrim (Impl m) (a #-> b) where
-  pconImpl (PLam f) = Impl \l ->
-    let n = fromString $ 'x' : show l
-     in NLam (getTy (Proxy @m) (Proxy @a)) n <$> (flip runImpl (sc l) $ unTerm $ f $ Term $ Impl $ const $ pure $ NVar n)
+  pconImpl (PLam f) = Impl do
+    l <- varify <$> getLvl
+    body <- succLvl $ runTerm $ f $ mkTerm $ NVar l
+    pure $ NLam (getTy (Proxy @m) (Proxy @a)) l <$> body
   pmatchImpl x f = f (PLam g)
     where
       g :: Term (Impl m) a -> Term (Impl m) b
-      g y = Term $ Impl \l -> NOpApp NApp <$> runImpl x l <*> runImpl (unTerm y) l
+      g y = Term $ Impl do
+        x <- runImpl x
+        y <- runImpl $ unTerm y
+        pure $ NOpApp NApp <$> x <*> y
 
 instance PConstructablePrim (Impl m) PAny where
   pconImpl (PAny Proxy x) = coerce $ unTerm x
@@ -203,8 +253,8 @@ instance PDSL (Impl m) where
   newtype IsPTypePrimData (Impl m) _ = IsPTypePrimData NixType
 
 instance Applicative m => PAp m (Impl m) where
-  papr x (Term (Impl y)) = Term $ Impl \lvl -> x *> y lvl
-  papl (Term (Impl x)) y = Term $ Impl \lvl -> x lvl <* y
+  papr x (Term (Impl y)) = Term $ Impl $ (x *>) <$> y
+  papl (Term (Impl x)) y = Term $ Impl $ (<* y) <$> x
 
 instance PUntyped (Impl m) where
   punsafeCoerce t = coerce t
@@ -217,14 +267,45 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m)
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PPair a b)
 
-instance (IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (PSOPed a)
+instance (Applicative m, IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (PSOPed a) where
+  pconImpl (PSOPed x) = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info elems -> case (info, elems) of
+    (IsPTypeSOPData _ _ _ (PRecord names :* Nil), _) ->
+      Impl case pgfrom (Proxy @a) (Proxy @(PConcreteEf (Impl m))) $ gfrom x of
+        SOP (Z vals) ->
+          let f :: forall a' b m. Functor m => (a', M (m b)) -> M (m (a', b))
+              f (name, val) = ((name,) <$>) <$> val
+              g :: K FieldName ty -> Pf' (PConcreteEf (Impl m)) ty -> K (NixAST, M (m NixAST)) ty
+              g (K name) (Pf' v) = K (NString (pack name), runTerm v)
+           in ((NMkSet <$>) . sequenceA) <$> do traverse f $ collapse_NP $ liftA2_NP g names vals
+  pmatchImpl = impl
+    where
+      impl = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info elems -> case (info, elems) of
+        (IsPTypeSOPData _ _ (K _ :* Nil) (PRecord (names) :* Nil), POP ((_ :: NP (IsPTypeData (Impl m)) tys) :* Nil)) ->
+          \t f -> Term $ Impl do
+            l <- varify <$> getLvl
+            t <- runImpl t
+            let set :: NixAST
+                set = NVar l
+                fields :: NP (K NixAST) tys
+                fields = liftA_NP (\(K name) -> K (NDot set (NString $ pack name))) names
+                fields' :: NP (Pf' (PConcreteEf (Impl m))) tys
+                fields' = liftA_NP (\(K ast) -> Pf' $ mkTerm ast) fields
+                sopped :: a (PConcreteEf (Impl m))
+                sopped = gto $ pgto (Proxy @a) (Proxy @(PConcreteEf (Impl m))) $ SOP $ Z $ fields'
+            k <- succLvl $ runTerm (f $ PSOPed sopped)
+            pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
 
 instance PConstructablePrim (Impl m) (PForall f)
 
 instance Applicative m => PNix (Impl m)
 
 compile' :: forall a m. (Applicative m, IsPType (Impl m) a) => Term (Impl m) a -> m Text
-compile' (Term t) = serialise <$> runImpl t (Lvl 0)
+compile' (Term t) =
+  flip fmap (runM (runImpl t) initialState) $
+    ("/* Type: " <>)
+      . (serialiseTy (getTy (Proxy @m) (Proxy @a)) <>)
+      . (" */ \n" <>)
+      . serialise
 
 compileAp :: CompileAp PNix Text
 compileAp _ x = compile' x

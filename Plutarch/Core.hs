@@ -9,6 +9,7 @@ module Plutarch.Core (
   ClosedTerm,
   unTerm,
   PConcrete,
+  PConcreteEf,
   IsPType (..),
   IsPTypeData (IsPTypeData),
   PConstructable (..),
@@ -75,8 +76,11 @@ instance
   where
   isPType = IsPTypeData isPTypePrim
 
+type PConcreteEf :: PDSLKind -> PTypeF
+type PConcreteEf edsl = MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl))
+
 type PConcrete :: PDSLKind -> PType -> Type
-type PConcrete edsl a = a (MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl)))
+type PConcrete edsl a = a (PConcreteEf edsl)
 
 class (PDSL edsl, IsPTypePrim edsl a) => PConstructablePrim edsl (a :: PType) where
   pconImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
@@ -99,7 +103,6 @@ class IsPType edsl a => PConstructable edsl (a :: PType) where
     (PConcrete edsl a -> PEffect edsl (Term edsl b)) ->
     PEffect edsl (Term edsl b)
 
--- duplicate IsPTypePrim constraint because otherwise GHC complains
 instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, PConstructablePrim edsl (PRepr a)) => PConstructable edsl a where
   pcon x = Term $ pconImpl (prfrom x)
   pmatch (Term t) f = pmatchImpl t \x -> f (prto x)

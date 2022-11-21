@@ -2,7 +2,7 @@ module Examples.Nix (example) where
 
 import Data.Functor.Identity (runIdentity)
 import Data.Proxy (Proxy (Proxy))
-import Data.Text (unpack)
+import Data.Text (Text, unpack)
 import Plutarch.Backends.Nix (compileAp)
 import Plutarch.Frontends.Data (PAny (PAny))
 import Plutarch.Frontends.Nix (PNix)
@@ -48,5 +48,8 @@ plib =
       , pconst = pconst'
       }
 
-example :: IO ()
-example = putStrLn $ unpack $ runIdentity $ compileAp (Proxy @PLib) plib
+example :: Text
+example = runIdentity $ compileAp (Proxy @PLib) plib
+
+p :: IO ()
+p = putStrLn $ unpack $ example

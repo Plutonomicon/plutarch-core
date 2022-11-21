@@ -45,7 +45,16 @@ import Generics.SOP (
 import Generics.SOP.Dict (Dict)
 import Generics.SOP.GGP (GCode, gdatatypeInfo)
 import Generics.SOP.NP (liftA_NP)
-import Plutarch.Core (IsPType, IsPTypePrim, IsPTypePrimData, PConstructable, PConstructablePrim, PDSLKind)
+import Plutarch.Core (
+  IsPType,
+  IsPTypeData,
+  IsPTypePrim,
+  IsPTypePrimData,
+  PConstructable,
+  PConstructablePrim,
+  PDSLKind,
+  isPType,
+ )
 import Plutarch.PType (PCode, PGeneric, PHs, PPType, PType, PTypeF, PfC, type (/$))
 import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
@@ -111,20 +120,21 @@ class IsPTypeSOP edsl a where
   isPTypeSOP ::
     Proxy edsl ->
     Proxy a ->
-    (PGeneric a => IsPTypeSOPData (PCode a) -> POP (IsPTypePrimData edsl) (PCode a) -> b) ->
+    (PGeneric a => IsPTypeSOPData (PCode a) -> POP (IsPTypeData edsl) (PCode a) -> b) ->
     b
 
 type family OpaqueEf :: PTypeF where
 
 -- TODO: implement safely
 coercer :: Proxy p -> NP (K a) (GCode (p OpaqueEf)) -> NP (K a) (PCode p)
-coercer _ = unsafeCoerce
+coercer _ x = unsafeCoerce x
 
 -- TODO: implement safely
 coercer2 :: Proxy p -> NP PConstructorInfo (GCode (p OpaqueEf)) -> NP PConstructorInfo (PCode p)
-coercer2 _ = unsafeCoerce
+coercer2 _ x = unsafeCoerce x
 
-newtype T2 (edsl :: PDSLKind) (pss :: [[PType]]) = T2 (POP (IsPTypePrimData edsl) pss)
+newtype T1 (edsl :: PDSLKind) (ps :: [PType]) = T1 {unT1 :: NP (IsPTypeData edsl) ps}
+newtype T2 (edsl :: PDSLKind) (pss :: [[PType]]) = T2 {unT2 :: POP (IsPTypeData edsl) pss}
 
 instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
   isPTypeSOP _ _ x =
@@ -141,13 +151,20 @@ instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
               do datatypeName i
               do coercer (Proxy @a) names
               do coercer2 (Proxy @a) info
+            prog1 :: IsPType edsl p => T1 edsl ps -> T1 edsl (p ': ps)
+            prog1 (T1 prev) = T1 (isPType :* prev)
+            prog2 :: forall ps pss. All (IsPType edsl) ps => T2 edsl pss -> T2 edsl (ps ': pss)
+            prog2 (T2 (POP prev)) =
+              let next :: T1 edsl ps
+                  next = cpara_SList (Proxy @(IsPType edsl)) (T1 Nil) prog1
+               in T2 (POP (unT1 next :* prev))
             t :: T2 edsl (PCode a)
-            t = cpara_SList
-              (Proxy @(All (IsPType edsl)))
-              (T2 $ POP $ Nil)
-              \(T2 (POP prev)) -> T2 (POP (undefined :* prev))
-            T2 t' = t
-         in x d t'
+            t =
+              cpara_SList
+                (Proxy @(All (IsPType edsl)))
+                (T2 $ POP Nil)
+                prog2
+         in x d (unT2 t)
 
 type PSOP :: PDSLKind -> Constraint
 type PSOP edsl =

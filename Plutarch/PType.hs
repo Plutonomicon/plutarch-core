@@ -152,12 +152,12 @@ instance (forall ef. PGeneric' a ef) => PGeneric a
  every element of @GCode (a ef)@ is @ef /$ p@ where @p@ is from @PCode a@.
  This function is useful for operating over 'PType's generically.
 -}
-pgfrom :: forall a ef. PGeneric a => Proxy a -> SOP I (GCode (a ef)) -> SOP (Pf' ef) (PCode a)
-pgfrom = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
+pgfrom :: forall a ef. PGeneric a => Proxy a -> Proxy ef -> SOP I (GCode (a ef)) -> SOP (Pf' ef) (PCode a)
+pgfrom = let _ = witness (Proxy @(PGeneric a)) in \_ _ x -> unsafeCoerce x
 
 -- | See 'pgto'.
-pgto :: forall a ef. PGeneric a => Proxy a -> SOP (Pf' ef) (PCode a) -> SOP I (GCode (a ef))
-pgto = let _ = witness (Proxy @(PGeneric a)) in unsafeCoerce
+pgto :: forall a ef. PGeneric a => Proxy a -> Proxy ef -> SOP (Pf' ef) (PCode a) -> SOP I (GCode (a ef))
+pgto = let _ = witness (Proxy @(PGeneric a)) in \_ _ x -> unsafeCoerce x
 
 type PDatatypeInfoOf a = GDatatypeInfoOf (a OpaqueEf)
 
