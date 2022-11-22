@@ -23,10 +23,9 @@ module Plutarch.Core (
 
 import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
-import Data.Proxy (Proxy (Proxy))
+import Data.Proxy (Proxy)
 import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
-import Plutarch.Internal.CoerceTo (CoerceTo)
 import Plutarch.PType (
   MkPTypeF,
   PHs,

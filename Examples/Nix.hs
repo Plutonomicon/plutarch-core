@@ -4,7 +4,7 @@ import Data.Functor.Identity (runIdentity)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, unpack)
 import Plutarch.Backends.Nix (compileAp)
-import Plutarch.Frontends.Data (PAny (PAny))
+import Plutarch.Frontends.Data (PAny)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Prelude
 
@@ -13,6 +13,14 @@ data PMyTriple a b c ef = PMyTriple
   , y :: ef /$ b
   , z :: ef /$ c
   }
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+
+data PMyEither a b ef = PMyLeft (ef /$ a) | PMyRight (ef /$ b)
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+
+data PMyVoid ef
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
 
@@ -28,10 +36,20 @@ pmutate' = plam \t ->
       , z = t.x
       }
 
+pswap' :: (PNix e, IsPType e a, IsPType e b) => Term e (PMyEither a b #-> PMyEither b a)
+pswap' = plam \x -> pmatch x \case
+  PMyLeft l -> pcon $ PMyRight l
+  PMyRight r -> pcon $ PMyLeft r
+
+pvoid' :: (PNix e, IsPType e a) => Term e (PMyVoid #-> a)
+pvoid' = plam \x -> pmatch x \case {}
+
 data PLib ef = PLib
   -- FIXME: replace with foralls
   { pmutate :: ef /$ PMyTriple PAny PAny PAny #-> PMyTriple PAny PAny PAny
   , pconst :: ef /$ PAny #-> PAny #-> PAny
+  , pswap :: ef /$ PMyEither PAny PAny #-> PMyEither PAny PAny
+  , pvoid :: ef /$ PMyVoid #-> PAny
   }
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
@@ -46,6 +64,8 @@ plib =
     PLib
       { pmutate = pmutate'
       , pconst = pconst'
+      , pswap = pswap'
+      , pvoid = pvoid'
       }
 
 example :: Text

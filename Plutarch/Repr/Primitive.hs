@@ -3,9 +3,8 @@
 
 module Plutarch.Repr.Primitive (PReprPrimitive) where
 
-import Plutarch.Core (IsPTypePrim, isPTypePrim)
 import Plutarch.Internal.CoerceTo (CoerceTo)
-import Plutarch.PType (PHs, PHs', PPType)
+import Plutarch.PType (PHs', PPType)
 import Plutarch.Repr (PIsRepr (PReprApplyVal0, PReprC, prfrom, prto), PIsRepr0 (PReprApply), PReprKind (PReprKind))
 
 data PReprPrimitive'

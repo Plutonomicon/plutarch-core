@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Plutarch.Frontends.Data (
   PVoid,
@@ -35,27 +36,26 @@ import Generics.SOP (
   ModuleName,
   NP (Nil, (:*)),
   POP (POP),
-  SListI,
+  SOP,
   constructorInfo,
   constructorName,
   cpara_SList,
   datatypeName,
   moduleName,
  )
-import Generics.SOP.Dict (Dict)
-import Generics.SOP.GGP (GCode, gdatatypeInfo)
+import Generics.SOP.GGP (GCode, gdatatypeInfo, gfrom, gto)
 import Generics.SOP.NP (liftA_NP)
 import Plutarch.Core (
   IsPType,
   IsPTypeData,
   IsPTypePrim,
-  IsPTypePrimData,
-  PConstructable,
+  PConcrete,
+  PConcreteEf,
   PConstructablePrim,
   PDSLKind,
   isPType,
  )
-import Plutarch.PType (PCode, PGeneric, PHs, PPType, PType, PTypeF, PfC, type (/$))
+import Plutarch.PType (PCode, PGeneric, PHs, PPType, PType, PTypeF, Pf', PfC, pgfrom, pgto, type (/$))
 import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.Repr.SOP (PSOPed)
@@ -114,13 +114,21 @@ data PConstructorInfo ps :: Type where
   PInfix :: PConstructorInfo '[a, b]
   PRecord :: NP (K FieldName) ps -> PConstructorInfo ps
 
-data IsPTypeSOPData pss = IsPTypeSOPData ModuleName DatatypeName (NP (K ConstructorName) pss) (NP PConstructorInfo pss)
+data IsPTypeSOPData edsl p = IsPTypeSOPData
+  { moduleName :: ModuleName
+  , name :: DatatypeName
+  , constructorNames :: NP (K ConstructorName) (PCode p)
+  , constructorInfo :: NP PConstructorInfo (PCode p)
+  , typeInfo :: POP (IsPTypeData edsl) (PCode p)
+  , to :: SOP (Pf' (PConcreteEf edsl)) (PCode p) -> PConcrete edsl p
+  , from :: PConcrete edsl p -> SOP (Pf' (PConcreteEf edsl)) (PCode p)
+  }
 
 class IsPTypeSOP edsl a where
   isPTypeSOP ::
     Proxy edsl ->
     Proxy a ->
-    (PGeneric a => IsPTypeSOPData (PCode a) -> POP (IsPTypeData edsl) (PCode a) -> b) ->
+    (PGeneric a => IsPTypeSOPData edsl a -> b) ->
     b
 
 type family OpaqueEf :: PTypeF where
@@ -133,8 +141,13 @@ coercer _ x = unsafeCoerce x
 coercer2 :: Proxy p -> NP PConstructorInfo (GCode (p OpaqueEf)) -> NP PConstructorInfo (PCode p)
 coercer2 _ x = unsafeCoerce x
 
-newtype T1 (edsl :: PDSLKind) (ps :: [PType]) = T1 {unT1 :: NP (IsPTypeData edsl) ps}
-newtype T2 (edsl :: PDSLKind) (pss :: [[PType]]) = T2 {unT2 :: POP (IsPTypeData edsl) pss}
+newtype T1 (edsl :: PDSLKind) (ps :: [PType]) = T1 (NP (IsPTypeData edsl) ps)
+unT1 :: T1 edsl ps -> NP (IsPTypeData edsl) ps
+unT1 (T1 x) = x
+
+newtype T2 (edsl :: PDSLKind) (pss :: [[PType]]) = T2 (POP (IsPTypeData edsl) pss)
+unT2 :: T2 edsl pss -> POP (IsPTypeData edsl) pss
+unT2 (T2 x) = x
 
 instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
   isPTypeSOP _ _ x =
@@ -146,11 +159,6 @@ instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
             f (Constructor _) = PConstructor
             f (Infix _ _ _) = PInfix
             f (Record _ fields) = PRecord (liftA_NP (\(FieldInfo n) -> K n) fields)
-            d = IsPTypeSOPData
-              do moduleName i
-              do datatypeName i
-              do coercer (Proxy @a) names
-              do coercer2 (Proxy @a) info
             prog1 :: IsPType edsl p => T1 edsl ps -> T1 edsl (p ': ps)
             prog1 (T1 prev) = T1 (isPType :* prev)
             prog2 :: forall ps pss. All (IsPType edsl) ps => T2 edsl pss -> T2 edsl (ps ': pss)
@@ -164,7 +172,15 @@ instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
                 (Proxy @(All (IsPType edsl)))
                 (T2 $ POP Nil)
                 prog2
-         in x d (unT2 t)
+            d = IsPTypeSOPData
+              do moduleName i
+              do datatypeName i
+              do coercer (Proxy @a) names
+              do coercer2 (Proxy @a) info
+              do unT2 t
+              do gto . pgto (Proxy @a) (Proxy @(PConcreteEf edsl))
+              do pgfrom (Proxy @a) (Proxy @(PConcreteEf edsl)) . gfrom
+         in x d
 
 type PSOP :: PDSLKind -> Constraint
 type PSOP edsl =

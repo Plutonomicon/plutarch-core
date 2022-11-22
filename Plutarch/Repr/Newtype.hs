@@ -4,7 +4,7 @@
 module Plutarch.Repr.Newtype (PReprNewtype) where
 
 import Data.Coerce (Coercible, coerce)
-import Plutarch.Internal.Unimplemented (Error, Unimplemented)
+import Plutarch.Internal.Unimplemented (Error)
 import Plutarch.PType (
   PCode,
   PGeneric,
@@ -39,7 +39,7 @@ instance PIsRepr PReprNewtype where
       , PIsRepr (PReprSort (GetPNewtype a))
       , PReprC (PReprSort (GetPNewtype a)) (GetPNewtype a)
       )
-  type PReprApplyVal0 _ _ _ _ = Error "PReprApplyVal0 PReprNewtype"
+  type PReprApplyVal0 _ _ _ _ = Error "PReprApplyVal0 PReprNewtype is unimplemented"
   prfrom (x :: a ef) = prfrom (coerce x :: GetPNewtype a ef)
   prto :: forall a ef. PReprC PReprNewtype a => PReprApply PReprNewtype a ef -> a ef
   prto x = coerce $ (prto x :: GetPNewtype a ef) :: a ef

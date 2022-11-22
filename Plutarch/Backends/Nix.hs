@@ -7,7 +7,7 @@ import Control.Monad.Trans.Reader (ReaderT, ask, runReaderT, withReaderT)
 import Data.Coerce (coerce)
 import Data.Functor.Identity (Identity (Identity), runIdentity)
 import Data.Kind (Constraint, Type)
-import Data.List (foldl')
+import Data.List (foldl', foldl1')
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text (Text, pack)
@@ -15,16 +15,33 @@ import Data.Text.Builder.Linear qualified as TB
 import Generics.SOP (
   All2,
   ConstructorInfo (Constructor, Infix, Record),
+  ConstructorName,
   DatatypeInfo (ADT, Newtype),
   FieldInfo (FieldInfo),
   FieldName,
   K (K),
   NP (Nil, (:*)),
-  NS (Z),
+  NS (S, Z),
+  SListI,
+  SListI2,
   SOP (SOP),
+  para_SList,
+  unSOP,
  )
 import Generics.SOP.GGP (gdatatypeInfo, gfrom, gto)
-import Generics.SOP.NP (POP (POP), collapse_NP, collapse_POP, liftA2_NP, liftA_NP, liftA_POP)
+import Generics.SOP.NP (
+  POP (POP),
+  ccata_NP,
+  cliftA3_NP,
+  cliftA_NP,
+  collapse_NP,
+  collapse_POP,
+  liftA2_NP,
+  liftA_NP,
+  liftA_POP,
+  unPOP,
+ )
+import Generics.SOP.NS (apInjs_POP)
 import Plutarch.Core (
   CompileAp,
   IsPTypeData (IsPTypeData),
@@ -40,9 +57,9 @@ import Plutarch.Core (
  )
 import Plutarch.Frontends.Data (
   IsPTypeSOP (isPTypeSOP),
-  IsPTypeSOPData (IsPTypeSOPData),
+  IsPTypeSOPData (IsPTypeSOPData, constructorInfo, constructorNames, from, to, typeInfo),
   PAny (PAny),
-  PConstructorInfo (PRecord),
+  PConstructorInfo (PConstructor, PInfix, PRecord),
   PEither (PLeft, PRight),
   PPair (PPair),
  )
@@ -62,6 +79,7 @@ data NixType
   | NTyVar Text
   | NSetTy [(Text, NixType)]
   | NAnyTy
+  | NVoidTy
   | NUnionTy NixType NixType
   | NFixedStringTy Text
   deriving stock (Show)
@@ -95,6 +113,7 @@ serialiseTy' (NForallTy v x) = do
   x' <- serialiseTy' x
   pure $ "(forall " <> TB.fromText v <> ". " <> x' <> ")"
 serialiseTy' NAnyTy = pure $ "Any"
+serialiseTy' NVoidTy = pure $ "Void"
 serialiseTy' (NUnionTy a b) = do
   a' <- serialiseTy' a
   b' <- serialiseTy' b
@@ -171,6 +190,9 @@ initialState = State {lvl = Lvl 0}
 newtype M a = M (ReaderT State Identity a)
   deriving newtype (Functor, Applicative, Monad)
 
+sequenceA_M :: (Applicative m, Traversable t) => t (M (m a)) -> M (m (t a))
+sequenceA_M = (sequenceA <$>) . sequenceA
+
 runM :: M a -> State -> a
 runM (M x) s = coerce $ runReaderT x s
 
@@ -217,13 +239,34 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PEith
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PPair a b) where
   isPTypePrim = IsPTypePrimData $ NSetTy [("x", getTy (Proxy @m) (Proxy @a)), ("y", getTy (Proxy @m) (Proxy @b))]
 
+setInfo :: SListI tys => NP (IsPTypeData (Impl m)) tys -> NP (K FieldName) tys -> [(Text, NixType)]
+setInfo tys names =
+  collapse_NP $
+    liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, ty)) names tys
+
+data H1 tys = H1 {unH1 :: NP (K FieldName) tys, _index :: Integer}
+
+numericFieldNames :: SListI tys => NP (K FieldName) tys
+numericFieldNames = unH1 $ para_SList (H1 Nil 0) (\(H1 n i) -> H1 (K ('_' : show i) :* n) (i + 1))
+
+fieldNames :: SListI tys => PConstructorInfo tys -> NP (K FieldName) tys
+fieldNames (PRecord names) = names
+fieldNames PInfix = K "left" :* K "right" :* Nil
+fieldNames PConstructor = numericFieldNames
+
 instance (IsPTypeSOP (Impl m) a) => IsPTypePrim (Impl m) (PSOPed a) where
   isPTypePrim = IsPTypePrimData t
     where
       t :: NixType
-      t = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info elems -> case (info, elems) of
-        (IsPTypeSOPData _ _ _ (PRecord fields :* Nil), POP (tys :* Nil)) ->
-          NSetTy $ collapse_NP $ liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, ty)) fields tys
+      t = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info -> case (info.constructorNames, info.constructorInfo, info.typeInfo) of
+        (Nil, Nil, POP Nil) -> NVoidTy
+        (K _ :* Nil, c :* _, POP (tys :* Nil)) -> NSetTy $ setInfo tys (fieldNames c)
+        (cns, cs, POP tyss) ->
+          -- TODO: avoid use of partial function
+          foldl1' NUnionTy $ collapse_NP $ cliftA3_NP (Proxy @SListI) (\(K cn) c tys -> f cn c tys) cns cs tyss
+          where
+            f :: SListI tys => ConstructorName -> PConstructorInfo tys -> NP (IsPTypeData (Impl m)) tys -> K NixType tys
+            f cn c tys = K $ NSetTy $ ("_constructor", NFixedStringTy (pack cn)) : setInfo tys (fieldNames c)
 
 instance IsPTypePrim (Impl m) (PForall f)
 
@@ -267,33 +310,61 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m)
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PPair a b)
 
+setConstruct :: (Applicative m, SListI tys) => NP (Pf' (PConcreteEf (Impl m))) tys -> NP (K FieldName) tys -> M (m NixAST)
+setConstruct vals names =
+  let f :: forall a' b m. Functor m => (a', M (m b)) -> M (m (a', b))
+      f (name, val) = ((name,) <$>) <$> val
+      g :: K FieldName ty -> Pf' (PConcreteEf (Impl m)) ty -> K (NixAST, M (m NixAST)) ty
+      g (K name) (Pf' v) = K (NString (pack name), runTerm v)
+   in (NMkSet <$>) <$> do sequenceA_M $ fmap f $ collapse_NP $ liftA2_NP g names vals
+
 instance (Applicative m, IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (PSOPed a) where
-  pconImpl (PSOPed x) = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info elems -> case (info, elems) of
-    (IsPTypeSOPData _ _ _ (PRecord names :* Nil), _) ->
-      Impl case pgfrom (Proxy @a) (Proxy @(PConcreteEf (Impl m))) $ gfrom x of
-        SOP (Z vals) ->
-          let f :: forall a' b m. Functor m => (a', M (m b)) -> M (m (a', b))
-              f (name, val) = ((name,) <$>) <$> val
-              g :: K FieldName ty -> Pf' (PConcreteEf (Impl m)) ty -> K (NixAST, M (m NixAST)) ty
-              g (K name) (Pf' v) = K (NString (pack name), runTerm v)
-           in ((NMkSet <$>) . sequenceA) <$> do traverse f $ collapse_NP $ liftA2_NP g names vals
+  pconImpl (PSOPed x) = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info ->
+    case info.constructorInfo of
+      c :* Nil ->
+        case info.from x of
+          SOP (Z vals) -> Impl $ setConstruct vals (fieldNames c)
+          SOP (S next) -> case next of {}
+      _ ->
+        Impl $
+          f
+            info.constructorNames
+            info.constructorInfo
+            (unSOP $ info.from x)
+        where
+          f ::
+            SListI2 ass =>
+            NP (K ConstructorName) ass ->
+            NP PConstructorInfo ass ->
+            NS (NP (Pf' (PConcreteEf (Impl m)))) ass ->
+            M (m NixAST)
+          f (K cn :* _) (c :* _) (Z vals) = setConstruct (Pf' (mkTerm $ NString $ pack cn) :* vals) (K "_constructor" :* fieldNames c)
+          f Nil Nil x = case x of {}
+          f (K _ :* cns) (_ :* cs) (S next) = f cns cs next
   pmatchImpl = impl
     where
-      impl = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info elems -> case (info, elems) of
-        (IsPTypeSOPData _ _ (K _ :* Nil) (PRecord (names) :* Nil), POP ((_ :: NP (IsPTypeData (Impl m)) tys) :* Nil)) ->
-          \t f -> Term $ Impl do
-            l <- varify <$> getLvl
-            t <- runImpl t
-            let set :: NixAST
-                set = NVar l
-                fields :: NP (K NixAST) tys
-                fields = liftA_NP (\(K name) -> K (NDot set (NString $ pack name))) names
-                fields' :: NP (Pf' (PConcreteEf (Impl m))) tys
-                fields' = liftA_NP (\(K ast) -> Pf' $ mkTerm ast) fields
-                sopped :: a (PConcreteEf (Impl m))
-                sopped = gto $ pgto (Proxy @a) (Proxy @(PConcreteEf (Impl m))) $ SOP $ Z $ fields'
-            k <- succLvl $ runTerm (f $ PSOPed sopped)
-            pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
+      impl t f = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info ->
+        Term $ Impl do
+          l <- varify <$> getLvl
+          t <- runImpl t
+          let getFields :: SListI tys => PConstructorInfo tys -> NP (Pf' (PConcreteEf (Impl m))) tys
+              getFields c = liftA_NP (\(K name) -> Pf' $ mkTerm $ NDot (NVar l) (NString $ pack name)) (fieldNames c)
+              ks :: POP (Pf' (PConcreteEf (Impl m))) (PCode a)
+              ks = POP $ cliftA_NP (Proxy @SListI) (\c -> getFields c) info.constructorInfo
+              -- TODO: use NP here too
+              ks' :: [(SOP (Pf' (PConcreteEf (Impl m))) (PCode a))]
+              ks' = apInjs_POP ks
+              cns :: [ConstructorName]
+              cns = collapse_NP info.constructorNames
+              nixError :: NixAST
+              nixError = NOpApp NApp (NDot (NVar "builtins") (NString "throw")) (NString "unreachable")
+              constructor :: NixAST
+              constructor = NDot (NVar l) (NString "_constructor")
+          ks'' :: [m NixAST] <- succLvl $ sequenceA $ flip fmap ks' \fields -> runTerm $ f $ PSOPed $ info.to $ fields
+          let k :: m NixAST = case cns of
+                [_] -> head ks''
+                _ -> foldl' (\acc (cn, k') -> NIfThenElse (NOpApp NEq constructor (NString $ pack cn)) <$> k' <*> acc) (pure nixError) $ zip cns ks''
+          pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
 
 instance PConstructablePrim (Impl m) (PForall f)
 

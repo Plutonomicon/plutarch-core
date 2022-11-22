@@ -4,9 +4,7 @@
 module Plutarch.Repr (PHasRepr (..), PReprKind (..), PIsRepr0 (..), PIsRepr (..), PRepr) where
 
 import Data.Kind (Constraint, Type)
-import Data.Proxy (Proxy)
 import Generics.SOP.Type.Metadata (DatatypeInfo (ADT, Newtype))
-import {-# SOURCE #-} Plutarch.Core (IsPTypePrim, IsPTypePrimData, PDSLKind, isPTypePrim)
 import Plutarch.PType (
   PDatatypeInfoOf,
   PHs,
@@ -35,9 +33,17 @@ class PIsRepr0 (r :: PReprKind) where
  is mapped onto a type in the backend.
 -}
 class PIsRepr0 r => PIsRepr (r :: PReprKind) where
+  -- | Equivalent to 'PRepr'. Maps a value @x@ of type @a@ to its representation.
+  -- @out@ is assumed to be equal to @PHs (PReprApply r a)@ (equal to @PHs (PRepr a)@).
   type PReprApplyVal0 r (a :: PType) (x :: PHs a) (out :: Type) :: out -- out ~ PHs (PReprApply r a)
+
+  -- | What constraint must the type satisfy?
   type PReprC r (a :: PType) :: Constraint
+
+  -- | Similar to 'PReprApplyVal0', but at the term-level.
   prfrom :: forall a ef. (PReprC r a, PReprSort a ~ r) => a ef -> PReprApply r a ef
+
+  -- | Opposite of 'prfrom'.
   prto :: forall a ef. (PReprC r a, PReprSort a ~ r) => PReprApply r a ef -> a ef
 
 type PReprApplyVal :: forall (r :: PReprKind) -> forall (a :: PType) -> PHs a -> PHs (PReprApply r a)
