@@ -5,6 +5,7 @@
 module Plutarch.Core (
   PDSL (..),
   PDSLKind (..),
+  UnPDSLKind,
   Term (..),
   ClosedTerm,
   unTerm,
@@ -19,11 +20,12 @@ module Plutarch.Core (
   Compile,
   CompileAp,
   IsPTypePrim (..),
+  withIsPType,
 ) where
 
 import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
-import Data.Proxy (Proxy)
+import Data.Proxy (Proxy (Proxy))
 import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
 import Plutarch.PType (
@@ -34,6 +36,7 @@ import Plutarch.PType (
  )
 import Plutarch.Reduce (NoReduce)
 import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprSort, prfrom, prto)
+import Plutarch.Internal.WithDictHack (unsafeWithDict)
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
@@ -74,6 +77,9 @@ instance
   IsPType edsl (x :: PHs a)
   where
   isPType = IsPTypeData isPTypePrim
+
+withIsPType :: forall edsl x a. IsPTypeData edsl x -> (IsPType edsl x => a) -> a
+withIsPType = unsafeWithDict (Proxy @(IsPType edsl x))
 
 type PConcreteEf :: PDSLKind -> PTypeF
 type PConcreteEf edsl = MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl))

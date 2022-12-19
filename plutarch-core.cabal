@@ -90,6 +90,7 @@ library
     Plutarch.Repr.Primitive
     Plutarch.Repr.SOP
     Plutarch.TermCont
+    Plutarch.Internal.SKI
 
 executable examples
   import:        c

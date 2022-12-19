@@ -3,21 +3,18 @@
 
 module Plutarch.Backends.Nix (compileAp) where
 
+import Plutarch.Internal.SKI (Single, Fix, single, Known, know, known')
 import Control.Monad.Trans.Reader (ReaderT, ask, runReaderT, withReaderT)
 import Data.Coerce (coerce)
+import Data.Functor ((<&>))
 import Data.Functor.Identity (Identity (Identity), runIdentity)
-import Data.Kind (Constraint, Type)
 import Data.List (foldl', foldl1')
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text (Text, pack)
 import Data.Text.Builder.Linear qualified as TB
 import Generics.SOP (
-  All2,
-  ConstructorInfo (Constructor, Infix, Record),
   ConstructorName,
-  DatatypeInfo (ADT, Newtype),
-  FieldInfo (FieldInfo),
   FieldName,
   K (K),
   NP (Nil, (:*)),
@@ -28,21 +25,17 @@ import Generics.SOP (
   para_SList,
   unSOP,
  )
-import Generics.SOP.GGP (gdatatypeInfo, gfrom, gto)
 import Generics.SOP.NP (
   POP (POP),
-  ccata_NP,
   cliftA3_NP,
   cliftA_NP,
   collapse_NP,
-  collapse_POP,
   liftA2_NP,
   liftA_NP,
-  liftA_POP,
-  unPOP,
  )
 import Generics.SOP.NS (apInjs_POP)
 import Plutarch.Core (
+  withIsPType,
   CompileAp,
   IsPTypeData (IsPTypeData),
   IsPTypePrim (isPTypePrim),
@@ -51,13 +44,14 @@ import Plutarch.Core (
   PConstructablePrim (pcaseImpl, pconImpl, pmatchImpl),
   PDSL (IsPTypePrimData, PEffect),
   PDSLKind (PDSLKind),
+  UnPDSLKind,
   Term (Term),
   isPType,
   unTerm,
  )
 import Plutarch.Frontends.Data (
   IsPTypeSOP (isPTypeSOP),
-  IsPTypeSOPData (IsPTypeSOPData, constructorInfo, constructorNames, from, to, typeInfo),
+  IsPTypeSOPData (constructorInfo, constructorNames, from, to, typeInfo),
   PAny (PAny),
   PConstructorInfo (PConstructor, PInfix, PRecord),
   PEither (PLeft, PRight),
@@ -66,7 +60,7 @@ import Plutarch.Frontends.Data (
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
-import Plutarch.PType (PCode, PGeneric, PTypeF, Pf' (Pf'), pgfrom, pgto)
+import Plutarch.PType (PCode, Pf' (Pf'))
 import Plutarch.Prelude
 import Plutarch.Repr.SOP (PSOPed (PSOPed))
 
@@ -75,6 +69,7 @@ newtype Lvl = Lvl Int
 
 data NixType
   = NFunTy NixType NixType
+  | NTyLam Text NixType
   | NForallTy Text NixType
   | NTyVar Text
   | NSetTy [(Text, NixType)]
@@ -111,6 +106,9 @@ serialiseTy' (NSetTy kvs) = do
 serialiseTy' (NTyVar v) = pure $ TB.fromText v
 serialiseTy' (NForallTy v x) = do
   x' <- serialiseTy' x
+  pure $ "(\\ " <> TB.fromText v <> " -> " <> x' <> ")"
+serialiseTy' (NForallTy v x) = do
+  x' <- serialiseTy' x
   pure $ "(forall " <> TB.fromText v <> ". " <> x' <> ")"
 serialiseTy' NAnyTy = pure $ "Any"
 serialiseTy' NVoidTy = pure $ "Void"
@@ -136,6 +134,8 @@ data NOp
   | NEq
   | NAnd
   | NOr
+  | NDot
+  | NHas
   deriving stock (Show)
 
 data NixAST
@@ -146,7 +146,6 @@ data NixAST
   | NVar Text
   | NLet [(Text, NixAST)] NixAST
   | NIfThenElse NixAST NixAST NixAST
-  | NDot NixAST NixAST
   deriving stock (Show)
 
 serialise' :: NixAST -> TB.Builder
@@ -161,23 +160,27 @@ serialise' (NLet kvs k) = foldl' f "(let " kvs <> "in " <> serialise' k <> ")"
   where
     f acc (k, v) = acc <> TB.fromText k <> " = " <> serialise' v <> ";\n"
 serialise' (NIfThenElse cond x y) = "(if " <> serialise' cond <> " then " <> serialise' x <> " else " <> serialise' y <> ")"
-serialise' (NDot x (NString y)) = serialise' x <> "." <> TB.fromText y
-serialise' (NDot x y) = serialise' x <> ".${" <> serialise' y <> "}"
-serialise' (NOpApp op x y) = "(" <> serialise' x <> s <> serialise' y <> ")"
+serialise' (NOpApp op x y) = case op of
+  NApp -> generic " "
+  NPlus -> generic " + "
+  NMinus -> generic " - "
+  NMult -> generic " * "
+  NDiv -> generic " / "
+  NUpdate -> generic " // "
+  NConcat -> generic " ++ "
+  NLT -> generic " < "
+  NLTE -> generic " <= "
+  NEq -> generic " == "
+  NAnd -> generic " && "
+  NOr -> generic " || "
+  NDot -> case y of
+    NString y' -> serialise' x <> "." <> TB.fromText y'
+    _ -> serialise' x <> ".${" <> serialise' y <> "}"
+  NHas -> case y of
+    NString y' -> serialise' x <> " ? " <> TB.fromText y'
+    _ -> serialise' x <> " ? ${" <> serialise' y <> "}"
   where
-    s = case op of
-      NApp -> " "
-      NPlus -> " + "
-      NMinus -> " - "
-      NMult -> " * "
-      NDiv -> " / "
-      NUpdate -> " // "
-      NConcat -> " ++ "
-      NLT -> " < "
-      NLTE -> " <= "
-      NEq -> " == "
-      NAnd -> " && "
-      NOr -> " || "
+    generic s = "(" <> serialise' x <> s <> serialise' y <> ")"
 
 serialise :: NixAST -> Text
 serialise v = TB.runBuilder $ serialise' v
@@ -205,44 +208,70 @@ getLvl = (.lvl) <$> M ask
 succLvl :: M a -> M a
 succLvl (M x) = M $ flip withReaderT x \(State (Lvl lvl)) -> (State $ Lvl $ lvl + 1)
 
-mkTerm :: Applicative m => NixAST -> Term (Impl m) a
-mkTerm x = Term $ Impl $ pure $ pure $ x
-
 newtype Impl' m (a :: PType) = Impl {runImpl :: M (m NixAST)}
 type Impl m = 'PDSLKind (Impl' m)
+
+mkImpl :: Applicative m => NixAST -> UnPDSLKind (Impl m) a
+mkImpl x = Impl $ pure $ pure $ x
+
+mkTerm :: Applicative m => NixAST -> Term (Impl m) a
+mkTerm x = Term $ Impl $ pure $ pure $ x
 
 runTerm :: Term (Impl m) a -> M (m NixAST)
 runTerm = runImpl . unTerm
 
-getTy :: forall m a. IsPType (Impl m) a => Proxy m -> Proxy a -> NixType
+mapTerm :: Functor m => (NixAST -> NixAST) -> Term (Impl m) a -> UnPDSLKind (Impl m) b
+mapTerm f x = Impl $ (f <$>) <$> runTerm x
+
+changeTy :: UnPDSLKind (Impl m) a -> UnPDSLKind (Impl m) b
+changeTy = coerce
+
+getTy :: forall m a. IsPType (Impl m) a => Proxy m -> Proxy a -> M NixType
 getTy _ _ = case isPType :: IsPTypeData (Impl m) a of IsPTypeData (IsPTypePrimData t) -> t
 
+newtype NatF a = NatF (Either () a)
+  deriving stock (Show, Generic)
+
+type Nat = Fix NatF
+
+instance PDSL (Impl m) where
+  -- FIXME: fix PEffect
+  newtype PEffect (Impl m) a = PEffect (Identity a)
+    deriving newtype (Functor, Applicative, Monad)
+  newtype IsPTypePrimData (Impl m) _ = IsPTypePrimData (M NixType)
+
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (a #-> b) where
-  isPTypePrim = IsPTypePrimData $ NFunTy (getTy (Proxy @m) (Proxy @a)) (getTy (Proxy @m) (Proxy @b))
+  isPTypePrim = IsPTypePrimData do
+    NFunTy <$> (getTy (Proxy @m) (Proxy @a)) <*> (getTy (Proxy @m) (Proxy @b))
 
 instance IsPTypePrim (Impl m) PAny where
-  isPTypePrim = IsPTypePrimData NAnyTy
+  isPTypePrim = IsPTypePrimData $ pure NAnyTy
 
 instance IsPTypePrim (Impl m) PUnit where
-  isPTypePrim = IsPTypePrimData $ NSetTy []
+  isPTypePrim = IsPTypePrimData $ pure $ NSetTy []
 
 instance IsPTypePrim (Impl m) PPType where
   isPTypePrim = IsPTypePrimData $ error "PPType has no type info"
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PEither a b) where
   isPTypePrim =
-    IsPTypePrimData $
-      NUnionTy
-        (NSetTy [("left", getTy (Proxy @m) (Proxy @a))])
-        (NSetTy [("right", getTy (Proxy @m) (Proxy @b))])
+    IsPTypePrimData do
+      left <- getTy (Proxy @m) (Proxy @a)
+      right <- getTy (Proxy @m) (Proxy @b)
+      pure $ NUnionTy
+        (NSetTy [("left", left)])
+        (NSetTy [("right", right)])
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PPair a b) where
-  isPTypePrim = IsPTypePrimData $ NSetTy [("x", getTy (Proxy @m) (Proxy @a)), ("y", getTy (Proxy @m) (Proxy @b))]
+  isPTypePrim = IsPTypePrimData do
+    x <- getTy (Proxy @m) (Proxy @a)
+    y <- getTy (Proxy @m) (Proxy @b)
+    pure $ NSetTy [("x", x), ("y", y)]
 
 setInfo :: SListI tys => NP (IsPTypeData (Impl m)) tys -> NP (K FieldName) tys -> [(Text, NixType)]
 setInfo tys names =
   collapse_NP $
-    liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, ty)) names tys
+    liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, undefined ty)) names tys
 
 data H1 tys = H1 {unH1 :: NP (K FieldName) tys, _index :: Integer}
 
@@ -255,7 +284,7 @@ fieldNames PInfix = K "left" :* K "right" :* Nil
 fieldNames PConstructor = numericFieldNames
 
 instance (IsPTypeSOP (Impl m) a) => IsPTypePrim (Impl m) (PSOPed a) where
-  isPTypePrim = IsPTypePrimData t
+  isPTypePrim = IsPTypePrimData $ pure t
     where
       t :: NixType
       t = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info -> case (info.constructorNames, info.constructorInfo, info.typeInfo) of
@@ -268,15 +297,39 @@ instance (IsPTypeSOP (Impl m) a) => IsPTypePrim (Impl m) (PSOPed a) where
             f :: SListI tys => ConstructorName -> PConstructorInfo tys -> NP (IsPTypeData (Impl m)) tys -> K NixType tys
             f cn c tys = K $ NSetTy $ ("_constructor", NFixedStringTy (pack cn)) : setInfo tys (fieldNames c)
 
-instance IsPTypePrim (Impl m) (PForall f)
+instance IsPTypePrim (Impl m) (PForall f) where
 
-instance IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f)
+type family EvilHack (a :: PType) (var :: Text) :: PHs a where
+
+evilHackDict :: forall m a var. Known var => Proxy m -> Proxy a -> Proxy var -> IsPTypeData (Impl m) (EvilHack a var)
+evilHackDict _ _ _ = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar (known' (Proxy @var))
+
+evilHackFDict ::
+  forall m a b (var :: Text) (f :: PHs a -> PHs b).
+  Known var =>
+  Proxy m ->
+  Proxy a ->
+  Proxy var ->
+  (forall x. IsPTypeData (Impl m) x -> IsPTypeData (Impl m) (f x)) ->
+  M NixType
+evilHackFDict _ _ _ qc = case qc (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar (known' (Proxy @var))) of
+  IsPTypeData (IsPTypePrimData x) -> x
+
+instance
+  ( forall (x :: PHs a). IsPType (Impl m) x => IsPType (Impl m) (f x)
+  ) => IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f) where
+  isPTypePrim = IsPTypePrimData do
+    lvl <- varify <$> getLvl
+    single lvl \(slvl :: Single lvl) -> know slvl $ do
+      body <- evilHackFDict (Proxy @m) (Proxy @a) (Proxy @lvl) (\x -> withIsPType x $ isPType) --withIsPType (evilHackDict (Proxy @m) (Proxy @a) (Proxy @lvl)) $ getTy @m @(f (EvilHack a lvl)) (Proxy @m) (Proxy @(f (EvilHack a lvl)))
+      let body = undefined
+      pure $ NTyLam lvl body
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructablePrim (Impl m) (a #-> b) where
   pconImpl (PLam f) = Impl do
     l <- varify <$> getLvl
-    body <- succLvl $ runTerm $ f $ mkTerm $ NVar l
-    pure $ NLam (getTy (Proxy @m) (Proxy @a)) l <$> body
+    body :: m NixAST <- succLvl $ runTerm $ f $ mkTerm $ NVar l
+    pure <$> (flip NLam l <$> (getTy (Proxy @m) (Proxy @a))) <&> (<*> body)
   pmatchImpl x f = f (PLam g)
     where
       g :: Term (Impl m) a -> Term (Impl m) b
@@ -284,16 +337,12 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructab
         x <- runImpl x
         y <- runImpl $ unTerm y
         pure $ NOpApp NApp <$> x <*> y
+  pcaseImpl = error "FIXME"
 
 instance PConstructablePrim (Impl m) PAny where
   pconImpl (PAny Proxy x) = coerce $ unTerm x
   pmatchImpl x f = f (PAny (Proxy @PAny) (Term x))
   pcaseImpl x f = f (PAny (Proxy @PAny) (Term x))
-
-instance PDSL (Impl m) where
-  newtype PEffect (Impl m) a = PEffect (Identity a)
-    deriving newtype (Functor, Applicative, Monad)
-  newtype IsPTypePrimData (Impl m) _ = IsPTypePrimData NixType
 
 instance Applicative m => PAp m (Impl m) where
   papr x (Term (Impl y)) = Term $ Impl $ (x *>) <$> y
@@ -304,11 +353,33 @@ instance PUntyped (Impl m) where
 
 instance PPolymorphic (Impl m)
 
-instance PConstructablePrim (Impl m) PUnit
+instance Applicative m => PConstructablePrim (Impl m) PUnit where
+  pconImpl _ = mkImpl $ NMkSet []
+  pmatchImpl _ f = f PUnit
+  pcaseImpl = error "FIXME"
 
-instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PEither a b)
+instance (Applicative m, IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PEither a b) where
+  pconImpl (PLeft left) = flip mapTerm left \left -> NMkSet [(NString "left", left)]
+  pconImpl (PRight right) = flip mapTerm right \right -> NMkSet [(NString "right", right)]
+  pmatchImpl t f =
+        Term $ Impl do
+          l <- varify <$> getLvl
+          t <- runImpl t
+          f_left <- succLvl $ runTerm $ f $ PLeft (mkTerm $ NOpApp NDot (NVar l) (NString "left"))
+          f_right <- succLvl $ runTerm $ f $ PLeft (mkTerm $ NOpApp NDot (NVar l) (NString "right"))
+          let k = NIfThenElse (NOpApp NHas (NVar l) (NString "left")) <$> f_left <*> f_right
+          pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
+  pcaseImpl = error "FIXME"
 
-instance (IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PPair a b)
+instance (Applicative m, IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PPair a b) where
+  pconImpl p = changeTy $ pconImpl (PSOPed p)
+  pmatchImpl t f =
+        Term $ Impl do
+          l <- varify <$> getLvl
+          t <- runImpl t
+          k <- succLvl $ runTerm $ f $ PPair (mkTerm $ NOpApp NDot (NVar l) (NString "x")) (mkTerm $ NOpApp NDot (NVar l) (NString "y"))
+          pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
+  pcaseImpl = error "FIXME"
 
 setConstruct :: (Applicative m, SListI tys) => NP (Pf' (PConcreteEf (Impl m))) tys -> NP (K FieldName) tys -> M (m NixAST)
 setConstruct vals names =
@@ -341,14 +412,13 @@ instance (Applicative m, IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (
           f (K cn :* _) (c :* _) (Z vals) = setConstruct (Pf' (mkTerm $ NString $ pack cn) :* vals) (K "_constructor" :* fieldNames c)
           f Nil Nil x = case x of {}
           f (K _ :* cns) (_ :* cs) (S next) = f cns cs next
-  pmatchImpl = impl
-    where
-      impl t f = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info ->
+  pmatchImpl t f =
+      isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info ->
         Term $ Impl do
           l <- varify <$> getLvl
           t <- runImpl t
           let getFields :: SListI tys => PConstructorInfo tys -> NP (Pf' (PConcreteEf (Impl m))) tys
-              getFields c = liftA_NP (\(K name) -> Pf' $ mkTerm $ NDot (NVar l) (NString $ pack name)) (fieldNames c)
+              getFields c = liftA_NP (\(K name) -> Pf' $ mkTerm $ NOpApp NDot (NVar l) (NString $ pack name)) (fieldNames c)
               ks :: POP (Pf' (PConcreteEf (Impl m))) (PCode a)
               ks = POP $ cliftA_NP (Proxy @SListI) (\c -> getFields c) info.constructorInfo
               -- TODO: use NP here too
@@ -357,14 +427,15 @@ instance (Applicative m, IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (
               cns :: [ConstructorName]
               cns = collapse_NP info.constructorNames
               nixError :: NixAST
-              nixError = NOpApp NApp (NDot (NVar "builtins") (NString "throw")) (NString "unreachable")
+              nixError = NOpApp NApp (NOpApp NDot (NVar "builtins") (NString "throw")) (NString "unreachable")
               constructor :: NixAST
-              constructor = NDot (NVar l) (NString "_constructor")
+              constructor = NOpApp NDot (NVar l) (NString "_constructor")
           ks'' :: [m NixAST] <- succLvl $ sequenceA $ flip fmap ks' \fields -> runTerm $ f $ PSOPed $ info.to $ fields
           let k :: m NixAST = case cns of
                 [_] -> head ks''
                 _ -> foldl' (\acc (cn, k') -> NIfThenElse (NOpApp NEq constructor (NString $ pack cn)) <$> k' <*> acc) (pure nixError) $ zip cns ks''
           pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
+  pcaseImpl = error "FIXME"
 
 instance PConstructablePrim (Impl m) (PForall f)
 
@@ -374,7 +445,7 @@ compile' :: forall a m. (Applicative m, IsPType (Impl m) a) => Term (Impl m) a -
 compile' (Term t) =
   flip fmap (runM (runImpl t) initialState) $
     ("/* Type: " <>)
-      . (serialiseTy (getTy (Proxy @m) (Proxy @a)) <>)
+      . (serialiseTy (runM (getTy (Proxy @m) (Proxy @a)) initialState) <>)
       . (" */ \n" <>)
       . serialise
 
