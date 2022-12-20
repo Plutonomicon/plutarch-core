@@ -34,10 +34,7 @@ import Generics.SOP.NP (
   liftA_NP,
  )
 import Generics.SOP.NS (apInjs_POP)
-import Plutarch.PType (convertPfC)
 import Plutarch.Core (
-  withIsPType,
-  isPTypeQuantified,
   CompileAp,
   IsPTypeData (IsPTypeData),
   IsPTypePrim (isPTypePrim),
@@ -46,28 +43,30 @@ import Plutarch.Core (
   PConstructablePrim (pcaseImpl, pconImpl, pmatchImpl),
   PDSL (IsPTypePrimData, PEffect),
   PDSLKind (PDSLKind),
-  UnPDSLKind,
   Term (Term),
+  UnPDSLKind,
   isPType,
+  isPTypeQuantified,
   unTerm,
+  withIsPType,
  )
 import Plutarch.Frontends.Data (
-  PHasNewtypes,
-  PSOP,
   IsPTypeSOP (isPTypeSOP),
   IsPTypeSOPData (constructorInfo, constructorNames, from, to, typeInfo),
   PAny (PAny),
   PConstructorInfo (PConstructor, PInfix, PRecord),
   PEither (PLeft, PRight),
+  PHasNewtypes,
   PPair (PPair),
+  PSOP,
  )
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
-import Plutarch.PType (PCode, Pf' (Pf'))
+import Plutarch.PType (PCode, Pf' (Pf'), convertPfC)
 import Plutarch.Prelude
-import Plutarch.Repr.SOP (PSOPed (PSOPed))
 import Plutarch.Repr.Newtype (PNewtyped (PNewtyped))
+import Plutarch.Repr.SOP (PSOPed (PSOPed))
 
 newtype Lvl = Lvl Int
   deriving newtype (Show)
@@ -258,9 +257,10 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PEith
     IsPTypePrimData do
       left <- getTy (Proxy @m) (Proxy @a)
       right <- getTy (Proxy @m) (Proxy @b)
-      pure $ NUnionTy
-        (NSetTy [("left", left)])
-        (NSetTy [("right", right)])
+      pure $
+        NUnionTy
+          (NSetTy [("left", left)])
+          (NSetTy [("right", right)])
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PPair a b) where
   isPTypePrim = IsPTypePrimData do
@@ -271,8 +271,8 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PPair
 setInfo :: SListI tys => NP (IsPTypeData (Impl m)) tys -> NP (K FieldName) tys -> M [(Text, NixType)]
 setInfo tys names =
   traverse (\(name, ty) -> (name,) <$> ty) $
-  collapse_NP $
-    liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, ty)) names tys
+    collapse_NP $
+      liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, ty)) names tys
 
 data H1 tys = H1 {unH1 :: NP (K FieldName) tys, _index :: Integer}
 
@@ -303,15 +303,18 @@ instance (IsPType (Impl m) a) => IsPTypePrim (Impl m) (PNewtyped a) where
 
 instance
   forall m a (f :: PHs a -> PType).
-  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) => IsPTypePrim (Impl m) (PForall f)
+  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  IsPTypePrim (Impl m) (PForall f)
   where
-    isPTypePrim = IsPTypePrimData do
-      body <- getTy (Proxy @m) (Proxy @('PLam f :: PHs (a #-> PPType)))
-      pure $ NForallTy body
+  isPTypePrim = IsPTypePrimData do
+    body <- getTy (Proxy @m) (Proxy @( 'PLam f :: PHs (a #-> PPType)))
+    pure $ NForallTy body
 
 instance
   ( forall (x :: PHs a). IsPType (Impl m) x => IsPType (Impl m) (f x)
-  ) => IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f) where
+  ) =>
+  IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f)
+  where
   isPTypePrim = IsPTypePrimData do
     lvl <- varify <$> getLvl
     -- FIXME succLvl
@@ -356,13 +359,13 @@ instance (Applicative m, IsPType (Impl m) a, IsPType (Impl m) b) => PConstructab
   pconImpl (PLeft left) = flip mapTerm left \left -> NMkSet [(NString "left", left)]
   pconImpl (PRight right) = flip mapTerm right \right -> NMkSet [(NString "right", right)]
   pmatchImpl t f =
-        Term $ Impl do
-          l <- varify <$> getLvl
-          t <- runImpl t
-          f_left <- succLvl $ runTerm $ f $ PLeft (mkTerm $ NOpApp NDot (NVar l) (NString "left"))
-          f_right <- succLvl $ runTerm $ f $ PLeft (mkTerm $ NOpApp NDot (NVar l) (NString "right"))
-          let k = NIfThenElse (NOpApp NHas (NVar l) (NString "left")) <$> f_left <*> f_right
-          pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
+    Term $ Impl do
+      l <- varify <$> getLvl
+      t <- runImpl t
+      f_left <- succLvl $ runTerm $ f $ PLeft (mkTerm $ NOpApp NDot (NVar l) (NString "left"))
+      f_right <- succLvl $ runTerm $ f $ PLeft (mkTerm $ NOpApp NDot (NVar l) (NString "right"))
+      let k = NIfThenElse (NOpApp NHas (NVar l) (NString "left")) <$> f_left <*> f_right
+      pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
   pcaseImpl = error "FIXME"
 
 instance (Applicative m, IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PPair a b) where
@@ -371,11 +374,11 @@ instance (Applicative m, IsPType (Impl m) a, IsPType (Impl m) b) => PConstructab
     y <- runTerm y
     pure $ (\x y -> NMkSet [(NString "x", x), (NString "y", y)]) <$> x <*> y
   pmatchImpl t f =
-        Term $ Impl do
-          l <- varify <$> getLvl
-          t <- runImpl t
-          k <- succLvl $ runTerm $ f $ PPair (mkTerm $ NOpApp NDot (NVar l) (NString "x")) (mkTerm $ NOpApp NDot (NVar l) (NString "y"))
-          pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
+    Term $ Impl do
+      l <- varify <$> getLvl
+      t <- runImpl t
+      k <- succLvl $ runTerm $ f $ PPair (mkTerm $ NOpApp NDot (NVar l) (NString "x")) (mkTerm $ NOpApp NDot (NVar l) (NString "y"))
+      pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
   pcaseImpl = error "FIXME"
 
 setConstruct :: (Applicative m, SListI tys) => NP (Pf' (PConcreteEf (Impl m))) tys -> NP (K FieldName) tys -> M (m NixAST)
@@ -410,28 +413,28 @@ instance (Applicative m, IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (
           f Nil Nil x = case x of {}
           f (K _ :* cns) (_ :* cs) (S next) = f cns cs next
   pmatchImpl t f =
-      isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info ->
-        Term $ Impl do
-          l <- varify <$> getLvl
-          t <- runImpl t
-          let getFields :: SListI tys => PConstructorInfo tys -> NP (Pf' (PConcreteEf (Impl m))) tys
-              getFields c = liftA_NP (\(K name) -> Pf' $ mkTerm $ NOpApp NDot (NVar l) (NString $ pack name)) (fieldNames c)
-              ks :: POP (Pf' (PConcreteEf (Impl m))) (PCode a)
-              ks = POP $ cliftA_NP (Proxy @SListI) (\c -> getFields c) info.constructorInfo
-              -- TODO: use NP here too
-              ks' :: [(SOP (Pf' (PConcreteEf (Impl m))) (PCode a))]
-              ks' = apInjs_POP ks
-              cns :: [ConstructorName]
-              cns = collapse_NP info.constructorNames
-              nixError :: NixAST
-              nixError = NOpApp NApp (NOpApp NDot (NVar "builtins") (NString "throw")) (NString "unreachable")
-              constructor :: NixAST
-              constructor = NOpApp NDot (NVar l) (NString "_constructor")
-          ks'' :: [m NixAST] <- succLvl $ sequenceA $ flip fmap ks' \fields -> runTerm $ f $ PSOPed $ info.to $ fields
-          let k :: m NixAST = case cns of
-                [_] -> head ks''
-                _ -> foldl' (\acc (cn, k') -> NIfThenElse (NOpApp NEq constructor (NString $ pack cn)) <$> k' <*> acc) (pure nixError) $ zip cns ks''
-          pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
+    isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info ->
+      Term $ Impl do
+        l <- varify <$> getLvl
+        t <- runImpl t
+        let getFields :: SListI tys => PConstructorInfo tys -> NP (Pf' (PConcreteEf (Impl m))) tys
+            getFields c = liftA_NP (\(K name) -> Pf' $ mkTerm $ NOpApp NDot (NVar l) (NString $ pack name)) (fieldNames c)
+            ks :: POP (Pf' (PConcreteEf (Impl m))) (PCode a)
+            ks = POP $ cliftA_NP (Proxy @SListI) (\c -> getFields c) info.constructorInfo
+            -- TODO: use NP here too
+            ks' :: [(SOP (Pf' (PConcreteEf (Impl m))) (PCode a))]
+            ks' = apInjs_POP ks
+            cns :: [ConstructorName]
+            cns = collapse_NP info.constructorNames
+            nixError :: NixAST
+            nixError = NOpApp NApp (NOpApp NDot (NVar "builtins") (NString "throw")) (NString "unreachable")
+            constructor :: NixAST
+            constructor = NOpApp NDot (NVar l) (NString "_constructor")
+        ks'' :: [m NixAST] <- succLvl $ sequenceA $ flip fmap ks' \fields -> runTerm $ f $ PSOPed $ info.to $ fields
+        let k :: m NixAST = case cns of
+              [_] -> head ks''
+              _ -> foldl' (\acc (cn, k') -> NIfThenElse (NOpApp NEq constructor (NString $ pack cn)) <$> k' <*> acc) (pure nixError) $ zip cns ks''
+        pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
   pcaseImpl = error "FIXME"
 
 instance (IsPType (Impl m) a) => PConstructablePrim (Impl m) (PNewtyped a) where
@@ -443,16 +446,17 @@ type family TyVar :: PHs a where
 
 instance
   forall m a (f :: PHs a -> PType).
-  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) => PConstructablePrim (Impl m) (PForall f)
+  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  PConstructablePrim (Impl m) (PForall f)
   where
-    pconImpl t' = Impl do
-      lvl <- varify <$> getLvl
-      let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
-      withIsPType d $ convertPfC (Proxy @(IsPType (Impl m))) (Proxy @(TyVar @a)) do
-        let PForall (t :: Term (Impl m) (f (TyVar @a))) = t'
-        succLvl $ runTerm t
-    pmatchImpl t f = f (PForall (Term $ changeTy t))
-    pcaseImpl = error "FIXME"
+  pconImpl t' = Impl do
+    lvl <- varify <$> getLvl
+    let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
+    withIsPType d $ convertPfC (Proxy @(IsPType (Impl m))) (Proxy @(TyVar @a)) do
+      let PForall (t :: Term (Impl m) (f (TyVar @a))) = t'
+      succLvl $ runTerm t
+  pmatchImpl t f = f (PForall (Term $ changeTy t))
+  pcaseImpl = error "FIXME"
 
 instance PHasNewtypes (Impl m)
 instance Applicative m => PSOP (Impl m)

@@ -1,7 +1,7 @@
 {-# LANGUAGE NoFieldSelectors #-}
 
 module Examples.Nix (example) where
-  
+
 import Data.Functor.Identity (runIdentity)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, unpack)

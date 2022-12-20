@@ -79,6 +79,7 @@ library
     Plutarch.Frontends.Untyped
     Plutarch.Helpers
     Plutarch.Internal.CoerceTo
+    Plutarch.Internal.SKI
     Plutarch.Internal.Unimplemented
     Plutarch.Internal.WithDictHack
     Plutarch.Internal.Witness
@@ -90,7 +91,6 @@ library
     Plutarch.Repr.Primitive
     Plutarch.Repr.SOP
     Plutarch.TermCont
-    Plutarch.Internal.SKI
 
 executable examples
   import:        c

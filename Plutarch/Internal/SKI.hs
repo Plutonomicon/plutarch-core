@@ -1,10 +1,9 @@
--- TODO: Taken from github.com/L-as/ski-singletons, will be ported back eventually.
-
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+-- TODO: Taken from github.com/L-as/ski-singletons, will be ported back eventually.
+{-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.Internal.SKI (
-  Known(..),
+  Known (..),
   CheckCorrect,
   sinterp,
   Interp,
@@ -29,16 +28,24 @@ module Plutarch.Internal.SKI (
   single,
   single',
   known,
-  known', Single, UnsafeSingle(..), type (~>)(..), pattern ElimNewtype, type ElimNewtype, type MkNewtype, pattern MkNewtype) where
-  
-import Data.Kind (Type, Constraint)
-import Unsafe.Coerce (unsafeCoerce)
-import Data.Proxy (Proxy (Proxy))
+  known',
+  Single,
+  UnsafeSingle (..),
+  type (~>) (..),
+  pattern ElimNewtype,
+  type ElimNewtype,
+  type MkNewtype,
+  pattern MkNewtype,
+) where
+
 import Data.Coerce (Coercible)
-import Data.Type.Equality ((:~:)(Refl))
-import GHC.Generics (Rep, M1, K1, pattern MetaData)
-import GHC.TypeLits (TypeError, ErrorMessage (ShowType, (:<>:), (:$$:), Text))
+import Data.Kind (Constraint, Type)
+import Data.Proxy (Proxy (Proxy))
+import Data.Type.Equality ((:~:) (Refl))
+import GHC.Generics (K1, M1, Rep, pattern MetaData)
+import GHC.TypeLits (ErrorMessage (ShowType, Text, (:$$:), (:<>:)), TypeError)
 import Plutarch.Internal.Witness (witness)
+import Unsafe.Coerce (unsafeCoerce)
 
 -- Helpers
 
@@ -75,12 +82,16 @@ newtype H1 a c b = H1 (c a => b)
 
 unsafeSingleConstraint ::
   forall (a :: Type) (c :: Type -> Constraint) (b :: Type) (x :: a).
-  Proxy c -> (c (UnsafeSingle (x :: a)) => b) -> c a => b
+  Proxy c ->
+  (c (UnsafeSingle (x :: a)) => b) ->
+  c a => b
 unsafeSingleConstraint _ f = unsafeCoerce (H1 f :: H1 (UnsafeSingle x) c b)
 
 unsafeUnSingleConstraint ::
   forall (a :: Type) (c :: Type -> Constraint) (b :: Type) (x :: a).
-  Proxy c -> (c a => b) -> c (UnsafeSingle x) => b
+  Proxy c ->
+  (c a => b) ->
+  c (UnsafeSingle x) => b
 unsafeUnSingleConstraint _ f = unsafeCoerce (H1 f :: H1 a c b)
 
 type family MkSingle :: forall (x :: a) -> UnsafeSingle x where
@@ -141,16 +152,17 @@ instance Known y => Known (Right y) where
 
 data Some (f :: a -> Type) = forall (x :: a). Some (f x)
 data instance UnsafeSingle @(Some _) _ where
-  SSome :: forall f x (y :: f x). UnsafeSingle @(f x) y -> UnsafeSingle ('Some y)
-instance forall a (f :: a -> Type) (x :: a) (y :: f x). Known y => Known ('Some y) where
+  SSome :: forall f x (y :: f x). UnsafeSingle @(f x) y -> UnsafeSingle ( 'Some y)
+instance forall a (f :: a -> Type) (x :: a) (y :: f x). Known y => Known ( 'Some y) where
   knownImpl = SSome known
 
 data Forall (f :: a -> Type) = Forall (forall (x :: a). f x)
 data instance UnsafeSingle @(Forall (_f :: _a -> Type)) _ where
   SForall ::
     forall (a :: Type) (f :: a -> Type) (y :: forall (x :: a). f x).
-    UnsafeSingle @(forall (x :: a). f x) y -> UnsafeSingle ('Forall y)
-instance forall a (f :: a -> Type) (y :: forall x. f x). (forall x. Known (y @x)) => Known ('Forall y) where
+    UnsafeSingle @(forall (x :: a). f x) y ->
+    UnsafeSingle ( 'Forall y)
+instance forall a (f :: a -> Type) (y :: forall x. f x). (forall x. Known (y @x)) => Known ( 'Forall y) where
   knownImpl = SForall $ unsafeCoerce (known :: UnsafeSingle (y @Skolem))
 
 -- Isomorphic to 'Forall' on the term-level.
@@ -160,17 +172,21 @@ data ForallS (f :: a -> Type) = forall b. ForallS (forall (x :: a). b ~> f x) b
 data instance UnsafeSingle @(ForallS (_f :: _a -> Type)) _ where
   SForallS ::
     forall a b (f :: a -> Type) (y :: forall (x :: a). b ~> f x) (z :: b).
-    UnsafeSingle @(forall (x :: a). b ~> f x) y -> UnsafeSingle z -> UnsafeSingle ('ForallS y z)
+    UnsafeSingle @(forall (x :: a). b ~> f x) y ->
+    UnsafeSingle z ->
+    UnsafeSingle ( 'ForallS y z)
 instance
   forall a b (f :: a -> Type) (y :: forall x. b ~> f x) (z :: b).
-  (Known z, forall x. Known (y @x)) => Known ('ForallS y z) where
-    knownImpl = SForallS (unsafeCoerce (known :: UnsafeSingle (y @Skolem))) known
+  (Known z, forall x. Known (y @x)) =>
+  Known ( 'ForallS y z)
+  where
+  knownImpl = SForallS (unsafeCoerce (known :: UnsafeSingle (y @Skolem))) known
 
 newtype Fix (f :: Type -> Type) = Fix (f (Fix f))
 deriving stock instance Show (f (Fix f)) => Show (Fix f)
 data instance UnsafeSingle @(Fix _f) _ where
-  SFix :: UnsafeSingle @(f (Fix f)) x -> UnsafeSingle ('Fix x)
-instance Known x => Known ('Fix x) where
+  SFix :: UnsafeSingle @(f (Fix f)) x -> UnsafeSingle ( 'Fix x)
+instance Known x => Known ( 'Fix x) where
   knownImpl = SFix known
 
 data instance UnsafeSingle @(_a :~: _b) _ where
@@ -191,8 +207,8 @@ type family GetNewtypeConstructor (a :: Type) :: GetNewtypeInner a -> a where
   GetNewtypeConstructor a = DefineNewtypeConstructor a
 
 type family UnwrapNewtype' (a :: Type) (rep :: Type -> Type) :: Type where
-  UnwrapNewtype' _ (M1 _ ('MetaData _ _ _ 'True) (M1 _ _ (M1 _ _ (K1 _ i)))) = i
-  UnwrapNewtype' a (M1 _ ('MetaData _ _ _ 'False) _) = TypeError (Text "[SKI.UnwrapNewtype] " :<>: ShowType a :<>: Text " is not a newtype!")
+  UnwrapNewtype' _ (M1 _ ( 'MetaData _ _ _ 'True) (M1 _ _ (M1 _ _ (K1 _ i)))) = i
+  UnwrapNewtype' a (M1 _ ( 'MetaData _ _ _ 'False) _) = TypeError (Text "[SKI.UnwrapNewtype] " :<>: ShowType a :<>: Text " is not a newtype!")
 
 type family UnwrapNewtype (a :: Type) :: Type where
   UnwrapNewtype a = UnwrapNewtype' a (Rep a)
@@ -213,21 +229,26 @@ mkNewtype = let _ = witness (Proxy @(CheckCorrect a)) in unsafeCoerce
 selimNewtype ::
   forall (a :: Type) (i :: Type) (c :: i -> a) (x :: i).
   Coercible a i =>
-  UnsafeSingle (c x) -> UnsafeSingle x
+  UnsafeSingle (c x) ->
+  UnsafeSingle x
 selimNewtype x = let _ = witness (Proxy @(Coercible a i)) in unsafeCoerce (x :: UnsafeSingle (c x))
 
 smkNewtype ::
   forall (a :: Type) (i :: Type) (c :: i -> a) (x :: i).
   Coercible a i =>
-  UnsafeSingle x -> UnsafeSingle (c x)
+  UnsafeSingle x ->
+  UnsafeSingle (c x)
 smkNewtype x = let _ = witness (Proxy @(Coercible a i)) in unsafeCoerce (x :: UnsafeSingle x)
 
 sunwrap' :: forall a x b. CheckCorrect a => UnsafeSingle @a x -> (forall (y :: GetNewtypeInner a). x :~: GetNewtypeConstructor a y -> UnsafeSingle y -> b) -> b
 sunwrap' x f = let _ = witness (Proxy @(CheckCorrect a)) in f (error "proof is not real") (unsafeCoerce x)
 
-instance {-# OVERLAPPABLE #-} forall (a :: Type) (i :: Type) (c :: i -> a) (x :: i).
+instance
+  {-# OVERLAPPABLE #-}
+  forall (a :: Type) (i :: Type) (c :: i -> a) (x :: i).
   (Coercible a i, Known @i x) =>
-  Known @a (c x) where
+  Known @a (c x)
+  where
   knownImpl = let _ = witness (Proxy @(Coercible a i)) in unsafeCoerce $ known @x
 
 -- SKI
@@ -272,17 +293,20 @@ data instance UnsafeSingle @(_a ~> _b) _ski where
   SElimEither :: UnsafeSingle 'ElimEither
   SMkForall ::
     forall a b f (y :: forall (x :: a). b ~> f x).
-    UnsafeSingle @(forall (x :: a). b ~> f x) y -> UnsafeSingle ('MkForall y)
+    UnsafeSingle @(forall (x :: a). b ~> f x) y ->
+    UnsafeSingle ( 'MkForall y)
   SElimForall :: UnsafeSingle 'ElimForall
   SMkSome :: UnsafeSingle 'MkSome
   SElimSome ::
     forall a b c (f :: c -> Type) (x :: a ~> Some f) (y :: forall z. f z ~> b).
-    UnsafeSingle x -> UnsafeSingle @(forall z. f z ~> b) y -> UnsafeSingle ('ElimSome x y)
+    UnsafeSingle x ->
+    UnsafeSingle @(forall z. f z ~> b) y ->
+    UnsafeSingle ( 'ElimSome x y)
   SMkFix :: UnsafeSingle 'MkFix
   SElimFix :: UnsafeSingle 'ElimFix
   SFixSKI :: UnsafeSingle 'FixSKI
-  SUnsafeMkNewtype :: UnsafeSingle eq -> UnsafeSingle ('UnsafeMkNewtype eq)
-  SUnsafeElimNewtype :: UnsafeSingle eq -> UnsafeSingle ('UnsafeElimNewtype eq)
+  SUnsafeMkNewtype :: UnsafeSingle eq -> UnsafeSingle ( 'UnsafeMkNewtype eq)
+  SUnsafeElimNewtype :: UnsafeSingle eq -> UnsafeSingle ( 'UnsafeElimNewtype eq)
   SMkEq :: UnsafeSingle 'MkEq
   SElimEq :: UnsafeSingle 'ElimEq
 instance Known K where knownImpl = SK
@@ -298,30 +322,40 @@ instance Known MkRight where knownImpl = SMkRight
 instance Known ElimEither where knownImpl = SElimEither
 instance
   forall a b (f :: a -> Type) (t :: forall x. b ~> f x).
-  (forall x. Known @(b ~> f x) t) => Known (MkForall t) where
-    knownImpl = SMkForall (unsafeCoerce (known :: UnsafeSingle (t @Skolem)) :: UnsafeSingle @(forall x. b ~> f x) t)
+  (forall x. Known @(b ~> f x) t) =>
+  Known (MkForall t)
+  where
+  knownImpl = SMkForall (unsafeCoerce (known :: UnsafeSingle (t @Skolem)) :: UnsafeSingle @(forall x. b ~> f x) t)
 instance Known ElimForall where knownImpl = SElimForall
 instance Known MkSome where knownImpl = SMkSome
 instance
   forall a b c (f :: c -> Type) (x :: a ~> Some f) (y :: forall z. f z ~> b).
-  (Known x, (forall skolem. Known @(f skolem ~> b) (y @skolem))) => Known (ElimSome x y)
-  where knownImpl = SElimSome known (unsafeCoerce (known :: UnsafeSingle (y @Skolem)))
+  (Known x, (forall skolem. Known @(f skolem ~> b) (y @skolem))) =>
+  Known (ElimSome x y)
+  where
+  knownImpl = SElimSome known (unsafeCoerce (known :: UnsafeSingle (y @Skolem)))
 instance Known MkFix where knownImpl = SMkFix
 instance Known ElimFix where knownImpl = SElimFix
 instance Known FixSKI where knownImpl = SFixSKI
-instance forall a b eq.
-  (Known eq, CheckCorrect b) => Known @(a ~> b) (UnsafeMkNewtype eq) where knownImpl = SUnsafeMkNewtype known
+instance
+  forall a b eq.
+  (Known eq, CheckCorrect b) =>
+  Known @(a ~> b) (UnsafeMkNewtype eq)
+  where
+  knownImpl = SUnsafeMkNewtype known
 instance Known eq => Known (UnsafeElimNewtype eq) where knownImpl = SUnsafeElimNewtype known
 instance Show (a ~> b) where
   showsPrec _ K = ('K' :)
   showsPrec _ S = ('S' :)
   showsPrec _ I = ('I' :)
-  showsPrec prec (x :@@ _) | prec >= 10 =
-    ('(' :) . showsPrec 10 x . (" <data>)" <>)
+  showsPrec prec (x :@@ _)
+    | prec >= 10 =
+        ('(' :) . showsPrec 10 x . (" <data>)" <>)
   showsPrec _ (x :@@ _) =
     showsPrec 10 x . (" <data>" <>)
-  showsPrec prec (x :@ y) | prec >= 10 =
-    ('(' :) . showsPrec 10 x . (' ' :) . showsPrec 10 y . (')' :)
+  showsPrec prec (x :@ y)
+    | prec >= 10 =
+        ('(' :) . showsPrec 10 x . (' ' :) . showsPrec 10 y . (')' :)
   showsPrec _ (x :@ y) =
     showsPrec 10 x . (' ' :) . showsPrec 10 y
   showsPrec _ MkUnit = ("MkUnit" <>)
@@ -367,13 +401,15 @@ type family H3 (c :: a -> b) (x :: b) :: a where
 type H4 :: forall a b (f :: a -> Type). Some f -> (forall x. f x ~> b) -> b
 type family H4 (w :: Some f) (y :: forall x. f x ~> b) :: b where
   forall _a _b _f (_x :: _a) (w :: _f _x) (y :: forall z. _f z ~> _b).
-    H4 ('Some w) y = Interp y w
+    H4 ( 'Some w) y =
+      Interp y w
 
 type Interp :: forall (a :: Type) (b :: Type). (a ~> b) -> a -> b
 type family Interp (f :: a ~> b) (x :: a) :: b where
   Interp I x = x
   forall (a :: Type) (b :: Type) (x :: a).
-    Interp @a @(b ~> a) ('K @a @b) x = 'K ':@@ x
+    Interp @a @(b ~> a) ( 'K @a @b) x =
+      'K ':@@ x
   Interp (K :@@ x) _ = x
   Interp S x = S :@@ x
   Interp (S :@@ x) y = S :@@ x :@@ y
@@ -390,14 +426,17 @@ type family Interp (f :: a ~> b) (x :: a) :: b where
   Interp (ElimEither :@@ f :@@ _) (Left x) = Interp f x
   Interp (ElimEither :@@ _ :@@ g) (Right x) = Interp g x
   forall _a _b (_f :: _a -> Type) (t :: forall x. _b ~> _f x) (y :: _b).
-    Interp (MkForall t) y = 'ForallS t y
+    Interp (MkForall t) y =
+      'ForallS t y
   forall _a _b (_f :: _a -> Type) (x :: forall z. _b ~> _f z) (y :: _b).
-    Interp ElimForall ('ForallS x y) = Interp x y
+    Interp ElimForall ( 'ForallS x y) =
+      Interp x y
   Interp MkSome x = 'Some x
   forall _a _b _c (_f :: _c -> Type) (x :: _a ~> Some _f) (y :: forall w. _f w ~> _b) (z :: _a).
-    Interp (ElimSome x y) z = H4 (Interp x z) y
+    Interp (ElimSome x y) z =
+      H4 (Interp x z) y
   Interp MkFix x = 'Fix x
-  Interp ElimFix ('Fix x) = x
+  Interp ElimFix ( 'Fix x) = x
   Interp FixSKI f = FixSKI :@@ f
   Interp (FixSKI :@@ f) x = Interp (Interp f (FixSKI :@@ f)) x
   Interp @_ @b (UnsafeMkNewtype eq) x = GetNewtypeConstructor b (CoerceTo' eq x)

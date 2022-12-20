@@ -24,12 +24,12 @@ module Plutarch.Core (
   withIsPType,
 ) where
 
-import Unsafe.Coerce (unsafeCoerce)
 import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
+import Plutarch.Internal.WithDictHack (unsafeWithDict)
 import Plutarch.PType (
   MkPTypeF,
   PHs,
@@ -38,7 +38,7 @@ import Plutarch.PType (
  )
 import Plutarch.Reduce (NoReduce)
 import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprSort, prfrom, prto)
-import Plutarch.Internal.WithDictHack (unsafeWithDict)
+import Unsafe.Coerce (unsafeCoerce)
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
@@ -84,8 +84,9 @@ withIsPType :: forall edsl x a. IsPTypeData edsl x -> (IsPType edsl x => a) -> a
 withIsPType = unsafeWithDict (Proxy @(IsPType edsl x))
 
 newtype Helper edsl f = Helper
-  { runHelper :: (forall x. IsPType edsl x => IsPType edsl (f x)) =>
-                 (forall x. IsPTypeData edsl x -> IsPTypeData edsl (f x))
+  { runHelper ::
+      (forall x. IsPType edsl x => IsPType edsl (f x)) =>
+      (forall x. IsPTypeData edsl x -> IsPTypeData edsl (f x))
   }
 
 isPTypeQuantified ::
@@ -95,8 +96,8 @@ isPTypeQuantified ::
   (forall x. IsPType edsl x => IsPType edsl (f x)) =>
   (forall x. IsPTypeData edsl x -> IsPTypeData edsl (f x))
 isPTypeQuantified _ _ =
-  let _ = Helper in
-  runHelper (unsafeCoerce id :: Helper edsl f)
+  let _ = Helper
+   in runHelper (unsafeCoerce id :: Helper edsl f)
 
 type PConcreteEf :: PDSLKind -> PTypeF
 type PConcreteEf edsl = MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl))

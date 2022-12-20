@@ -58,9 +58,9 @@ import Plutarch.Core (
  )
 import Plutarch.PType (PCode, PGeneric, PHs, PPType, PType, PTypeF, Pf', PfC, pgfrom, pgto, type (/$))
 import Plutarch.Repr (PHasRepr, PReprSort)
+import Plutarch.Repr.Newtype (PNewtyped)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.Repr.SOP (PSOPed)
-import Plutarch.Repr.Newtype (PNewtyped)
 import Unsafe.Coerce (unsafeCoerce)
 
 data PVoid ef
@@ -186,7 +186,8 @@ instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
 
 class
   ( forall a. IsPType edsl a => PConstructablePrim edsl (PNewtyped a)
-  ) => PHasNewtypes edsl
+  ) =>
+  PHasNewtypes edsl
 
 type PSOP :: PDSLKind -> Constraint
 class
@@ -196,4 +197,5 @@ class
   , forall a. IsPTypeSOP edsl a => PConstructablePrim edsl (PSOPed a)
   , IsPTypePrim edsl PPType
   , PHasNewtypes edsl
-  ) => PSOP edsl
+  ) =>
+  PSOP edsl

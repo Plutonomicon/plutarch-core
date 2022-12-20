@@ -2,9 +2,9 @@
 
 module Examples.SKI where
 
-import Plutarch.Internal.SKI
-import GHC.Generics (Generic)
 import Data.Proxy (Proxy (Proxy))
+import GHC.Generics (Generic)
+import Plutarch.Internal.SKI
 
 type FlipS :: (a ~> b ~> c) ~> b ~> a ~> c
 type FlipS = S :@ (S :@ (K :@ S) :@ (S :@ (K :@ K) :@ S)) :@ (K :@ K)
@@ -25,7 +25,7 @@ type TopairS :: a ~> (a, a)
 type TopairS = FlipS :@ TwiceS :@ MkPair
 
 newtype Id' a = Id' (a ~> a)
-  deriving stock Generic
+  deriving stock (Generic)
 type instance DefineNewtypeInner (Id' a) = a ~> a
 type instance DefineNewtypeConstructor (Id' _) = 'Id'
 
@@ -33,8 +33,9 @@ type IdS'' :: () ~> a ~> a
 type IdS'' = K :@ I
 
 type family IdS' :: forall a. () ~> Id' a
+
 -- FIXME: GHC needs type-level big lambdas
---type instance IdS' = S :@ (K :@ MkNewtype) :@ (K :@ I)
+-- type instance IdS' = S :@ (K :@ MkNewtype) :@ (K :@ I)
 
 type IdS :: () ~> ForallS Id'
 type IdS = MkForall IdS'
@@ -67,8 +68,8 @@ type NatS = MkFix . MkNewtype . MkRight
 type NatAdd' :: (Nat ~> Nat ~> Nat) ~> Nat ~> Nat ~> Nat
 type NatAdd' =
   (K :@ ComposeS <*> (K :@ (ElimEither :@ (K :@ I)) <*> ComposeS :@ (FlipS :@ ComposeS :@ NatS)))
-  <*>
-  K :@ (ElimNewtype . ElimFix)
+    <*> K
+    :@ (ElimNewtype . ElimFix)
 
 type NatAdd :: Nat ~> Nat ~> Nat
 type NatAdd = FixSKI :@ NatAdd'
@@ -78,6 +79,7 @@ natAdd = interp . interp (known' (Proxy @NatAdd))
 
 type Ex :: Nat
 type Ex = Interp (NatS . NatS . NatZ) ()
+
 {-
 
 zero_plus_x_is_x :: Single (n :: Nat) -> Interp (K :@ NatAdd <*> NatZ <*> K :@@ n) '() :~: n

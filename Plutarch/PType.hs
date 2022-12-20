@@ -167,16 +167,18 @@ type family H0 a where
 type H1 :: forall (a :: Type). a -> PHs (H0 a)
 type family H1 (x :: a) where
   forall (x :: PType).
-    H1 x = x
+    H1 x =
+      x
   forall (a :: PType) (_ef :: PTypeF) (x :: a _ef).
-    H1 x = CoerceTo (PHs a) x -- need to show GHC that `a` can't be `PType` somehow.
+    H1 x =
+      CoerceTo (PHs a) x -- need to show GHC that `a` can't be `PType` somehow.
 
 type H2 :: APC -> AC
 class apc (H1 x) => H2 (apc :: APC) (x :: a)
 instance forall (apc :: APC) (a :: Type) (x :: a). apc (H1 x) => H2 (apc :: APC) (x :: a)
 
 newtype Helper1 (apc :: APC) (x :: PHs a) b = Helper1 (apc (H1 x) => b)
-newtype Helper2 (apc :: APC) (x :: PHs a) b = Helper2 { runHelper2 :: apc x => b }
+newtype Helper2 (apc :: APC) (x :: PHs a) b = Helper2 {runHelper2 :: apc x => b}
 
 -- What we really need to do here is an erased pattern match on `a`, to show
 -- that no matter what `a` is, the following is correct.

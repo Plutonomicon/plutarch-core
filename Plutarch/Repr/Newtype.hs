@@ -1,17 +1,17 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Plutarch.Repr.Newtype (PReprNewtype, PNewtyped(..)) where
+module Plutarch.Repr.Newtype (PReprNewtype, PNewtyped (..)) where
 
-import Data.Kind (Constraint)
 import Data.Coerce (Coercible, coerce)
+import Data.Kind (Constraint)
 import Plutarch.Internal.Unimplemented (Error)
 import Plutarch.PType (
-  PTypeF,
   PCode,
   PGeneric,
   PType,
-  type (/$)
+  PTypeF,
+  type (/$),
  )
 import Plutarch.Repr (
   PIsRepr (PReprApplyVal0, PReprC, prfrom, prto),
@@ -34,7 +34,7 @@ type PReprNewtype = 'PReprKind PReprNewtype'
 newtype PNewtyped (a :: PType) ef = PNewtyped (ef /$ a)
 
 instance PIsRepr0 PReprNewtype where
-  type PReprApply PReprNewtype a = PNewtyped (GetPNewtype a) --PReprApply (PReprSort (GetPNewtype a)) (GetPNewtype a)
+  type PReprApply PReprNewtype a = PNewtyped (GetPNewtype a) -- PReprApply (PReprSort (GetPNewtype a)) (GetPNewtype a)
 
 type C :: PType -> PTypeF -> Constraint
 class Coercible (a ef) (ef /$ GetPNewtype a) => C a ef
@@ -55,7 +55,7 @@ instance PIsRepr PReprNewtype where
   type PReprApplyVal0 _ _ _ _ = Error "PReprApplyVal0 PReprNewtype is unimplemented"
   prfrom (x :: a ef) = PNewtyped (coerce x)
   prto :: forall a ef. PReprC PReprNewtype a => PNewtyped (GetPNewtype a) ef -> a ef
-  prto (PNewtyped (x :: ef /$ GetPNewtype a)) = f (coerce x) --(prto x :: GetPNewtype a ef) :: a ef
+  prto (PNewtyped (x :: ef /$ GetPNewtype a)) = f (coerce x) -- (prto x :: GetPNewtype a ef) :: a ef
     where
       -- so dumb, should report to GHC bug tracker
       f :: (Coercible (a ef) (ef /$ GetPNewtype a) => b) -> b
