@@ -3,7 +3,7 @@
 
 module Plutarch.Backends.Nix (compileAp) where
 
-import Plutarch.Internal.SKI (Single, Fix, single, Known, know, known')
+import Control.Applicative (liftA2)
 import Control.Monad.Trans.Reader (ReaderT, ask, runReaderT, withReaderT)
 import Data.Coerce (coerce)
 import Data.Functor ((<&>))
@@ -34,8 +34,10 @@ import Generics.SOP.NP (
   liftA_NP,
  )
 import Generics.SOP.NS (apInjs_POP)
+import Plutarch.PType (convertPfC)
 import Plutarch.Core (
   withIsPType,
+  isPTypeQuantified,
   CompileAp,
   IsPTypeData (IsPTypeData),
   IsPTypePrim (isPTypePrim),
@@ -50,6 +52,8 @@ import Plutarch.Core (
   unTerm,
  )
 import Plutarch.Frontends.Data (
+  PHasNewtypes,
+  PSOP,
   IsPTypeSOP (isPTypeSOP),
   IsPTypeSOPData (constructorInfo, constructorNames, from, to, typeInfo),
   PAny (PAny),
@@ -63,6 +67,7 @@ import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
 import Plutarch.PType (PCode, Pf' (Pf'))
 import Plutarch.Prelude
 import Plutarch.Repr.SOP (PSOPed (PSOPed))
+import Plutarch.Repr.Newtype (PNewtyped (PNewtyped))
 
 newtype Lvl = Lvl Int
   deriving newtype (Show)
@@ -70,7 +75,7 @@ newtype Lvl = Lvl Int
 data NixType
   = NFunTy NixType NixType
   | NTyLam Text NixType
-  | NForallTy Text NixType
+  | NForallTy NixType
   | NTyVar Text
   | NSetTy [(Text, NixType)]
   | NAnyTy
@@ -104,12 +109,12 @@ serialiseTy' (NSetTy kvs) = do
   tabs <- getTabs
   pure $ "{\n" <> kvs' <> tabs <> "}"
 serialiseTy' (NTyVar v) = pure $ TB.fromText v
-serialiseTy' (NForallTy v x) = do
+serialiseTy' (NTyLam v x) = do
   x' <- serialiseTy' x
   pure $ "(\\ " <> TB.fromText v <> " -> " <> x' <> ")"
-serialiseTy' (NForallTy v x) = do
+serialiseTy' (NForallTy x) = do
   x' <- serialiseTy' x
-  pure $ "(forall " <> TB.fromText v <> ". " <> x' <> ")"
+  pure $ "(forall " <> x' <> ")"
 serialiseTy' NAnyTy = pure $ "Any"
 serialiseTy' NVoidTy = pure $ "Void"
 serialiseTy' (NUnionTy a b) = do
@@ -229,11 +234,6 @@ changeTy = coerce
 getTy :: forall m a. IsPType (Impl m) a => Proxy m -> Proxy a -> M NixType
 getTy _ _ = case isPType :: IsPTypeData (Impl m) a of IsPTypeData (IsPTypePrimData t) -> t
 
-newtype NatF a = NatF (Either () a)
-  deriving stock (Show, Generic)
-
-type Nat = Fix NatF
-
 instance PDSL (Impl m) where
   -- FIXME: fix PEffect
   newtype PEffect (Impl m) a = PEffect (Identity a)
@@ -268,10 +268,11 @@ instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PPair
     y <- getTy (Proxy @m) (Proxy @b)
     pure $ NSetTy [("x", x), ("y", y)]
 
-setInfo :: SListI tys => NP (IsPTypeData (Impl m)) tys -> NP (K FieldName) tys -> [(Text, NixType)]
+setInfo :: SListI tys => NP (IsPTypeData (Impl m)) tys -> NP (K FieldName) tys -> M [(Text, NixType)]
 setInfo tys names =
+  traverse (\(name, ty) -> (name,) <$> ty) $
   collapse_NP $
-    liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, undefined ty)) names tys
+    liftA2_NP (\(K name) (IsPTypeData (IsPTypePrimData ty)) -> K (pack name, ty)) names tys
 
 data H1 tys = H1 {unH1 :: NP (K FieldName) tys, _index :: Integer}
 
@@ -284,46 +285,39 @@ fieldNames PInfix = K "left" :* K "right" :* Nil
 fieldNames PConstructor = numericFieldNames
 
 instance (IsPTypeSOP (Impl m) a) => IsPTypePrim (Impl m) (PSOPed a) where
-  isPTypePrim = IsPTypePrimData $ pure t
+  isPTypePrim = IsPTypePrimData t
     where
-      t :: NixType
+      t :: M NixType
       t = isPTypeSOP (Proxy @(Impl m)) (Proxy @a) \info -> case (info.constructorNames, info.constructorInfo, info.typeInfo) of
-        (Nil, Nil, POP Nil) -> NVoidTy
-        (K _ :* Nil, c :* _, POP (tys :* Nil)) -> NSetTy $ setInfo tys (fieldNames c)
+        (Nil, Nil, POP Nil) -> pure NVoidTy
+        (K _ :* Nil, c :* _, POP (tys :* Nil)) -> NSetTy <$> setInfo tys (fieldNames c)
         (cns, cs, POP tyss) ->
           -- TODO: avoid use of partial function
-          foldl1' NUnionTy $ collapse_NP $ cliftA3_NP (Proxy @SListI) (\(K cn) c tys -> f cn c tys) cns cs tyss
+          foldl1' (liftA2 NUnionTy) $ collapse_NP $ cliftA3_NP (Proxy @SListI) (\(K cn) c tys -> f cn c tys) cns cs tyss
           where
-            f :: SListI tys => ConstructorName -> PConstructorInfo tys -> NP (IsPTypeData (Impl m)) tys -> K NixType tys
-            f cn c tys = K $ NSetTy $ ("_constructor", NFixedStringTy (pack cn)) : setInfo tys (fieldNames c)
+            f :: SListI tys => ConstructorName -> PConstructorInfo tys -> NP (IsPTypeData (Impl m)) tys -> K (M NixType) tys
+            f cn c tys = K $ (\tys' -> NSetTy $ ("_constructor", NFixedStringTy (pack cn)) : tys') <$> setInfo tys (fieldNames c)
 
-instance IsPTypePrim (Impl m) (PForall f) where
+instance (IsPType (Impl m) a) => IsPTypePrim (Impl m) (PNewtyped a) where
+  isPTypePrim = IsPTypePrimData $ getTy (Proxy @m) (Proxy @a)
 
-type family EvilHack (a :: PType) (var :: Text) :: PHs a where
-
-evilHackDict :: forall m a var. Known var => Proxy m -> Proxy a -> Proxy var -> IsPTypeData (Impl m) (EvilHack a var)
-evilHackDict _ _ _ = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar (known' (Proxy @var))
-
-evilHackFDict ::
-  forall m a b (var :: Text) (f :: PHs a -> PHs b).
-  Known var =>
-  Proxy m ->
-  Proxy a ->
-  Proxy var ->
-  (forall x. IsPTypeData (Impl m) x -> IsPTypeData (Impl m) (f x)) ->
-  M NixType
-evilHackFDict _ _ _ qc = case qc (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar (known' (Proxy @var))) of
-  IsPTypeData (IsPTypePrimData x) -> x
+instance
+  forall m a (f :: PHs a -> PType).
+  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) => IsPTypePrim (Impl m) (PForall f)
+  where
+    isPTypePrim = IsPTypePrimData do
+      body <- getTy (Proxy @m) (Proxy @('PLam f :: PHs (a #-> PPType)))
+      pure $ NForallTy body
 
 instance
   ( forall (x :: PHs a). IsPType (Impl m) x => IsPType (Impl m) (f x)
   ) => IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f) where
   isPTypePrim = IsPTypePrimData do
     lvl <- varify <$> getLvl
-    single lvl \(slvl :: Single lvl) -> know slvl $ do
-      body <- evilHackFDict (Proxy @m) (Proxy @a) (Proxy @lvl) (\x -> withIsPType x $ isPType) --withIsPType (evilHackDict (Proxy @m) (Proxy @a) (Proxy @lvl)) $ getTy @m @(f (EvilHack a lvl)) (Proxy @m) (Proxy @(f (EvilHack a lvl)))
-      let body = undefined
-      pure $ NTyLam lvl body
+    -- FIXME succLvl
+    body <- case isPTypeQuantified (Proxy @(Impl m)) (Proxy @f) (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl) of
+      IsPTypeData (IsPTypePrimData x) -> x
+    pure $ NTyLam lvl body
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructablePrim (Impl m) (a #-> b) where
   pconImpl (PLam f) = Impl do
@@ -372,7 +366,10 @@ instance (Applicative m, IsPType (Impl m) a, IsPType (Impl m) b) => PConstructab
   pcaseImpl = error "FIXME"
 
 instance (Applicative m, IsPType (Impl m) a, IsPType (Impl m) b) => PConstructablePrim (Impl m) (PPair a b) where
-  pconImpl p = changeTy $ pconImpl (PSOPed p)
+  pconImpl (PPair x y) = Impl do
+    x <- runTerm x
+    y <- runTerm y
+    pure $ (\x y -> NMkSet [(NString "x", x), (NString "y", y)]) <$> x <*> y
   pmatchImpl t f =
         Term $ Impl do
           l <- varify <$> getLvl
@@ -437,8 +434,28 @@ instance (Applicative m, IsPTypeSOP (Impl m) a) => PConstructablePrim (Impl m) (
           pure $ (\t k -> NLet [(l, t)] k) <$> t <*> k
   pcaseImpl = error "FIXME"
 
-instance PConstructablePrim (Impl m) (PForall f)
+instance (IsPType (Impl m) a) => PConstructablePrim (Impl m) (PNewtyped a) where
+  pconImpl (PNewtyped x) = changeTy $ unTerm x
+  pmatchImpl t f = f (PNewtyped $ Term $ changeTy t)
+  pcaseImpl = error "FIXME"
 
+type family TyVar :: PHs a where
+
+instance
+  forall m a (f :: PHs a -> PType).
+  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) => PConstructablePrim (Impl m) (PForall f)
+  where
+    pconImpl t' = Impl do
+      lvl <- varify <$> getLvl
+      let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
+      withIsPType d $ convertPfC (Proxy @(IsPType (Impl m))) (Proxy @(TyVar @a)) do
+        let PForall (t :: Term (Impl m) (f (TyVar @a))) = t'
+        succLvl $ runTerm t
+    pmatchImpl t f = f (PForall (Term $ changeTy t))
+    pcaseImpl = error "FIXME"
+
+instance PHasNewtypes (Impl m)
+instance Applicative m => PSOP (Impl m)
 instance Applicative m => PNix (Impl m)
 
 compile' :: forall a m. (Applicative m, IsPType (Impl m) a) => Term (Impl m) a -> m Text

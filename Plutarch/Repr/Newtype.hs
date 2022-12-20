@@ -1,14 +1,17 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Plutarch.Repr.Newtype (PReprNewtype) where
+module Plutarch.Repr.Newtype (PReprNewtype, PNewtyped(..)) where
 
+import Data.Kind (Constraint)
 import Data.Coerce (Coercible, coerce)
 import Plutarch.Internal.Unimplemented (Error)
 import Plutarch.PType (
+  PTypeF,
   PCode,
   PGeneric,
   PType,
+  type (/$)
  )
 import Plutarch.Repr (
   PIsRepr (PReprApplyVal0, PReprC, prfrom, prto),
@@ -28,18 +31,32 @@ data PReprNewtype'
 -- | Representation as a Newtype. Requires 'PGeneric'.
 type PReprNewtype = 'PReprKind PReprNewtype'
 
+newtype PNewtyped (a :: PType) ef = PNewtyped (ef /$ a)
+
 instance PIsRepr0 PReprNewtype where
-  type PReprApply PReprNewtype a = PReprApply (PReprSort (GetPNewtype a)) (GetPNewtype a)
+  type PReprApply PReprNewtype a = PNewtyped (GetPNewtype a) --PReprApply (PReprSort (GetPNewtype a)) (GetPNewtype a)
+
+type C :: PType -> PTypeF -> Constraint
+class Coercible (a ef) (ef /$ GetPNewtype a) => C a ef
+instance Coercible (a ef) (ef /$ GetPNewtype a) => C a ef
+
+type C' :: PType -> Constraint
+class (forall ef. C a ef) => C' a
+instance (forall ef. C a ef) => C' a
 
 instance PIsRepr PReprNewtype where
   type
     PReprC PReprNewtype a =
       ( PGeneric a
-      , Coercible a (GetPNewtype a)
+      , C' a
       , PIsRepr (PReprSort (GetPNewtype a))
       , PReprC (PReprSort (GetPNewtype a)) (GetPNewtype a)
       )
   type PReprApplyVal0 _ _ _ _ = Error "PReprApplyVal0 PReprNewtype is unimplemented"
-  prfrom (x :: a ef) = prfrom (coerce x :: GetPNewtype a ef)
-  prto :: forall a ef. PReprC PReprNewtype a => PReprApply PReprNewtype a ef -> a ef
-  prto x = coerce $ (prto x :: GetPNewtype a ef) :: a ef
+  prfrom (x :: a ef) = PNewtyped (coerce x)
+  prto :: forall a ef. PReprC PReprNewtype a => PNewtyped (GetPNewtype a) ef -> a ef
+  prto (PNewtyped (x :: ef /$ GetPNewtype a)) = f (coerce x) --(prto x :: GetPNewtype a ef) :: a ef
+    where
+      -- so dumb, should report to GHC bug tracker
+      f :: (Coercible (a ef) (ef /$ GetPNewtype a) => b) -> b
+      f x = x

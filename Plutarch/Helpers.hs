@@ -15,6 +15,8 @@ module Plutarch.Helpers (
   plam,
   T,
   pany,
+  type ($),
+  ($$),
 ) where
 
 import Data.Kind (Constraint, Type)
@@ -69,3 +71,10 @@ type family T (a :: PType) where
 
 pany :: PConstructable e PAny => Term e a -> Term e PAny
 pany x = pcon $ PAny Proxy x
+
+($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b
+f $$ x = f (pcon x)
+infixr 0 $$
+
+type f $ x = f x
+infixr 0 $

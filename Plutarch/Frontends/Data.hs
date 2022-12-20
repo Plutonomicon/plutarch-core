@@ -4,6 +4,7 @@
 
 module Plutarch.Frontends.Data (
   PVoid,
+  PHasNewtypes,
   IsPTypeSOP (..),
   PLet (..),
   PDelay (..),
@@ -59,6 +60,7 @@ import Plutarch.PType (PCode, PGeneric, PHs, PPType, PType, PTypeF, Pf', PfC, pg
 import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.Repr.SOP (PSOPed)
+import Plutarch.Repr.Newtype (PNewtyped)
 import Unsafe.Coerce (unsafeCoerce)
 
 data PVoid ef
@@ -182,11 +184,16 @@ instance (PGeneric a, All2 (IsPType edsl) (PCode a)) => IsPTypeSOP edsl a where
               do pgfrom (Proxy @a) (Proxy @(PConcreteEf edsl)) . gfrom
          in x d
 
+class
+  ( forall a. IsPType edsl a => PConstructablePrim edsl (PNewtyped a)
+  ) => PHasNewtypes edsl
+
 type PSOP :: PDSLKind -> Constraint
-type PSOP edsl =
+class
   ( PConstructablePrim edsl PUnit
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructablePrim edsl (PPair a b)
   , forall a b. (IsPType edsl a, IsPType edsl b) => PConstructablePrim edsl (PEither a b)
   , forall a. IsPTypeSOP edsl a => PConstructablePrim edsl (PSOPed a)
   , IsPTypePrim edsl PPType
-  )
+  , PHasNewtypes edsl
+  ) => PSOP edsl

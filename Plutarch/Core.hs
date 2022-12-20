@@ -12,6 +12,7 @@ module Plutarch.Core (
   PConcrete,
   PConcreteEf,
   IsPType (..),
+  isPTypeQuantified,
   IsPTypeData (IsPTypeData),
   PConstructable (..),
   PConstructablePrim (..),
@@ -23,6 +24,7 @@ module Plutarch.Core (
   withIsPType,
 ) where
 
+import Unsafe.Coerce (unsafeCoerce)
 import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
@@ -80,6 +82,21 @@ instance
 
 withIsPType :: forall edsl x a. IsPTypeData edsl x -> (IsPType edsl x => a) -> a
 withIsPType = unsafeWithDict (Proxy @(IsPType edsl x))
+
+newtype Helper edsl f = Helper
+  { runHelper :: (forall x. IsPType edsl x => IsPType edsl (f x)) =>
+                 (forall x. IsPTypeData edsl x -> IsPTypeData edsl (f x))
+  }
+
+isPTypeQuantified ::
+  forall edsl f.
+  Proxy edsl ->
+  Proxy f ->
+  (forall x. IsPType edsl x => IsPType edsl (f x)) =>
+  (forall x. IsPTypeData edsl x -> IsPTypeData edsl (f x))
+isPTypeQuantified _ _ =
+  let _ = Helper in
+  runHelper (unsafeCoerce id :: Helper edsl f)
 
 type PConcreteEf :: PDSLKind -> PTypeF
 type PConcreteEf edsl = MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl))

@@ -18,7 +18,7 @@ type PLC edsl = forall a b. (IsPType edsl a, IsPType edsl b) => PConstructablePr
 type PPolymorphic :: PDSLKind -> Constraint
 class
   ( forall a (f :: PHs a -> PType).
-    IsPTypePrim edsl ( 'PLam f :: PHs (a #-> PPType)) =>
+    IsPType edsl ( 'PLam f :: PHs (a #-> PPType)) =>
     PConstructablePrim edsl (PForall f)
   , forall a b (f :: PHs a -> PHs b).
     (forall (x :: PHs a). IsPType edsl x => IsPType edsl (f x)) =>

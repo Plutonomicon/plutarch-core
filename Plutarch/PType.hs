@@ -12,13 +12,13 @@ module Plutarch.PType (
   MkPTypeF,
   PType,
   PPType (PPType),
-  Pf,
   Pf' (..),
   PfC,
   PHs,
   PHs',
   PHsW,
   type (/$),
+  convertPfC,
 ) where
 
 import Data.Kind (Constraint, Type)
@@ -65,12 +65,10 @@ type family PHs (a :: PType) = r | r -> a where
 type PHsW :: PType -> Type
 newtype PHsW a = PHsW (NoReduce (PHs a)) deriving stock (Generic)
 
-type family Pf (f :: PTypeF) (x :: PType) :: Type where
+type family (/$) (f :: PTypeF) (x :: PType) :: Type where
   forall (_constraint :: AC) (concretise :: Conc) (x :: PType).
-    Pf (MkPTypeF' _constraint concretise) x =
+    (/$) (MkPTypeF' _constraint concretise) x =
       Reduce (concretise x)
-
-type (/$) ef a = Pf ef a
 infixr 0 /$
 
 newtype Pf' ef a = Pf' (ef /$ a)
@@ -102,7 +100,7 @@ type DummyEf = MkPTypeF' Top Dummy
 type family OpaqueEf :: PTypeF where
 
 type family VerifyPCode'' (p :: PType) (a :: Type) :: Constraint where
-  VerifyPCode'' p a = a ~ Pf OpaqueEf p
+  VerifyPCode'' p a = a ~ (OpaqueEf /$ p)
 
 type family VerifyPCode' (ps :: [PType]) (as :: [Type]) :: Constraint where
   VerifyPCode' '[] '[] = ()
@@ -161,18 +159,30 @@ pgto = let _ = witness (Proxy @(PGeneric a)) in \_ _ x -> unsafeCoerce x
 
 type PDatatypeInfoOf a = GDatatypeInfoOf (a OpaqueEf)
 
-type H1 :: APC -> forall (a :: Type) -> a -> Constraint
-type family H1 (apc :: APC) (a :: Type) (x :: a) :: Constraint where
-  forall (apc :: APC) (x :: PType).
-    H1 apc PType x =
-      apc x
-  forall (apc :: APC) (a :: PType) (_ef :: PTypeF) (x :: a _ef).
-    H1 apc (a _ef) x =
-      apc (CoerceTo (PHs a) x)
+type H0 :: Type -> PType
+type family H0 a where
+  H0 PType = PPType
+  H0 (a _ef) = a
+
+type H1 :: forall (a :: Type). a -> PHs (H0 a)
+type family H1 (x :: a) where
+  forall (x :: PType).
+    H1 x = x
+  forall (a :: PType) (_ef :: PTypeF) (x :: a _ef).
+    H1 x = CoerceTo (PHs a) x -- need to show GHC that `a` can't be `PType` somehow.
 
 type H2 :: APC -> AC
-class H1 apc a x => H2 (apc :: APC) (x :: a)
-instance forall (apc :: APC) (a :: Type) (x :: a). H1 apc a x => H2 (apc :: APC) (x :: a)
+class apc (H1 x) => H2 (apc :: APC) (x :: a)
+instance forall (apc :: APC) (a :: Type) (x :: a). apc (H1 x) => H2 (apc :: APC) (x :: a)
+
+newtype Helper1 (apc :: APC) (x :: PHs a) b = Helper1 (apc (H1 x) => b)
+newtype Helper2 (apc :: APC) (x :: PHs a) b = Helper2 { runHelper2 :: apc x => b }
+
+-- What we really need to do here is an erased pattern match on `a`, to show
+-- that no matter what `a` is, the following is correct.
+-- GHC unfortunately supports no such thing, so we use `unsafeCoerce`.
+convertPfC :: forall (apc :: APC) a (x :: PHs a) b. apc x => Proxy apc -> Proxy x -> (apc (H1 x) => b) -> b
+convertPfC _ _ f = let _ = Helper2 in runHelper2 (unsafeCoerce (Helper1 @a @apc @x @b f) :: Helper2 apc x b)
 
 type MkPTypeF :: APC -> ((PTypeF -> Type) -> Type) -> PTypeF
 type family MkPTypeF constraint concretise where
