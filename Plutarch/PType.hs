@@ -3,6 +3,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 
 module Plutarch.PType (
+  pHs_inverse,
   PGeneric,
   PCode,
   PDatatypeInfoOf,
@@ -15,7 +16,9 @@ module Plutarch.PType (
   Pf' (..),
   PfC,
   PHs,
-  PHs',
+  UnPHs,
+  PHs' (..),
+  PHsEf,
   PHsW,
   type (/$),
   convertPfC,
@@ -30,6 +33,7 @@ import Plutarch.Internal.CoerceTo (CoerceTo)
 import Plutarch.Internal.Witness (witness)
 import Plutarch.Reduce (NoReduce, Reduce)
 import Unsafe.Coerce (unsafeCoerce)
+import Data.Type.Equality ((:~:)(Refl))
 
 type APC = forall (a :: PType). PHs a -> Constraint
 type AC = forall (a :: Type). a -> Constraint
@@ -55,15 +59,25 @@ type Conc = PType -> Type
 
 newtype PPType (ef :: PTypeF) = PPType PType
 
-type PHs' a = a (MkPTypeF' Top PHsW)
+type PHsEf = MkPTypeF' Top PHsW
+
+type PHsW :: PType -> Type
+newtype PHsW a = PHsW (NoReduce (PHs a)) deriving stock (Generic)
 
 type PHs :: PType -> Type
 type family PHs (a :: PType) = r | r -> a where
   PHs PPType = PType
-  PHs a = PHs' a
+  PHs a = a PHsEf
 
-type PHsW :: PType -> Type
-newtype PHsW a = PHsW (NoReduce (PHs a)) deriving stock (Generic)
+type UnPHs :: Type -> PType
+type family UnPHs a where
+  UnPHs PType = PPType
+  UnPHs (a _) = a
+
+pHs_inverse :: a :~: UnPHs (PHs a)
+pHs_inverse = unsafeCoerce Refl
+
+newtype PHs' a = PHs' (PHs a)
 
 type family (/$) (f :: PTypeF) (x :: PType) :: Type where
   forall (_constraint :: AC) (concretise :: Conc) (x :: PType).

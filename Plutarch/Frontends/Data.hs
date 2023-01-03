@@ -96,6 +96,28 @@ instance PHasRepr PAny where type PReprSort _ = PReprPrimitive
 newtype PForall (f :: PHs a -> PType) ef = PForall (forall (forallvar :: PHs a). PfC ef forallvar => ef /$ f forallvar)
 instance PHasRepr (PForall ef) where type PReprSort _ = PReprPrimitive
 
+{-
+-- FIXME: uncomment this code when GHC has erased universal quantification
+-- at the type-level. Currently this prevents typing `x :: PProxyTypeF k0 ef0`
+-- as `forall k. PProxyTypeF k PHsEf` (where `k0` is ambiguous).
+-- Lambdas at the type-level would also be a solution, but is more complex.
+type PProxyTypeF :: PType -> PType
+newtype PProxyTypeF k ef = PProxyTypeF (PType -> PHs k -> PType)
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+
+newtype PTypeForall (f :: PHs a -> PType) ef = PTypeForall (forall (forallvar :: PHs a). f forallvar PHsEf)
+instance PHasRepr (PTypeForall ef) where type PReprSort _ = PReprPrimitive
+
+type PProxy :: forall k. PType -> PHs k -> PType
+data PProxy a b ef = PProxy
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+
+type PProxy' :: PHs (PTypeForall @PPType PProxyTypeF)
+type PProxy' = 'PTypeForall ('PProxyTypeF PProxy)
+-}
+
 data PSome (f :: PHs a -> PType) ef = forall (x :: PHs a). PSome (PfC ef x => ef /$ f x)
 instance PHasRepr (PSome ef) where type PReprSort _ = PReprPrimitive
 

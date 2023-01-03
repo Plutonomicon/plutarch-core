@@ -19,6 +19,7 @@ module Plutarch.Core (
   PAp (..),
   PEmbeds (..),
   Compile,
+  CompileTy,
   CompileAp,
   IsPTypePrim (..),
   withIsPType,
@@ -31,6 +32,7 @@ import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
 import Plutarch.Internal.WithDictHack (unsafeWithDict)
 import Plutarch.PType (
+  PPType,
   MkPTypeF,
   PHs,
   PType,
@@ -38,7 +40,6 @@ import Plutarch.PType (
  )
 import Plutarch.Reduce (NoReduce)
 import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprSort, prfrom, prto)
-import Unsafe.Coerce (unsafeCoerce)
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
@@ -69,35 +70,32 @@ type ClosedTerm (c :: PDSLKind -> Constraint) (a :: PType) = forall edsl. c edsl
 type IsPTypeData :: PDSLKind -> forall (a :: PType). PHs a -> Type
 newtype IsPTypeData edsl x = IsPTypeData (IsPTypePrimData edsl (PRepr x))
 
+type GiveRepr :: forall a. PHs a -> Constraint
+type family GiveRepr (x :: PHs a) :: Constraint where
+  GiveRepr @PPType x = (PReprC (PReprSort x) x, PIsRepr (PReprSort x))
+  GiveRepr _ = ()
+
 type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
-class PDSL edsl => IsPType edsl (x :: PHs a) where
+-- FIXME: remove GiveRepr superclass, should be unnecessary, maybe GHC bug?
+class IsPType edsl (x :: PHs a) where
   isPType :: IsPTypeData edsl x
 instance
-  ( PDSL edsl
-  , IsPTypePrim edsl (PRepr x)
+  ( IsPTypePrim edsl (PRepr x)
   ) =>
   IsPType edsl (x :: PHs a)
   where
   isPType = IsPTypeData isPTypePrim
 
 withIsPType :: forall edsl x a. IsPTypeData edsl x -> (IsPType edsl x => a) -> a
-withIsPType = unsafeWithDict (Proxy @(IsPType edsl x))
-
-newtype Helper edsl f = Helper
-  { runHelper ::
-      (forall x. IsPType edsl x => IsPType edsl (f x)) =>
-      (forall x. IsPTypeData edsl x -> IsPTypeData edsl (f x))
-  }
+withIsPType x = unsafeWithDict (Proxy @(IsPType edsl x)) x
 
 isPTypeQuantified ::
-  forall edsl f.
+  forall edsl f y.
+  (forall x. IsPType edsl x => IsPType edsl (f x)) =>
   Proxy edsl ->
   Proxy f ->
-  (forall x. IsPType edsl x => IsPType edsl (f x)) =>
-  (forall x. IsPTypeData edsl x -> IsPTypeData edsl (f x))
-isPTypeQuantified _ _ =
-  let _ = Helper
-   in runHelper (unsafeCoerce id :: Helper edsl f)
+  IsPTypeData edsl y -> IsPTypeData edsl (f y)
+isPTypeQuantified _ _ y = withIsPType y $ isPType @edsl @_ @(f y)
 
 type PConcreteEf :: PDSLKind -> PTypeF
 type PConcreteEf edsl = MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl))
@@ -137,6 +135,12 @@ class PDSL edsl => PAp (f :: Type -> Type) edsl where
 
 class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
   pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
+
+type CompileTy variant output =
+  forall a (x :: PHs a).
+  Proxy x ->
+  (forall edsl. variant edsl => IsPType edsl x) =>
+  output
 
 type CompileAp variant output =
   forall a m.

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Plutarch.Backends.Nix (compileAp) where
+module Plutarch.Backends.Nix (compileAp, compileTy) where
 
 import Control.Applicative (liftA2)
 import Control.Monad.Trans.Reader (ReaderT, ask, runReaderT, withReaderT)
@@ -36,6 +36,7 @@ import Generics.SOP.NP (
 import Generics.SOP.NS (apInjs_POP)
 import Plutarch.Core (
   CompileAp,
+  CompileTy,
   IsPTypeData (IsPTypeData),
   IsPTypePrim (isPTypePrim),
   PAp (papl, papr),
@@ -46,7 +47,6 @@ import Plutarch.Core (
   Term (Term),
   UnPDSLKind,
   isPType,
-  isPTypeQuantified,
   unTerm,
   withIsPType,
  )
@@ -110,7 +110,7 @@ serialiseTy' (NSetTy kvs) = do
 serialiseTy' (NTyVar v) = pure $ TB.fromText v
 serialiseTy' (NTyLam v x) = do
   x' <- serialiseTy' x
-  pure $ "(\\ " <> TB.fromText v <> " -> " <> x' <> ")"
+  pure $ "(" <> TB.fromText v <> ": " <> x' <> ")"
 serialiseTy' (NForallTy x) = do
   x' <- serialiseTy' x
   pure $ "(forall " <> x' <> ")"
@@ -317,9 +317,9 @@ instance
   where
   isPTypePrim = IsPTypePrimData do
     lvl <- varify <$> getLvl
-    -- FIXME succLvl
-    body <- case isPTypeQuantified (Proxy @(Impl m)) (Proxy @f) (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl) of
-      IsPTypeData (IsPTypePrimData x) -> x
+    body <- succLvl $ withIsPType
+              (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl :: IsPTypeData (Impl m) (TyVar @a))
+              (getTy (Proxy @m) (Proxy @(f TyVar)))
     pure $ NTyLam lvl body
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructablePrim (Impl m) (a #-> b) where
@@ -449,6 +449,7 @@ instance
   IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
   PConstructablePrim (Impl m) (PForall f)
   where
+  -- TODO: Add explicit big lambda at term-level? Otherwise you get weird comments
   pconImpl t' = Impl do
     lvl <- varify <$> getLvl
     let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
@@ -461,6 +462,12 @@ instance
 instance PHasNewtypes (Impl m)
 instance Applicative m => PSOP (Impl m)
 instance Applicative m => PNix (Impl m)
+
+compileTy' :: forall a. (IsPType (Impl Identity) a) => Proxy a -> Text
+compileTy' _ = serialiseTy (runM (getTy (Proxy @Identity) (Proxy @a)) initialState)
+
+compileTy :: CompileTy PNix Text
+compileTy x = compileTy' x
 
 compile' :: forall a m. (Applicative m, IsPType (Impl m) a) => Term (Impl m) a -> m Text
 compile' (Term t) =

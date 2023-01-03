@@ -19,12 +19,16 @@ module Plutarch.Prelude (
   (#),
   PHs,
   PType,
+  PTypeF,
+  Constraint,
+  Type,
   PPType,
   IsPType1,
   IsPType2,
   IsPType3,
   T,
   pany,
+  PDSL,
 ) where
 
 import GHC.Generics (Generic)
@@ -34,3 +38,4 @@ import Plutarch.Helpers
 import Plutarch.PType
 import Plutarch.Repr
 import Plutarch.Repr.Newtype
+import Data.Kind (Type, Constraint)
