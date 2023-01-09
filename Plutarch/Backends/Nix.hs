@@ -73,7 +73,7 @@ newtype Lvl = Lvl Int
 
 data NixType
   = NFunTy NixType NixType
-  | NTyLam Text NixType
+  | NTyLam NixType Text NixType
   | NForallTy NixType
   | NTyVar Text
   | NSetTy [(Text, NixType)]
@@ -81,6 +81,7 @@ data NixType
   | NVoidTy
   | NUnionTy NixType NixType
   | NFixedStringTy Text
+  | NType
   deriving stock (Show)
 
 getTabs :: ReaderT Int Identity TB.Builder
@@ -108,9 +109,10 @@ serialiseTy' (NSetTy kvs) = do
   tabs <- getTabs
   pure $ "{\n" <> kvs' <> tabs <> "}"
 serialiseTy' (NTyVar v) = pure $ TB.fromText v
-serialiseTy' (NTyLam v x) = do
+serialiseTy' (NTyLam t v x) = do
+  t' <- serialiseTy' t
   x' <- serialiseTy' x
-  pure $ "(" <> TB.fromText v <> ": " <> x' <> ")"
+  pure $ "(" <> TB.fromText v <> " :: " <> t' <> " : " <> x' <> ")"
 serialiseTy' (NForallTy x) = do
   x' <- serialiseTy' x
   pure $ "(forall " <> x' <> ")"
@@ -121,6 +123,7 @@ serialiseTy' (NUnionTy a b) = do
   b' <- serialiseTy' b
   pure $ "(" <> a' <> "|" <> b' <> ")"
 serialiseTy' (NFixedStringTy s) = pure $ "\"" <> TB.fromText s <> "\""
+serialiseTy' NType = pure $ "*"
 
 serialiseTy :: NixType -> Text
 serialiseTy t = TB.runBuilder $ runIdentity $ runReaderT (serialiseTy' t) 0
@@ -250,7 +253,7 @@ instance IsPTypePrim (Impl m) PUnit where
   isPTypePrim = IsPTypePrimData $ pure $ NSetTy []
 
 instance IsPTypePrim (Impl m) PPType where
-  isPTypePrim = IsPTypePrimData $ error "PPType has no type info"
+  isPTypePrim = IsPTypePrimData $ pure NType
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (PEither a b) where
   isPTypePrim =
@@ -312,15 +315,17 @@ instance
 
 instance
   ( forall (x :: PHs a). IsPType (Impl m) x => IsPType (Impl m) (f x)
+  , IsPType (Impl m) a
   ) =>
   IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f)
   where
   isPTypePrim = IsPTypePrimData do
+    argty <- getTy (Proxy @m) (Proxy @a)
     lvl <- varify <$> getLvl
     body <- succLvl $ withIsPType
               (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl :: IsPTypeData (Impl m) (TyVar @a))
               (getTy (Proxy @m) (Proxy @(f TyVar)))
-    pure $ NTyLam lvl body
+    pure $ NTyLam argty lvl body
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructablePrim (Impl m) (a #-> b) where
   pconImpl (PLam f) = Impl do

@@ -35,7 +35,7 @@ data PProxy a b ef = PProxy
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
 
-pproxy :: forall e k. PNix e => Term e (PForallN (PProxy @k))
+pproxy :: forall e k. (PNix e, IsPType e k) => Term e (PForallN (PProxy @k))
 pproxy = case pHs_inverse @k of Refl -> pcon $ PForallN $ pcon $ PForall $ pcon $ PForallNF $ pcon $ PForallN $ pcon $ PForall $ pcon $ PForallNF $ pcon $ PProxy
 
 newtype PConstF a b ef = PConstF (ef /$ a #-> b #-> a)

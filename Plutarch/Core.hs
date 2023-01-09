@@ -32,7 +32,6 @@ import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
 import Plutarch.Internal.WithDictHack (unsafeWithDict)
 import Plutarch.PType (
-  PPType,
   MkPTypeF,
   PHs,
   PType,
@@ -69,11 +68,6 @@ type ClosedTerm (c :: PDSLKind -> Constraint) (a :: PType) = forall edsl. c edsl
 
 type IsPTypeData :: PDSLKind -> forall (a :: PType). PHs a -> Type
 newtype IsPTypeData edsl x = IsPTypeData (IsPTypePrimData edsl (PRepr x))
-
-type GiveRepr :: forall a. PHs a -> Constraint
-type family GiveRepr (x :: PHs a) :: Constraint where
-  GiveRepr @PPType x = (PReprC (PReprSort x) x, PIsRepr (PReprSort x))
-  GiveRepr _ = ()
 
 type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
 -- FIXME: remove GiveRepr superclass, should be unnecessary, maybe GHC bug?

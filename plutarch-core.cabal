@@ -57,7 +57,7 @@ common c
     -Wno-prepositive-qualified-module -Wno-missing-import-lists
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
     -fprint-explicit-kinds -fprint-equality-relations
-    -fprint-explicit-foralls
+    -fprint-explicit-foralls -fno-show-valid-hole-fits
 
   build-depends:
     , base                 >=4.15

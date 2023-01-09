@@ -20,6 +20,7 @@ module Plutarch.Frontends.Data (
   PSOP,
   IsPTypeSOPData (..),
   PConstructorInfo (..),
+  PRecursion,
 ) where
 
 import Data.Kind (Constraint, Type)
@@ -221,3 +222,9 @@ class
   , PHasNewtypes edsl
   ) =>
   PSOP edsl
+
+type PRecursion :: PDSLKind -> Constraint
+class
+  ( forall (f :: PType -> PType). IsPType edsl ('PLam f :: PHs (PPType #-> PPType)) => PConstructablePrim edsl (PFix f)
+  ) =>
+  PRecursion edsl

@@ -21,7 +21,7 @@ class
     IsPType edsl ( 'PLam f :: PHs (a #-> PPType)) =>
     PConstructablePrim edsl (PForall f)
   , forall a b (f :: PHs a -> PHs b).
-    (forall (x :: PHs a). IsPType edsl x => IsPType edsl (f x)) =>
+    (IsPType edsl a, IsPType edsl b, forall (x :: PHs a). IsPType edsl x => IsPType edsl (f x)) =>
     IsPTypePrim' edsl ( 'PLam f :: PHs (a #-> b))
   ) =>
   PPolymorphic edsl
