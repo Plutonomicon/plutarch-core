@@ -52,7 +52,7 @@ instance PIsRepr PReprNewtype where
       , PIsRepr (PReprSort (GetPNewtype a))
       , PReprC (PReprSort (GetPNewtype a)) (GetPNewtype a)
       )
-  type PReprApplyVal0 _ _ _ _ = Error "PReprApplyVal0 PReprNewtype is unimplemented"
+  type PReprApplyVal0 _ _ _ = Error "PReprApplyVal0 PReprNewtype is unimplemented"
   prfrom (x :: a ef) = PNewtyped (coerce x)
   prto :: forall a ef. PReprC PReprNewtype a => PNewtyped (GetPNewtype a) ef -> a ef
   prto (PNewtyped (x :: ef /$ GetPNewtype a)) = f (coerce x) -- (prto x :: GetPNewtype a ef) :: a ef

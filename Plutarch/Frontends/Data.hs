@@ -11,8 +11,8 @@ module Plutarch.Frontends.Data (
   type (#=>) (..),
   type (#->) (..),
   PAny (..),
-  PForall (..),
-  PSome (..),
+  PForall1 (..),
+  PSome1 (..),
   PFix (..),
   PUnit (..),
   PPair (..),
@@ -21,6 +21,8 @@ module Plutarch.Frontends.Data (
   IsPTypeSOPData (..),
   PConstructorInfo (..),
   PRecursion,
+  type (#~)(PRefl),
+  PSingle,
 ) where
 
 import Data.Kind (Constraint, Type)
@@ -94,8 +96,8 @@ infixr 0 #->
 data PAny ef = forall a. PAny (Proxy a) (ef /$ a)
 instance PHasRepr PAny where type PReprSort _ = PReprPrimitive
 
-newtype PForall (f :: PHs a -> PType) ef = PForall (forall (forallvar :: PHs a). PfC ef forallvar => ef /$ f forallvar)
-instance PHasRepr (PForall ef) where type PReprSort _ = PReprPrimitive
+newtype PForall1 (f :: PHs a -> PType) ef = PForall1 (forall (forallvar :: PHs a). PfC ef forallvar => ef /$ f forallvar)
+instance PHasRepr (PForall1 ef) where type PReprSort _ = PReprPrimitive
 
 {-
 -- FIXME: uncomment this code when GHC has erased universal quantification
@@ -119,8 +121,8 @@ type PProxy' :: PHs (PTypeForall @PPType PProxyTypeF)
 type PProxy' = 'PTypeForall ('PProxyTypeF PProxy)
 -}
 
-data PSome (f :: PHs a -> PType) ef = forall (x :: PHs a). PSome (PfC ef x => ef /$ f x)
-instance PHasRepr (PSome ef) where type PReprSort _ = PReprPrimitive
+data PSome1 (f :: PHs a -> PType) ef = forall (x :: PHs a). PfC ef x => PSome1 (Proxy x) (ef /$ f x)
+instance PHasRepr (PSome1 ef) where type PReprSort _ = PReprPrimitive
 
 newtype PFix f ef = PFix (ef /$ f (PFix f))
 instance PHasRepr (PFix f) where type PReprSort _ = PReprPrimitive
@@ -133,6 +135,15 @@ instance PHasRepr (PPair a b) where type PReprSort _ = PReprPrimitive
 
 data PEither a b ef = PLeft (ef /$ a) | PRight (ef /$ b) deriving stock (Generic)
 instance PHasRepr (PEither a b) where type PReprSort _ = PReprPrimitive
+
+data (#~) (x :: PHs a) (y :: PHs a) ef where
+  PRefl :: (#~) x x ef
+instance PHasRepr (x #~ y) where type PReprSort _ = PReprPrimitive
+infix 4 #~
+
+type PSingle :: forall (a :: PType). PHs a -> PType
+data PSingle (x :: PHs a) ef
+instance PHasRepr (PSingle x) where type PReprSort _ = PReprPrimitive
 
 data PConstructorInfo ps :: Type where
   PConstructor :: PConstructorInfo ps

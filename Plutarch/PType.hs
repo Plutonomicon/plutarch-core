@@ -4,6 +4,7 @@
 
 module Plutarch.PType (
   pHs_inverse,
+  pHs_inverse',
   PGeneric,
   PCode,
   PDatatypeInfoOf,
@@ -21,7 +22,7 @@ module Plutarch.PType (
   PHsEf,
   PHsW,
   type (/$),
-  convertPfC,
+  IsNotPPType,
 ) where
 
 import Data.Kind (Constraint, Type)
@@ -64,6 +65,9 @@ type PHsEf = MkPTypeF' Top PHsW
 type PHsW :: PType -> Type
 newtype PHsW a = PHsW (NoReduce (PHs a)) deriving stock (Generic)
 
+type IsNotPPType :: PType -> Constraint
+type IsNotPPType a = PHs a ~ a PHsEf
+
 type PHs :: PType -> Type
 type family PHs (a :: PType) = r | r -> a where
   PHs PPType = PType
@@ -76,6 +80,9 @@ type family UnPHs a where
 
 pHs_inverse :: a :~: UnPHs (PHs a)
 pHs_inverse = unsafeCoerce Refl
+
+pHs_inverse' :: a :~: PHs (UnPHs a)
+pHs_inverse' = unsafeCoerce Refl
 
 newtype PHs' a = PHs' (PHs a)
 
@@ -173,32 +180,9 @@ pgto = let _ = witness (Proxy @(PGeneric a)) in \_ _ x -> unsafeCoerce x
 
 type PDatatypeInfoOf a = GDatatypeInfoOf (a OpaqueEf)
 
-type H0 :: Type -> PType
-type family H0 a where
-  H0 PType = PPType
-  H0 (a _ef) = a
-
-type H1 :: forall (a :: Type). a -> PHs (H0 a)
-type family H1 (x :: a) where
-  forall (x :: PType).
-    H1 x =
-      x
-  forall (a :: PType) (_ef :: PTypeF) (x :: a _ef).
-    H1 x =
-      CoerceTo (PHs a) x -- need to show GHC that `a` can't be `PType` somehow.
-
 type H2 :: APC -> AC
-class apc (H1 x) => H2 (apc :: APC) (x :: a)
-instance forall (apc :: APC) (a :: Type) (x :: a). apc (H1 x) => H2 (apc :: APC) (x :: a)
-
-newtype Helper1 (apc :: APC) (x :: PHs a) b = Helper1 (apc (H1 x) => b)
-newtype Helper2 (apc :: APC) (x :: PHs a) b = Helper2 {runHelper2 :: apc x => b}
-
--- What we really need to do here is an erased pattern match on `a`, to show
--- that no matter what `a` is, the following is correct.
--- GHC unfortunately supports no such thing, so we use `unsafeCoerce`.
-convertPfC :: forall (apc :: APC) a (x :: PHs a) b. apc x => Proxy apc -> Proxy x -> (apc (H1 x) => b) -> b
-convertPfC _ _ f = let _ = Helper2 in runHelper2 (unsafeCoerce (Helper1 @a @apc @x @b f) :: Helper2 apc x b)
+class apc (CoerceTo (PHs (UnPHs a)) x) => H2 (apc :: APC) (x :: a)
+instance forall (apc :: APC) (a :: Type) (x :: a). apc (CoerceTo (PHs (UnPHs a)) x) => H2 (apc :: APC) (x :: a)
 
 type MkPTypeF :: APC -> ((PTypeF -> Type) -> Type) -> PTypeF
 type family MkPTypeF constraint concretise where

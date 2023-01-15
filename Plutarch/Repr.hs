@@ -35,7 +35,7 @@ class PIsRepr0 (r :: PReprKind) where
 class PIsRepr0 r => PIsRepr (r :: PReprKind) where
   -- | Equivalent to 'PRepr'. Maps a value @x@ of type @a@ to its representation.
   -- @out@ is assumed to be equal to @PHs (PReprApply r a)@ (equal to @PHs (PRepr a)@).
-  type PReprApplyVal0 r (a :: PType) (x :: PHs a) (out :: Type) :: out -- out ~ PHs (PReprApply r a)
+  type PReprApplyVal0 r (x :: PHs a) (out :: Type) :: out -- out ~ PHs (PReprApply r a)
 
   -- | What constraint must the type satisfy?
   type PReprC r (a :: PType) :: Constraint
@@ -47,7 +47,7 @@ class PIsRepr0 r => PIsRepr (r :: PReprKind) where
   prto :: forall a ef. (PReprC r a, PReprSort a ~ r) => PReprApply r a ef -> a ef
 
 type PReprApplyVal :: forall (r :: PReprKind) -> forall (a :: PType) -> PHs a -> PHs (PReprApply r a)
-type PReprApplyVal r a x = PReprApplyVal0 r a x (PHs (PReprApply r a))
+type PReprApplyVal r a x = PReprApplyVal0 r x (PHs (PReprApply r a))
 
 data PReprPPType'
 
@@ -58,7 +58,7 @@ instance PIsRepr0 PReprPPType where
   type PReprApply PReprPPType PPType = PPType
 
 instance PIsRepr PReprPPType where
-  type PReprApplyVal0 PReprPPType PPType x _ = PReprApply (PReprSort x) x
+  type PReprApplyVal0 PReprPPType (x :: PType) _ = PReprApply (PReprSort x) x
   type PReprC PReprPPType a = a ~ PPType
   prfrom = error "invalid"
   prto = error "invalid"

@@ -18,10 +18,10 @@ module Plutarch.Helpers (
   pany,
   type ($),
   ($$),
-  PForallN (..),
-  PForallNClass,
-  PForallNF (..),
-  PForallNF',
+  PForall (..),
+  PForallClass,
+  PForallF (..),
+  PForallF',
   pforall,
 ) where
 
@@ -30,15 +30,16 @@ import Data.Proxy (Proxy (Proxy))
 import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
 import Plutarch.Core (PDSL, IsPType, PConcrete, PConstructable, PDSLKind, PEffect, Term, pcase, pcon, pmatch)
-import Plutarch.Frontends.Data (PForall (PForall), PAny (PAny), PLet (PLet), type (#->) (PLam), PSOP)
+import Plutarch.Frontends.Data (PForall1 (PForall1), PAny (PAny), PLet (PLet), type (#->) (PLam), PSOP)
 import Plutarch.Frontends.LC (PLC, PPolymorphic)
 import Plutarch.Repr (PHasRepr)
-import Plutarch.PType (PType, PPType, PHs' (PHs'), type (/$), UnPHs, PHs, PTypeF)
+import Plutarch.PType (pHs_inverse, PType, PPType, PHs' (PHs'), type (/$), UnPHs, PHs, PTypeF)
 import Plutarch.TermCont (TermCont, tcont)
-import Plutarch.Internal.CoerceTo (CoerceTo)
+import Plutarch.Internal.CoerceTo (Coerce, CoerceTo)
 import Generics.SOP (NP ((:*), Nil))
 import Unsafe.Coerce (unsafeCoerce)
 import GHC.TypeLits (Nat, type (-))
+import Data.Type.Equality (pattern Refl)
 
 type IsPType1 :: forall a. PDSLKind -> (PHs a -> PType) -> Constraint
 type IsPType1 e f = forall x. IsPType e x => IsPType e (f x)
@@ -54,18 +55,15 @@ type PConstructable2 e f = forall a b. (IsPType e a, IsPType e b) => PConstructa
 type PConstructable3 :: PDSLKind -> (PType -> PType -> PType -> PType) -> Constraint
 type PConstructable3 e f = forall a b c. (IsPType e a, IsPType e b, IsPType e c) => PConstructable e (f a b c)
 
-type PForallNF' :: forall (a :: PType) (b :: Type). (PHs a -> b) -> PHs a -> PType
-type family PForallNF' (f :: PHs a -> b) (x :: PHs a) :: PType where
-  PForallNF' f x = f x
-  -- TODO: remove CoerceTo by making GHC realise that `b` can't be `PPType``.
-  -- (Currently it technically can, but an extra clause that turns that into an
-  -- error is trivial to implement).
-  PForallNF' @_ @(b -> c) f x = PForallN @(UnPHs b) (CoerceTo (PHs (UnPHs b) -> c) (f x))
-type PForallNF :: forall (a :: PType) (b :: Type). (PHs a -> b) -> PHs a -> PType
-newtype PForallNF (f :: PHs a -> b) (x :: PHs a) (ef :: PTypeF) = PForallNF (ef /$ PForallNF' f x)
+type PForallF' :: forall (a :: PType) (b :: Type). (PHs a -> b) -> PHs a -> PType
+type family PForallF' (f :: PHs a -> b) (x :: PHs a) :: PType where
+  PForallF' @_ @(PTypeF -> Type) f x = f x
+  PForallF' @_ @(b -> c) f x = PForall @(UnPHs b) (CoerceTo (PHs (UnPHs b) -> c) (f x))
+type PForallF :: forall (a :: PType) (b :: Type). (PHs a -> b) -> PHs a -> PType
+newtype PForallF (f :: PHs a -> b) (x :: PHs a) (ef :: PTypeF) = PForallF (ef /$ PForallF' f x)
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
-newtype PForallN (f :: PHs a -> b) ef = PForallN (ef /$ PForall (PForallNF f))
+newtype PForall (f :: PHs a -> b) ef = PForall (ef /$ PForall1 (PForallF f))
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
 
@@ -113,7 +111,7 @@ type PConstructableN :: forall fk. PDSLKind -> (PType -> fk) -> Constraint
 type PConstructableN e (f :: PType -> fk) = forall (xs :: NP PHs' (ArgTypesFor (PType -> fk))). IsPTypeAll e xs => ApplyTypeArgsC (IsPType e) f xs
 -}
 
-class PForallNClass (f :: PHs a -> fk) e where
+class PForallClass (f :: PHs a -> fk) e where
   pforall' ::
     -- NB!!! If you change the type,
     -- change the type of `pforall` too.
@@ -123,66 +121,30 @@ class PForallNClass (f :: PHs a -> fk) e where
       IsPTypeAll e xs =>
       TermApplyTypeArgs e f xs
     ) ->
-    Term e (PForallN f)
+    Term e (PForall f)
 
-instance (PConstructable1 e (PForallNF f)) => PForallNClass (f :: PType -> PType) e where
-  pforall' x = impl2 x where
-    helper ::
-      forall (x :: PType).
-      (IsPType e x) =>
-      Term e (f x) ->
-      Term e (PForallNF f x)
-    helper x = pcon $ PForallNF x
-    impl ::
-      forall x.
-      (IsPType e x) =>
-      (forall xs.
-        IsPTypeAll e xs =>
-        TermApplyTypeArgs e f ('PHs' x ':* xs)
-      ) ->
-      Term e (PForallNF f x)
-    impl x = case red x of
-      TermApplyTypeArgs redx -> helper redx
-    helper2 ::
-      (forall (x :: PType). IsPType e x => Term e (PForallNF f x)) ->
-      Term e (PForallN f)
-    helper2 x = pcon $ PForallN $ pcon $ PForall x
-    impl2 ::
-      (forall x xs.
-        (IsPType e x, IsPTypeAll e xs) =>
-        TermApplyTypeArgs e f ('PHs' x ':* xs)
-      ) ->
-      Term e (PForallN f)
-    impl2 x = helper2 (impl x)
+instance (IsPType e a, PConstructable1 e (PForallF f)) => PForallClass (f :: PHs a -> PTypeF -> Type) e where
+  pforall' x =
+    case pHs_inverse @a of
+      Refl -> pcon $ PForall $ pcon $ PForall1 (case red x of TermApplyTypeArgs redx -> pcon $ PForallF redx)
+
+class
+  ( PForallClass @b' @fk (Coerce f x) e
+  , IsPType e (PForall (Coerce f x :: PHs b' -> fk))
+  ) => CC (f :: PHs a -> b -> fk) b' e (x :: PHs a)
+instance
+  ( PForallClass @b' @fk (Coerce f x) e
+  , IsPType e (PForall (Coerce f x :: PHs b' -> fk))
+  ) => CC (f :: PHs a -> b -> fk) b' e (x :: PHs a)
 
 instance
-  ( forall (x :: PType). IsPType e x => IsPType e (PForallN (f x))
-  , forall x. IsPType e x => PForallNClass (f x) e
-  ) => PForallNClass (f :: PType -> PType -> fk) e where
-  pforall' ::
-    (PPolymorphic e, PSOP e) =>
-    (forall xs.
-      IsPTypeAll e xs =>
-      TermApplyTypeArgs e f xs
-    ) ->
-    Term e (PForallN f)
-  pforall' x = impl2 x where
-    impl ::
-      forall x.
-      (IsPType e x) =>
-      (forall xs.
-        IsPTypeAll e xs =>
-        TermApplyTypeArgs e f ('PHs' x ':* xs)
-      ) ->
-      Term e (PForallNF f x)
-    impl x = pcon $ PForallNF $ pforall' $ red x
-    impl2 ::
-      (forall x xs.
-        (IsPType e x, IsPTypeAll e xs) =>
-        TermApplyTypeArgs e f ('PHs' x ':* xs)
-      ) ->
-      Term e (PForallN f)
-    impl2 x = pcon $ PForallN $ pcon $ PForall (impl x)
+  ( forall (x :: PHs a). IsPType e x => CC f b' e x
+  , b ~ PHs b'
+  , IsPType e a
+  ) => PForallClass (f :: PHs a -> b -> c -> fk) e where
+  pforall' x =
+    case (pHs_inverse @a, pHs_inverse @b') of
+      (Refl, Refl) -> pcon $ PForall $ pcon $ PForall1 $ pcon $ PForallF $ pforall' $ red x
 
 type ConstructNPFromVars :: forall (bs :: [PType]). forall (as :: [PType]) -> NP PHs' bs -> NP PHs' as
 type family ConstructNPFromVars as xs where
@@ -196,33 +158,33 @@ type family NthType (fk :: Type) (n :: Nat) :: PType where
 
 newtype PForall'_function f e = PForall'_function
   (
-    (PForallNClass f e, PPolymorphic e, PSOP e) =>
+    (PForallClass f e, PPolymorphic e, PSOP e) =>
     (forall xs.
       IsPTypeAll e xs =>
       TermApplyTypeArgs e f xs
     ) ->
-    Term e (PForallN f)
+    Term e (PForall f)
   )
 
 newtype PForall_function (f :: PType -> fk) e = PForall_function
   (
-    (PForallNClass f e, PPolymorphic e, PSOP e) =>
+    (PForallClass f e, PPolymorphic e, PSOP e) =>
     (forall (x0 :: PType) (x1 :: PHs (NthType fk 0)) (x2 :: PHs (NthType fk 1)). -- FIXME: fix types of x1 x2
       IsPTypeAll e (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)) =>
       Term e (ApplyTypeArgs f (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)))
     ) ->
-    Term e (PForallN f)
+    Term e (PForall f)
   )
 
 
 pforall ::
   forall fk (f :: PType -> fk) (e :: PDSLKind).
-  (PForallNClass f e, PPolymorphic e, PSOP e) =>
+  (PForallClass f e, PPolymorphic e, PSOP e) =>
   (forall (x0 :: PType) (x1 :: PHs (NthType fk 0)) (x2 :: PHs (NthType fk 1)). -- FIXME: fix types of x1 x2
     IsPTypeAll e (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)) =>
     Term e (ApplyTypeArgs f (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)))
   ) ->
-  Term e (PForallN f)
+  Term e (PForall f)
 -- FIXME: Fix GHC.
 -- Given a metavariable a :: k, if there is only one constructor C possible for k,
 -- then GHC should lazily expand a to C a', where a' is a new metavariable.

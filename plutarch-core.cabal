@@ -71,7 +71,6 @@ library
   exposed-modules:
     Plutarch.Backends.Nix
     Plutarch.Core
-    Plutarch.Experimental
     Plutarch.Frontends.Data
     Plutarch.Frontends.LC
     Plutarch.Frontends.Nix

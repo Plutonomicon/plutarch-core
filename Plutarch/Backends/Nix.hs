@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE NondecreasingIndentation #-}
 
 module Plutarch.Backends.Nix (compileAp, compileTy) where
 
@@ -13,6 +14,7 @@ import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text (Text, pack)
 import Data.Text.Builder.Linear qualified as TB
+import Data.Type.Equality (pattern Refl)
 import Generics.SOP (
   ConstructorName,
   FieldName,
@@ -63,7 +65,7 @@ import Plutarch.Frontends.Data (
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
-import Plutarch.PType (PCode, Pf' (Pf'), convertPfC)
+import Plutarch.PType (pHs_inverse, PCode, Pf' (Pf'))
 import Plutarch.Prelude
 import Plutarch.Repr.Newtype (PNewtyped (PNewtyped))
 import Plutarch.Repr.SOP (PSOPed (PSOPed))
@@ -75,6 +77,7 @@ data NixType
   = NFunTy NixType NixType
   | NTyLam NixType Text NixType
   | NForallTy NixType
+  | NSomeTy NixType
   | NTyVar Text
   | NSetTy [(Text, NixType)]
   | NAnyTy
@@ -116,6 +119,9 @@ serialiseTy' (NTyLam t v x) = do
 serialiseTy' (NForallTy x) = do
   x' <- serialiseTy' x
   pure $ "(forall " <> x' <> ")"
+serialiseTy' (NSomeTy x) = do
+  x' <- serialiseTy' x
+  pure $ "(some " <> x' <> ")"
 serialiseTy' NAnyTy = pure $ "Any"
 serialiseTy' NVoidTy = pure $ "Void"
 serialiseTy' (NUnionTy a b) = do
@@ -307,11 +313,20 @@ instance (IsPType (Impl m) a) => IsPTypePrim (Impl m) (PNewtyped a) where
 instance
   forall m a (f :: PHs a -> PType).
   IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
-  IsPTypePrim (Impl m) (PForall f)
+  IsPTypePrim (Impl m) (PForall1 f)
   where
   isPTypePrim = IsPTypePrimData do
     body <- getTy (Proxy @m) (Proxy @( 'PLam f :: PHs (a #-> PPType)))
     pure $ NForallTy body
+
+instance
+  forall m a (f :: PHs a -> PType).
+  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  IsPTypePrim (Impl m) (PSome1 f)
+  where
+  isPTypePrim = IsPTypePrimData do
+    body <- getTy (Proxy @m) (Proxy @( 'PLam f :: PHs (a #-> PPType)))
+    pure $ NSomeTy body
 
 instance
   ( forall (x :: PHs a). IsPType (Impl m) x => IsPType (Impl m) (f x)
@@ -452,17 +467,49 @@ type family TyVar :: PHs a where
 instance
   forall m a (f :: PHs a -> PType).
   IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
-  PConstructablePrim (Impl m) (PForall f)
+  PConstructablePrim (Impl m) (PForall1 f)
   where
   -- TODO: Add explicit big lambda at term-level? Otherwise you get weird comments
   pconImpl t' = Impl do
     lvl <- varify <$> getLvl
     let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
-    withIsPType d $ convertPfC (Proxy @(IsPType (Impl m))) (Proxy @(TyVar @a)) do
-      let PForall (t :: Term (Impl m) (f (TyVar @a))) = t'
-      succLvl $ runTerm t
-  pmatchImpl t f = f (PForall (Term $ changeTy t))
+    withIsPType d $ case pHs_inverse @a of Refl -> do -- Why is GHC so ungodly stupid? Why the fuck do I need this much indentation?
+                                                      let PForall1 (t :: Term (Impl m) (f (TyVar @a))) = t'
+                                                      succLvl $ runTerm t
+  pmatchImpl t f = f (PForall1 (Term $ changeTy t))
   pcaseImpl = error "FIXME"
+
+instance
+  forall m a (f :: PHs a -> PType).
+  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  PConstructablePrim (Impl m) (PSome1 f)
+  where
+  -- TODO: Add explicit big lambda at term-level? Otherwise you get weird comments
+  pconImpl t' = Impl case t' of
+      PSome1 (Proxy @x) t -> runTerm t
+  pmatchImpl t f = case pHs_inverse @a of
+    Refl -> Term $ Impl do
+      lvl <- varify <$> getLvl
+      let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
+      withIsPType d $ runTerm $ f (PSome1 (Proxy @(TyVar @a)) (Term $ changeTy t))
+  pcaseImpl = error "FIXME"
+
+{-
+instance
+  forall m a (f :: PHs a -> PType).
+  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  PConstructablePrim (Impl m) (PSome1 f)
+  where
+  -- TODO: Add explicit big lambda at term-level? Otherwise you get weird comments
+  pconImpl t' = Impl do
+    lvl <- varify <$> getLvl
+    let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
+    withIsPType d $ case pHs_inverse @a of Refl -> do -- Why is GHC so ungodly stupid? Why the fuck do I need this much indentation?
+                                                      let PForall1 (t :: Term (Impl m) (f (TyVar @a))) = t'
+                                                      succLvl $ runTerm t
+  pmatchImpl t f = f (PForall1 (Term $ changeTy t))
+  pcaseImpl = error "FIXME"
+-}
 
 instance PHasNewtypes (Impl m)
 instance Applicative m => PSOP (Impl m)

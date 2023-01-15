@@ -4,14 +4,13 @@ module Examples.Nix (example) where
 
 import Data.Functor.Identity (runIdentity)
 import Data.Proxy (Proxy (Proxy))
-import Data.Text (Text, unpack)
+import Data.Text (Text)
 import Plutarch.Backends.Nix (compileAp)
 import Plutarch.Frontends.Data (PAny)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Prelude
-import Plutarch.PType (pHs_inverse, PHsEf)
-import Plutarch.Repr.Primitive (PReprPrimitive)
-import Plutarch.Helpers (pforall, PForallNClass, PForallN(PForallN), PForallNF(PForallNF))
+import Plutarch.PType (pHs_inverse)
+import Plutarch.Helpers (pforall, PForall, PForallF(PForallF))
 import Data.Type.Equality ((:~:)(Refl))
 
 data PMyTriple a b c ef = PMyTriple
@@ -35,14 +34,14 @@ data PProxy a b ef = PProxy
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
 
-pproxy :: forall e k. (PNix e, IsPType e k) => Term e (PForallN (PProxy @k))
-pproxy = case pHs_inverse @k of Refl -> pcon $ PForallN $ pcon $ PForall $ pcon $ PForallNF $ pcon $ PForallN $ pcon $ PForall $ pcon $ PForallNF $ pcon $ PProxy
+pproxy :: forall e k. (PNix e, IsPType e k) => Term e (PForall (PProxy @k))
+pproxy = case pHs_inverse @k of Refl -> pforall $ pcon PProxy
 
 newtype PConstF a b ef = PConstF (ef /$ a #-> b #-> a)
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
 
-pconst :: (PNix e) => Term e (PForallN PConstF)
+pconst :: (PNix e) => Term e (PForall PConstF)
 pconst = pforall $ pcon $ PConstF $ plam \x _y -> x
 
 pmutate :: PNix e => Term e (PMyTriple PAny PAny PAny #-> PMyTriple PAny PAny PAny)
@@ -64,7 +63,7 @@ newtype PVoidF a ef = PVoidF (ef /$ PMyVoid #-> a)
   deriving anyclass (PHasRepr)
 
 pvoid :: (PNix e) => Term e (PForall PVoidF)
-pvoid = pcon $ PForall $ pcon $ PVoidF $ plam \x -> pmatch x \case {}
+pvoid = pforall $ pcon $ PVoidF $ plam \x -> pmatch x \case {}
 
 newtype PMyUnit ef = PMyUnit (ef /$ PUnit)
   deriving stock (Generic)
@@ -75,16 +74,20 @@ newtype PTopF a ef = PTopF (ef /$ a #-> PMyUnit)
   deriving anyclass (PHasRepr)
 
 ptop :: (PNix e) => Term e (PForall PTopF)
-ptop = pcon $ PForall $ pcon $ PTopF $ plam $ const $$ PMyUnit $ pcon PUnit
+ptop = pforall $ pcon $ PTopF $ plam $ const $$ PMyUnit $$ PUnit
+
+psometop :: (PNix e) => Term e (PSome1 PTopF)
+psometop = pcon $ PSome1 Proxy $ pcon $ PTopF $ plam \(_ :: T PUnit) -> pcon $ PMyUnit $$ PUnit
 
 data PLib ef = PLib
   -- FIXME: replace with foralls
   { pmutate :: ef /$ PMyTriple PAny PAny PAny #-> PMyTriple PAny PAny PAny
-  , pconst :: ef /$ PForallN PConstF
+  , pconst :: ef /$ PForall PConstF
   , pswap :: ef /$ PMyEither PAny PAny #-> PMyEither PAny PAny
   , pvoid :: ef /$ PForall PVoidF
   , ptop :: ef /$ PForall PTopF
-  , pproxy :: ef /$ PForallN (PProxy @PUnit)
+  , pproxy :: ef /$ PForall (PProxy @PUnit)
+  , psometop :: ef /$ PSome1 PTopF
   }
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
@@ -99,10 +102,8 @@ plib =
       , pvoid
       , ptop
       , pproxy
+      , psometop
       }
 
 example :: Text
 example = runIdentity $ compileAp (Proxy @PLib) plib
-
-p :: IO ()
-p = putStrLn $ unpack $ example
