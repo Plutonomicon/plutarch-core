@@ -18,7 +18,7 @@
       formattersFor = system: with (pkgsFor system); [
         nixpkgs-fmt
         haskellPackages.cabal-fmt
-        (haskell.lib.compose.dontCheck (hsPkgsFor system).fourmolu_0_8_0_0)
+        (haskell.lib.compose.dontCheck haskell.packages.ghc944.fourmolu_0_10_1_0)
       ];
       regen = system: (pkgsFor system).writeShellApplication {
         name = "regen";

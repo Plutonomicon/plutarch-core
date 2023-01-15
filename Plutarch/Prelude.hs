@@ -31,6 +31,7 @@ module Plutarch.Prelude (
   PDSL,
 ) where
 
+import Data.Kind (Constraint, Type)
 import GHC.Generics (Generic)
 import Plutarch.Core
 import Plutarch.Frontends.Data
@@ -38,4 +39,3 @@ import Plutarch.Helpers
 import Plutarch.PType
 import Plutarch.Repr
 import Plutarch.Repr.Newtype
-import Data.Kind (Type, Constraint)

@@ -5,13 +5,13 @@ module Examples.Nix (example) where
 import Data.Functor.Identity (runIdentity)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
+import Data.Type.Equality ((:~:) (Refl))
 import Plutarch.Backends.Nix (compileAp)
 import Plutarch.Frontends.Data (PAny)
 import Plutarch.Frontends.Nix (PNix)
-import Plutarch.Prelude
+import Plutarch.Helpers (PForall, PForallF (PForallF), pforall)
 import Plutarch.PType (pHs_inverse)
-import Plutarch.Helpers (pforall, PForall, PForallF(PForallF))
-import Data.Type.Equality ((:~:)(Refl))
+import Plutarch.Prelude
 
 data PMyTriple a b c ef = PMyTriple
   { x :: ef /$ a
@@ -43,6 +43,10 @@ newtype PConstF a b ef = PConstF (ef /$ a #-> b #-> a)
 
 pconst :: (PNix e) => Term e (PForall PConstF)
 pconst = pforall $ pcon $ PConstF $ plam \x _y -> x
+
+-- TODO: implement
+-- psomeconst :: (PNix e) => Term e (PSome PConstF)
+-- psomeconst = pforall $ pcon $ PConstF $ plam \(x :: T PUnit) (_y :: T PUnit) -> x
 
 pmutate :: PNix e => Term e (PMyTriple PAny PAny PAny #-> PMyTriple PAny PAny PAny)
 pmutate = plam \t ->

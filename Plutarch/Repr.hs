@@ -17,8 +17,8 @@ import {-# SOURCE #-} Plutarch.Repr.SOP (PReprSOP)
 newtype PReprKind = PReprKind Type
 
 type family F (a :: DatatypeInfo) :: PReprKind where
-  F ( 'ADT _ _ _ _) = PReprSOP
-  F ( 'Newtype _ _ _) = PReprNewtype
+  F ('ADT _ _ _ _) = PReprSOP
+  F ('Newtype _ _ _) = PReprNewtype
 
 class PHasRepr (a :: PType) where
   type PReprSort a :: PReprKind

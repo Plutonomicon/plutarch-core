@@ -27,19 +27,19 @@ module Plutarch.Helpers (
 
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
+import Data.Type.Equality (pattern Refl)
 import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
-import Plutarch.Core (PDSL, IsPType, PConcrete, PConstructable, PDSLKind, PEffect, Term, pcase, pcon, pmatch)
-import Plutarch.Frontends.Data (PForall1 (PForall1), PAny (PAny), PLet (PLet), type (#->) (PLam), PSOP)
-import Plutarch.Frontends.LC (PLC, PPolymorphic)
-import Plutarch.Repr (PHasRepr)
-import Plutarch.PType (pHs_inverse, PType, PPType, PHs' (PHs'), type (/$), UnPHs, PHs, PTypeF)
-import Plutarch.TermCont (TermCont, tcont)
-import Plutarch.Internal.CoerceTo (Coerce, CoerceTo)
-import Generics.SOP (NP ((:*), Nil))
-import Unsafe.Coerce (unsafeCoerce)
 import GHC.TypeLits (Nat, type (-))
-import Data.Type.Equality (pattern Refl)
+import Generics.SOP (NP (Nil, (:*)))
+import Plutarch.Core (IsPType, PConcrete, PConstructable, PDSL, PDSLKind, PEffect, Term, pcase, pcon, pmatch)
+import Plutarch.Frontends.Data (PAny (PAny), PForall1 (PForall1), PLet (PLet), PSOP, type (#->) (PLam))
+import Plutarch.Frontends.LC (PLC, PPolymorphic)
+import Plutarch.Internal.CoerceTo (Coerce, CoerceTo)
+import Plutarch.PType (PHs, PHs' (PHs'), PPType, PType, PTypeF, UnPHs, pHs_inverse, type (/$))
+import Plutarch.Repr (PHasRepr)
+import Plutarch.TermCont (TermCont, tcont)
+import Unsafe.Coerce (unsafeCoerce)
 
 type IsPType1 :: forall a. PDSLKind -> (PHs a -> PType) -> Constraint
 type IsPType1 e f = forall x. IsPType e x => IsPType e (f x)
@@ -70,7 +70,7 @@ newtype PForall (f :: PHs a -> b) ef = PForall (ef /$ PForall1 (PForallF f))
 type ArgTypesFor :: Type -> [PType]
 type family ArgTypesFor fk where
   ArgTypesFor PType = '[]
-  ArgTypesFor (a -> fk')  = UnPHs a ': ArgTypesFor fk'
+  ArgTypesFor (a -> fk') = UnPHs a ': ArgTypesFor fk'
 
 type ApplyTypeArgs' :: forall fk xsk. fk -> NP PHs' xsk -> PType
 type family ApplyTypeArgs' f xs where
@@ -117,7 +117,7 @@ class PForallClass (f :: PHs a -> fk) e where
     -- change the type of `pforall` too.
     -- `unsafeCoerce` is used.
     (PPolymorphic e, PSOP e) =>
-    (forall xs.
+    ( forall xs.
       IsPTypeAll e xs =>
       TermApplyTypeArgs e f xs
     ) ->
@@ -131,17 +131,21 @@ instance (IsPType e a, PConstructable1 e (PForallF f)) => PForallClass (f :: PHs
 class
   ( PForallClass @b' @fk (Coerce f x) e
   , IsPType e (PForall (Coerce f x :: PHs b' -> fk))
-  ) => CC (f :: PHs a -> b -> fk) b' e (x :: PHs a)
+  ) =>
+  CC (f :: PHs a -> b -> fk) b' e (x :: PHs a)
 instance
   ( PForallClass @b' @fk (Coerce f x) e
   , IsPType e (PForall (Coerce f x :: PHs b' -> fk))
-  ) => CC (f :: PHs a -> b -> fk) b' e (x :: PHs a)
+  ) =>
+  CC (f :: PHs a -> b -> fk) b' e (x :: PHs a)
 
 instance
   ( forall (x :: PHs a). IsPType e x => CC f b' e x
   , b ~ PHs b'
   , IsPType e a
-  ) => PForallClass (f :: PHs a -> b -> c -> fk) e where
+  ) =>
+  PForallClass (f :: PHs a -> b -> c -> fk) e
+  where
   pforall' x =
     case (pHs_inverse @a, pHs_inverse @b') of
       (Refl, Refl) -> pcon $ PForall $ pcon $ PForall1 $ pcon $ PForallF $ pforall' $ red x
@@ -156,36 +160,36 @@ type family NthType (fk :: Type) (n :: Nat) :: PType where
   NthType (_ -> b) n = NthType b (n - 1)
   NthType _ _ = PPType
 
-newtype PForall'_function f e = PForall'_function
-  (
-    (PForallClass f e, PPolymorphic e, PSOP e) =>
-    (forall xs.
-      IsPTypeAll e xs =>
-      TermApplyTypeArgs e f xs
-    ) ->
-    Term e (PForall f)
-  )
+newtype PForall'_function f e
+  = PForall'_function
+      ( (PForallClass f e, PPolymorphic e, PSOP e) =>
+        ( forall xs.
+          IsPTypeAll e xs =>
+          TermApplyTypeArgs e f xs
+        ) ->
+        Term e (PForall f)
+      )
 
-newtype PForall_function (f :: PType -> fk) e = PForall_function
-  (
-    (PForallClass f e, PPolymorphic e, PSOP e) =>
-    (forall (x0 :: PType) (x1 :: PHs (NthType fk 0)) (x2 :: PHs (NthType fk 1)). -- FIXME: fix types of x1 x2
-      IsPTypeAll e (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)) =>
-      Term e (ApplyTypeArgs f (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)))
-    ) ->
-    Term e (PForall f)
-  )
-
+newtype PForall_function (f :: PType -> fk) e
+  = PForall_function
+      ( (PForallClass f e, PPolymorphic e, PSOP e) =>
+        ( forall (x0 :: PType) (x1 :: PHs (NthType fk 0)) (x2 :: PHs (NthType fk 1)) (x3 :: PHs (NthType fk 2)) (x4 :: PHs (NthType fk 3)) (x5 :: PHs (NthType fk 4)) (x6 :: PHs (NthType fk 5)) (x7 :: PHs (NthType fk 6)) (x8 :: PHs (NthType fk 7)) (x9 :: PHs (NthType fk 8)).
+          IsPTypeAll e (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'PHs' x3 ':* 'PHs' x4 ':* 'PHs' x5 ':* 'PHs' x6 ':* 'PHs' x7 ':* 'PHs' x8 ':* 'PHs' x9 ':* 'Nil)) =>
+          Term e (ApplyTypeArgs f (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'PHs' x3 ':* 'PHs' x4 ':* 'PHs' x5 ':* 'PHs' x6 ':* 'PHs' x7 ':* 'PHs' x8 ':* 'PHs' x9 ':* 'Nil)))
+        ) ->
+        Term e (PForall f)
+      )
 
 pforall ::
   forall fk (f :: PType -> fk) (e :: PDSLKind).
   (PForallClass f e, PPolymorphic e, PSOP e) =>
-  (forall (x0 :: PType) (x1 :: PHs (NthType fk 0)) (x2 :: PHs (NthType fk 1)). -- FIXME: fix types of x1 x2
-    IsPTypeAll e (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)) =>
-    Term e (ApplyTypeArgs f (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'Nil)))
+  ( forall -- TODO: fix asymptotics, below is O(n^2) for n variables
+           (x0 :: PType) (x1 :: PHs (NthType fk 0)) (x2 :: PHs (NthType fk 1)) (x3 :: PHs (NthType fk 2)) (x4 :: PHs (NthType fk 3)) (x5 :: PHs (NthType fk 4)) (x6 :: PHs (NthType fk 5)) (x7 :: PHs (NthType fk 6)) (x8 :: PHs (NthType fk 7)) (x9 :: PHs (NthType fk 8)).
+    IsPTypeAll e (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'PHs' x3 ':* 'PHs' x4 ':* 'PHs' x5 ':* 'PHs' x6 ':* 'PHs' x7 ':* 'PHs' x8 ':* 'PHs' x9 ':* 'Nil)) =>
+    Term e (ApplyTypeArgs f (ConstructNPFromVars (ArgTypesFor (PType -> fk)) ('PHs' x0 ':* 'PHs' x1 ':* 'PHs' x2 ':* 'PHs' x3 ':* 'PHs' x4 ':* 'PHs' x5 ':* 'PHs' x6 ':* 'PHs' x7 ':* 'PHs' x8 ':* 'PHs' x9 ':* 'Nil)))
   ) ->
   Term e (PForall f)
--- FIXME: Fix GHC.
+-- TODO: Fix GHC.
 -- Given a metavariable a :: k, if there is only one constructor C possible for k,
 -- then GHC should lazily expand a to C a', where a' is a new metavariable.
 -- This would mean you can prove `Any @() ~ '()`. While it seems bad, I'm unconvinced

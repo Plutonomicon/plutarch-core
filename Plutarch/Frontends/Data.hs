@@ -21,7 +21,7 @@ module Plutarch.Frontends.Data (
   IsPTypeSOPData (..),
   PConstructorInfo (..),
   PRecursion,
-  type (#~)(PRefl),
+  type (#~) (PRefl),
   PSingle,
 ) where
 

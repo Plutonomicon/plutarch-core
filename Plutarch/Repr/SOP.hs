@@ -7,9 +7,9 @@ import Data.Coerce (coerce)
 import Plutarch.Internal.CoerceTo (CoerceTo)
 import Plutarch.PType (
   PGeneric,
+  PHs,
   PHsEf,
   PType,
-  PHs,
  )
 import Plutarch.Repr (PIsRepr (PReprApplyVal0, PReprC, prfrom, prto), PIsRepr0 (PReprApply), PReprKind (PReprKind))
 

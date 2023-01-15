@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NondecreasingIndentation #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.Backends.Nix (compileAp, compileTy) where
 
@@ -65,7 +65,7 @@ import Plutarch.Frontends.Data (
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
-import Plutarch.PType (pHs_inverse, PCode, Pf' (Pf'))
+import Plutarch.PType (PCode, Pf' (Pf'), pHs_inverse)
 import Plutarch.Prelude
 import Plutarch.Repr.Newtype (PNewtyped (PNewtyped))
 import Plutarch.Repr.SOP (PSOPed (PSOPed))
@@ -312,34 +312,36 @@ instance (IsPType (Impl m) a) => IsPTypePrim (Impl m) (PNewtyped a) where
 
 instance
   forall m a (f :: PHs a -> PType).
-  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) =>
   IsPTypePrim (Impl m) (PForall1 f)
   where
   isPTypePrim = IsPTypePrimData do
-    body <- getTy (Proxy @m) (Proxy @( 'PLam f :: PHs (a #-> PPType)))
+    body <- getTy (Proxy @m) (Proxy @('PLam f :: PHs (a #-> PPType)))
     pure $ NForallTy body
 
 instance
   forall m a (f :: PHs a -> PType).
-  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) =>
   IsPTypePrim (Impl m) (PSome1 f)
   where
   isPTypePrim = IsPTypePrimData do
-    body <- getTy (Proxy @m) (Proxy @( 'PLam f :: PHs (a #-> PPType)))
+    body <- getTy (Proxy @m) (Proxy @('PLam f :: PHs (a #-> PPType)))
     pure $ NSomeTy body
 
 instance
   ( forall (x :: PHs a). IsPType (Impl m) x => IsPType (Impl m) (f x)
   , IsPType (Impl m) a
   ) =>
-  IsPTypePrim (Impl m) @(a #-> b) ( 'PLam f)
+  IsPTypePrim (Impl m) @(a #-> b) ('PLam f)
   where
   isPTypePrim = IsPTypePrimData do
     argty <- getTy (Proxy @m) (Proxy @a)
     lvl <- varify <$> getLvl
-    body <- succLvl $ withIsPType
-              (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl :: IsPTypeData (Impl m) (TyVar @a))
-              (getTy (Proxy @m) (Proxy @(f TyVar)))
+    body <-
+      succLvl $
+        withIsPType
+          (IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl :: IsPTypeData (Impl m) (TyVar @a))
+          (getTy (Proxy @m) (Proxy @(f TyVar)))
     pure $ NTyLam argty lvl body
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b, Applicative m) => PConstructablePrim (Impl m) (a #-> b) where
@@ -466,27 +468,29 @@ type family TyVar :: PHs a where
 
 instance
   forall m a (f :: PHs a -> PType).
-  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) =>
   PConstructablePrim (Impl m) (PForall1 f)
   where
   -- TODO: Add explicit big lambda at term-level? Otherwise you get weird comments
   pconImpl t' = Impl do
     lvl <- varify <$> getLvl
     let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
-    withIsPType d $ case pHs_inverse @a of Refl -> do -- Why is GHC so ungodly stupid? Why the fuck do I need this much indentation?
-                                                      let PForall1 (t :: Term (Impl m) (f (TyVar @a))) = t'
-                                                      succLvl $ runTerm t
+    withIsPType d $ case pHs_inverse @a of
+      Refl -> do
+        -- Why is GHC so ungodly stupid? Why the fuck do I need this much indentation?
+        let PForall1 (t :: Term (Impl m) (f (TyVar @a))) = t'
+        succLvl $ runTerm t
   pmatchImpl t f = f (PForall1 (Term $ changeTy t))
   pcaseImpl = error "FIXME"
 
 instance
   forall m a (f :: PHs a -> PType).
-  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
+  IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) =>
   PConstructablePrim (Impl m) (PSome1 f)
   where
   -- TODO: Add explicit big lambda at term-level? Otherwise you get weird comments
   pconImpl t' = Impl case t' of
-      PSome1 (Proxy @x) t -> runTerm t
+    PSome1 (Proxy @x) t -> runTerm t
   pmatchImpl t f = case pHs_inverse @a of
     Refl -> Term $ Impl do
       lvl <- varify <$> getLvl

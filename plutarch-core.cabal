@@ -32,6 +32,7 @@ common c
     NumDecimals
     OverloadedLabels
     OverloadedLists
+    OverloadedRecordDot
     OverloadedStrings
     PackageImports
     PatternSynonyms
@@ -48,7 +49,6 @@ common c
     UnliftedFFITypes
     UnliftedNewtypes
     ViewPatterns
-    OverloadedRecordDot
 
   ghc-options:
     -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures

@@ -27,6 +27,7 @@ module Plutarch.PType (
 
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
+import Data.Type.Equality ((:~:) (Refl))
 import GHC.Generics (Generic)
 import Generics.SOP (I, SListI2, SOP, Top)
 import Generics.SOP.GGP (GCode, GDatatypeInfo, GDatatypeInfoOf, GFrom, GTo)
@@ -34,7 +35,6 @@ import Plutarch.Internal.CoerceTo (CoerceTo)
 import Plutarch.Internal.Witness (witness)
 import Plutarch.Reduce (NoReduce, Reduce)
 import Unsafe.Coerce (unsafeCoerce)
-import Data.Type.Equality ((:~:)(Refl))
 
 type APC = forall (a :: PType). PHs a -> Constraint
 type AC = forall (a :: Type). a -> Constraint

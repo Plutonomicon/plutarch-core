@@ -43,12 +43,13 @@ import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprSort, prfrom, prto)
 newtype PDSLKind = PDSLKind (PType -> Type)
 
 type family UnPDSLKind (edsl :: PDSLKind) :: PType -> Type where
-  UnPDSLKind ( 'PDSLKind edsl) = edsl
+  UnPDSLKind ('PDSLKind edsl) = edsl
 
 type NoTypeInfo :: forall k. PHs k -> Constraint
 class NoTypeInfo a
 instance NoTypeInfo a
 
+-- FIXME: support untyped languages, i.e., forall x. IsPType edsl x
 class Monad (PEffect edsl) => PDSL (edsl :: PDSLKind) where
   data PEffect edsl :: Type -> Type
   data IsPTypePrimData edsl :: forall (a :: PType). PHs a -> Type
@@ -88,7 +89,8 @@ isPTypeQuantified ::
   (forall x. IsPType edsl x => IsPType edsl (f x)) =>
   Proxy edsl ->
   Proxy f ->
-  IsPTypeData edsl y -> IsPTypeData edsl (f y)
+  IsPTypeData edsl y ->
+  IsPTypeData edsl (f y)
 isPTypeQuantified _ _ y = withIsPType y $ isPType @edsl @_ @(f y)
 
 type PConcreteEf :: PDSLKind -> PTypeF
