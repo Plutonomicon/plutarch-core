@@ -1,11 +1,11 @@
-cabal-version:      3.0
+cabal-version:      3.4
 name:               plutarch-core
 version:            0.1.0
 author:             Las Safin <me@las.rs>
 license:            MIT
 extra-source-files: README.md
 
-library
+common c
   default-language:   GHC2021
   default-extensions:
     NoFlexibleInstances
@@ -32,6 +32,7 @@ library
     NumDecimals
     OverloadedLabels
     OverloadedLists
+    OverloadedRecordDot
     OverloadedStrings
     PackageImports
     PatternSynonyms
@@ -48,7 +49,6 @@ library
     UnliftedFFITypes
     UnliftedNewtypes
     ViewPatterns
-    OverloadedRecordDot
 
   ghc-options:
     -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures
@@ -57,24 +57,41 @@ library
     -Wno-prepositive-qualified-module -Wno-missing-import-lists
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
     -fprint-explicit-kinds -fprint-equality-relations
-    -fprint-explicit-foralls
+    -fprint-explicit-foralls -fno-show-valid-hole-fits
 
+  build-depends:
+    , base                 >=4.15
+    , generics-sop
+    , text                 >=2
+    , text-builder-linear  >=0.1
+    , transformers
+
+library
+  import:          c
   exposed-modules:
+    Plutarch.Backends.Nix
     Plutarch.Core
-    Plutarch.Experimental
     Plutarch.Frontends.Data
     Plutarch.Frontends.LC
+    Plutarch.Frontends.Nix
     Plutarch.Frontends.Partial
     Plutarch.Frontends.Untyped
-    Plutarch.Generics
     Plutarch.Helpers
+    Plutarch.Internal.CoerceTo
+    Plutarch.Internal.Unimplemented
     Plutarch.Internal.WithDictHack
     Plutarch.Internal.Witness
     Plutarch.Prelude
     Plutarch.PType
     Plutarch.Reduce
+    Plutarch.Repr
+    Plutarch.Repr.Newtype
+    Plutarch.Repr.Primitive
+    Plutarch.Repr.SOP
     Plutarch.TermCont
 
-  build-depends:
-    , base
-    , generics-sop
+executable examples
+  import:        c
+  main-is:       Examples/Main.hs
+  build-depends: directory
+  ghc-options:   -Wno-missing-home-modules -Wwarn

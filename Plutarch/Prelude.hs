@@ -5,9 +5,9 @@ module Plutarch.Prelude (
   PHasRepr (..),
   PConstructable,
   IsPType,
-  PReprSOP,
-  PForall (..),
-  PSome (..),
+  PReprNewtype,
+  PForall1 (..),
+  PSome1 (..),
   PUnit (..),
   type (#->) (..),
   type (#=>) (..),
@@ -19,21 +19,23 @@ module Plutarch.Prelude (
   (#),
   PHs,
   PType,
+  PTypeF,
+  Constraint,
+  Type,
   PPType,
   IsPType1,
   IsPType2,
   IsPType3,
+  T,
+  pany,
+  PDSL,
 ) where
 
+import Data.Kind (Constraint, Type)
 import GHC.Generics (Generic)
 import Plutarch.Core
 import Plutarch.Frontends.Data
 import Plutarch.Helpers
 import Plutarch.PType
-
-($$) :: PConstructable edsl a => (Term edsl a -> b) -> PConcrete edsl a -> b
-f $$ x = f (pcon x)
-infixr 0 $$
-
-type f $ x = f x
-infixr 0 $
+import Plutarch.Repr
+import Plutarch.Repr.Newtype

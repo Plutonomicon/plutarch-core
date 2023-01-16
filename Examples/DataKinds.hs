@@ -7,7 +7,7 @@ import Plutarch.Pxperimental (PEq)
 data Nat = N | S Nat
 data SNat :: Nat -> Type where
   SN :: SNat 'N
-  SS :: SNat n -> SNat ( 'S n)
+  SS :: SNat n -> SNat ('S n)
 
 data PBool ef = PFalse | PTrue
   deriving stock (Generic)
