@@ -70,8 +70,10 @@ library
   import:          c
   exposed-modules:
     Plutarch.Backends.Nix
+    Plutarch.Backends.C
     Plutarch.Core
     Plutarch.Frontends.Data
+    Plutarch.Frontends.Harvard
     Plutarch.Frontends.LC
     Plutarch.Frontends.Nix
     Plutarch.Frontends.Partial

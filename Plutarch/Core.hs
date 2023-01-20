@@ -23,8 +23,13 @@ module Plutarch.Core (
   CompileAp,
   IsPTypePrim (..),
   withIsPType,
+  PPure (..),
+  PSubDSL (..),
+  TermIO,
+  PAll,
 ) where
 
+import Generics.SOP (All)
 import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
@@ -42,114 +47,129 @@ import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprSort, prfrom, prto)
 
 newtype PDSLKind = PDSLKind (PType -> Type)
 
-type family UnPDSLKind (edsl :: PDSLKind) :: PType -> Type where
-  UnPDSLKind ('PDSLKind edsl) = edsl
+type family UnPDSLKind (e :: PDSLKind) :: PType -> Type where
+  UnPDSLKind ('PDSLKind e) = e
 
 type NoTypeInfo :: forall k. PHs k -> Constraint
 class NoTypeInfo a
 instance NoTypeInfo a
 
--- FIXME: support untyped languages, i.e., forall x. IsPType edsl x
-class Monad (PEffect edsl) => PDSL (edsl :: PDSLKind) where
-  data PEffect edsl :: Type -> Type
-  data IsPTypePrimData edsl :: forall (a :: PType). PHs a -> Type
+-- FIXME: support untyped languages, i.e., forall x. IsPType e x
+class Monad (PIO e) => PDSL (e :: PDSLKind) where
+  -- FIXME: possibly add boolean parameter to indicate purity
+  data PIO e :: Type -> Type
+  data IsPTypePrimData e :: forall (a :: PType). PHs a -> Type
+  punsafePerformIO :: IsPType e a => TermIO e a -> Term e a
+
+type TermIO e a = PIO e (Term e a)
+
+class PPure e where
+  pperformIO :: IsPType e a => TermIO e a -> Term e a
+
+class PSubDSL e cs where
+  psubDSL :: (forall e'. PAll e' cs => (forall b. Term e b -> Term e' b) -> Term e' a) -> Term e a
 
 type IsPTypePrim :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
-class IsPTypePrim (edsl :: PDSLKind) (x :: PHs a) where
-  isPTypePrim :: IsPTypePrimData edsl x
+class IsPTypePrim (e :: PDSLKind) (x :: PHs a) where
+  isPTypePrim :: IsPTypePrimData e x
 
 type role Term nominal nominal
-newtype Term (edsl :: PDSLKind) (a :: PType) where
-  Term :: UnPDSLKind edsl (PRepr a) -> Term edsl a
+newtype Term (e :: PDSLKind) (a :: PType) where
+  Term :: UnPDSLKind e (PRepr a) -> Term e a
 
-unTerm :: Term edsl a -> UnPDSLKind edsl (PRepr a)
+unTerm :: Term e a -> UnPDSLKind e (PRepr a)
 unTerm (Term t) = t
 
-type ClosedTerm (c :: PDSLKind -> Constraint) (a :: PType) = forall edsl. c edsl => Term edsl a
+class c e => PImplements e c
+instance c e => PImplements e c
+
+type PAll e cs = All (PImplements e) cs
+
+type ClosedTerm (cs :: [PDSLKind -> Constraint]) (a :: PType) = forall e. PAll e cs => Term e a
 
 type IsPTypeData :: PDSLKind -> forall (a :: PType). PHs a -> Type
-newtype IsPTypeData edsl x = IsPTypeData (IsPTypePrimData edsl (PRepr x))
+newtype IsPTypeData e x = IsPTypeData (IsPTypePrimData e (PRepr x))
 
 type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
 -- FIXME: remove GiveRepr superclass, should be unnecessary, maybe GHC bug?
-class IsPType edsl (x :: PHs a) where
-  isPType :: IsPTypeData edsl x
+class IsPType e (x :: PHs a) where
+  isPType :: IsPTypeData e x
 instance
-  ( IsPTypePrim edsl (PRepr x)
+  ( IsPTypePrim e (PRepr x)
   ) =>
-  IsPType edsl (x :: PHs a)
+  IsPType e (x :: PHs a)
   where
   isPType = IsPTypeData isPTypePrim
 
-withIsPType :: forall edsl x a. IsPTypeData edsl x -> (IsPType edsl x => a) -> a
-withIsPType x = unsafeWithDict (Proxy @(IsPType edsl x)) x
+withIsPType :: forall e x a. IsPTypeData e x -> (IsPType e x => a) -> a
+withIsPType x = unsafeWithDict (Proxy @(IsPType e x)) x
 
 isPTypeQuantified ::
-  forall edsl f y.
-  (forall x. IsPType edsl x => IsPType edsl (f x)) =>
-  Proxy edsl ->
+  forall e f y.
+  (forall x. IsPType e x => IsPType e (f x)) =>
+  Proxy e ->
   Proxy f ->
-  IsPTypeData edsl y ->
-  IsPTypeData edsl (f y)
-isPTypeQuantified _ _ y = withIsPType y $ isPType @edsl @_ @(f y)
+  IsPTypeData e y ->
+  IsPTypeData e (f y)
+isPTypeQuantified _ _ y = withIsPType y $ isPType @e @_ @(f y)
 
 type PConcreteEf :: PDSLKind -> PTypeF
-type PConcreteEf edsl = MkPTypeF (IsPType edsl) (Compose NoReduce (Term edsl))
+type PConcreteEf e = MkPTypeF (IsPType e) (Compose NoReduce (Term e))
 
 type PConcrete :: PDSLKind -> PType -> Type
-type PConcrete edsl a = a (PConcreteEf edsl)
+type PConcrete e a = a (PConcreteEf e)
 
-class (PDSL edsl, IsPTypePrim edsl a) => PConstructablePrim edsl (a :: PType) where
-  pconImpl :: HasCallStack => PConcrete edsl a -> UnPDSLKind edsl a
-  pmatchImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> Term edsl b) -> Term edsl b
-  pcaseImpl :: forall b. (HasCallStack, IsPType edsl b) => UnPDSLKind edsl a -> (PConcrete edsl a -> PEffect edsl (Term edsl b)) -> PEffect edsl (Term edsl b)
+class (PDSL e, IsPTypePrim e a) => PConstructablePrim e (a :: PType) where
+  pconImpl :: HasCallStack => PConcrete e a -> UnPDSLKind e a
+  pmatchImpl :: forall b. (HasCallStack, IsPType e b) => UnPDSLKind e a -> (PConcrete e a -> Term e b) -> Term e b
+  pcaseImpl :: forall b. (HasCallStack, IsPType e b) => UnPDSLKind e a -> (PConcrete e a -> PIO e (Term e b)) -> PIO e (Term e b)
 
 -- | The crux of what an eDSL is.
-class IsPType edsl a => PConstructable edsl (a :: PType) where
-  pcon :: HasCallStack => PConcrete edsl a -> Term edsl a
+class IsPType e a => PConstructable e (a :: PType) where
+  pcon :: HasCallStack => PConcrete e a -> Term e a
   pmatch ::
     forall b.
-    (HasCallStack, IsPType edsl b) =>
-    Term edsl a ->
-    (PConcrete edsl a -> Term edsl b) ->
-    Term edsl b
+    (HasCallStack, IsPType e b) =>
+    Term e a ->
+    (PConcrete e a -> Term e b) ->
+    Term e b
   pcase ::
     forall b.
-    (HasCallStack, IsPType edsl b) =>
-    Term edsl a ->
-    (PConcrete edsl a -> PEffect edsl (Term edsl b)) ->
-    PEffect edsl (Term edsl b)
+    (HasCallStack, IsPType e b) =>
+    Term e a ->
+    (PConcrete e a -> PIO e (Term e b)) ->
+    PIO e (Term e b)
 
-instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, PConstructablePrim edsl (PRepr a)) => PConstructable edsl a where
+instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, PConstructablePrim e (PRepr a)) => PConstructable e a where
   pcon x = Term $ pconImpl (prfrom x)
   pmatch (Term t) f = pmatchImpl t \x -> f (prto x)
   pcase (Term t) f = pcaseImpl t \x -> f (prto x)
 
-class PDSL edsl => PAp (f :: Type -> Type) edsl where
-  papr :: HasCallStack => f a -> Term edsl b -> Term edsl b
-  papl :: HasCallStack => Term edsl a -> f b -> Term edsl a
+class PDSL e => PAp (f :: Type -> Type) e where
+  papr :: HasCallStack => f a -> Term e b -> Term e b
+  papl :: HasCallStack => Term e a -> f b -> Term e a
 
-class PAp m edsl => PEmbeds (m :: Type -> Type) edsl where
-  pembed :: HasCallStack => m (Term edsl a) -> Term edsl a
+class PAp m e => PEmbeds (m :: Type -> Type) e where
+  pembed :: HasCallStack => m (Term e a) -> Term e a
 
 type CompileTy variant output =
   forall a (x :: PHs a).
   Proxy x ->
-  (forall edsl. variant edsl => IsPType edsl x) =>
+  (forall e. variant e => IsPType e x) =>
   output
 
 type CompileAp variant output =
   forall a m.
   Proxy a ->
-  (HasCallStack, Applicative m, (forall edsl. variant edsl => IsPType edsl a)) =>
-  (forall edsl. (variant edsl, PAp m edsl) => Term edsl a) ->
+  (HasCallStack, Applicative m, (forall e. variant e => IsPType e a)) =>
+  (forall e. (variant e, PAp m e) => Term e a) ->
   m output
 
 type Compile variant output =
   forall a m.
   Proxy a ->
-  (HasCallStack, Monad m, (forall edsl. variant edsl => IsPType edsl a)) =>
-  (forall edsl. (variant edsl, PEmbeds m edsl) => Term edsl a) ->
+  (HasCallStack, Monad m, (forall e. variant e => IsPType e a)) =>
+  (forall e. (variant e, PEmbeds m e) => Term e a) ->
   m output
 
 instance

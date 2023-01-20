@@ -14,7 +14,7 @@
           text-builder-linear = hLib.markUnbroken (prev.text-builder-linear.override { text = final.text_2_0_1; });
         };
       };
-      hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskell.packages.ghc924; # ghc942
+      hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskell.packages.ghc924; # ghc944
       formattersFor = system: with (pkgsFor system); [
         nixpkgs-fmt
         haskellPackages.cabal-fmt

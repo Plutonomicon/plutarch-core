@@ -32,7 +32,7 @@ import GHC.Generics (Generic)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
 import GHC.TypeLits (Nat, type (-))
 import Generics.SOP (NP (Nil, (:*)))
-import Plutarch.Core (IsPType, PConcrete, PConstructable, PDSL, PDSLKind, PEffect, Term, pcase, pcon, pmatch)
+import Plutarch.Core (IsPType, PConcrete, PConstructable, PDSL, PDSLKind, PIO, Term, pcase, pcon, pmatch)
 import Plutarch.Frontends.Data (PAny (PAny), PForall1 (PForall1), PLet (PLet), PSOP, type (#->) (PLam))
 import Plutarch.Frontends.LC (PLC, PPolymorphic)
 import Plutarch.Internal.CoerceTo (Coerce, CoerceTo)
@@ -199,7 +199,7 @@ PForall_function pforall = unsafeCoerce (PForall'_function pforall' :: PForall'_
 plet :: forall e a. (HasCallStack, PConstructable e (PLet a)) => Term e a -> TermCont e (Term e a)
 plet x = tcont \f -> pmatch (pcon $ PLet x) \(PLet y) -> f y
 
-pbind :: forall e a. (HasCallStack, PDSL e, IsPType e a, PConstructable e (PLet a)) => Term e a -> PEffect e (Term e a)
+pbind :: forall e a. (HasCallStack, PDSL e, IsPType e a, PConstructable e (PLet a)) => Term e a -> PIO e (Term e a)
 pbind x = pcase (pcon $ PLet x) \(PLet y) -> pure y
 
 (#) :: (HasCallStack, PLC e, IsPType e a, IsPType e b) => Term e (a #-> b) -> Term e a -> Term e b
