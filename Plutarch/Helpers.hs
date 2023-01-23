@@ -38,7 +38,7 @@ import Plutarch.Frontends.Data (PAny (PAny), PForall1 (PForall1), PLet (PLet), P
 import Plutarch.Frontends.LC (PLC, PPolymorphic)
 import Plutarch.Internal.CoerceTo (Coerce, CoerceTo)
 import Plutarch.PType (PHs, PHs' (PHs'), PPType, PType, PTypeF, UnPHs, pHs_inverse, type (/$))
-import Plutarch.Repr (PReprSort, PHasRepr)
+import Plutarch.Repr (PHasRepr, PReprSort)
 import Plutarch.Repr.Primitive (PReprPrimitive)
 import Plutarch.TermCont (TermCont, tcont)
 import Unsafe.Coerce (unsafeCoerce)

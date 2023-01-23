@@ -6,10 +6,12 @@ import Data.Functor.Identity (runIdentity)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
 import Data.Type.Equality ((:~:) (Refl))
---import Plutarch.Backends.C (compileAp)
+
+-- import Plutarch.Backends.C (compileAp)
+
+import Generics.SOP (NP (Nil, (:*)))
 import Plutarch.Frontends.C
 import Plutarch.Prelude
-import Generics.SOP (NP ((:*), Nil))
 
 pinc1 :: PC e => Term e (PProc '[PInt] PInt '[PC])
 pinc1 = pmkProc \(x :* Nil) -> pure $ x + 1

@@ -7,7 +7,7 @@ import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
 import Data.Type.Equality ((:~:) (Refl))
 import Plutarch.Backends.Nix (compileAp)
-import Plutarch.Frontends.Data (PFix (PFix), PAny)
+import Plutarch.Frontends.Data (PAny, PFix (PFix))
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Helpers (PForall, PForallF (PForallF), pforall)
 import Plutarch.PType (pHs_inverse)
@@ -114,11 +114,12 @@ pYPoly :: PNix e => Term e (PForall PYF)
 pYPoly = pforall $ pcon $ PYF pY
 
 pfix :: forall e a b. (PNix e, IsPType e a, IsPType e b) => Term e $ ((a #-> b) #-> a #-> b) #-> a #-> b
-pfix = plam \f -> fzz f # (pself # fzz f) where
-  expand :: Term e (a #-> b) -> Term e (a #-> b)
-  expand f = plam \x -> f # x
-  fzz :: Term e ((a #-> b) #-> a #-> b) -> Term e (PSelf (a #-> b) #-> a #-> b)
-  fzz f = plam \z -> f # (expand $ pselfApply # z)
+pfix = plam \f -> fzz f # (pself # fzz f)
+  where
+    expand :: Term e (a #-> b) -> Term e (a #-> b)
+    expand f = plam \x -> f # x
+    fzz :: Term e ((a #-> b) #-> a #-> b) -> Term e (PSelf (a #-> b) #-> a #-> b)
+    fzz f = plam \z -> f # (expand $ pselfApply # z)
 
 data PNatF a ef = PN | PS (ef /$ a)
   deriving stock (Generic)
@@ -128,14 +129,15 @@ newtype PNat ef = PNat (ef /$ PFix PNatF)
   deriving anyclass (PHasRepr)
 
 pplus :: forall e. PNix e => Term e $ PNat #-> PNat #-> PNat
-pplus = pfix # (plam \self x y -> f self x y) where
-  f :: Term e (PNat #-> PNat #-> PNat) -> Term e PNat -> Term e PNat -> Term e PNat
-  f self x y = pmatch x \case
-    PNat x' -> pmatch x' \case
-      PFix x'' -> pmatch x'' \case
-        PN -> y
-        PS x''' -> pmatch (self # (pcon $ PNat x''') # y) \case
-          PNat r -> pcon $ PNat $ pcon $ PFix $ pcon $ PS r
+pplus = pfix # (plam \self x y -> f self x y)
+  where
+    f :: Term e (PNat #-> PNat #-> PNat) -> Term e PNat -> Term e PNat -> Term e PNat
+    f self x y = pmatch x \case
+      PNat x' -> pmatch x' \case
+        PFix x'' -> pmatch x'' \case
+          PN -> y
+          PS x''' -> pmatch (self # (pcon $ PNat x''') # y) \case
+            PNat r -> pcon $ PNat $ pcon $ PFix $ pcon $ PS r
 
 data PLib ef = PLib
   { pmutate :: ef /$ PMyTriple PAny PAny PAny #-> PMyTriple PAny PAny PAny

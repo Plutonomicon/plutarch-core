@@ -43,7 +43,7 @@ import Plutarch.Core (
   PAp (papl, papr),
   PConcreteEf,
   PConstructablePrim (pcaseImpl, pconImpl, pmatchImpl),
-  PDSL (punsafePerformIO, IsPTypePrimData, PIO),
+  PDSL (IsPTypePrimData, PIO, punsafePerformIO),
   PDSLKind (PDSLKind),
   Term (Term),
   UnPDSLKind,
@@ -52,20 +52,20 @@ import Plutarch.Core (
   withIsPType,
  )
 import Plutarch.Frontends.Data (
-  PRecursion,
-  PFix (PFix),
   IsPTypeSOP (isPTypeSOP),
   IsPTypeSOPData (constructorInfo, constructorNames, from, to, typeInfo),
   PAny (PAny),
   PConstructorInfo (PConstructor, PInfix, PRecord),
   PEither (PLeft, PRight),
+  PFix (PFix),
   PHasNewtypes,
   PPair (PPair),
+  PRecursion,
   PSOP,
  )
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
-import Plutarch.Frontends.Untyped (PUntyped (punsafeGiveType, punsafeCoerce))
+import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce, punsafeGiveType))
 import Plutarch.PType (PCode, Pf' (Pf'), pHs_inverse)
 import Plutarch.Prelude
 import Plutarch.Repr.Newtype (PNewtyped (PNewtyped))

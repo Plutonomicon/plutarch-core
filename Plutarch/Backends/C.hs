@@ -62,8 +62,8 @@ import Plutarch.Frontends.Data (
   PPair (PPair),
   PSOP,
  )
-import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Harvard (PHarvard)
+import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
 import Plutarch.PType (PCode, Pf' (Pf'), pHs_inverse)
 import Plutarch.Prelude
@@ -122,7 +122,7 @@ serialiseTy' NType = pure $ "*"
 serialiseTy :: CType -> Text
 serialiseTy t = undefined -- TB.runBuilder $ runIdentity $ runReaderT (serialiseTy' t) 0
 
-newtype Var = Var { unVar :: Text }
+newtype Var = Var {unVar :: Text}
   deriving stock (Show)
 
 data CType
@@ -153,11 +153,11 @@ data CExpr
   deriving stock (Show)
 
 data CStmt
-  = CCall { rty :: CType, rname :: Var, func :: Var, args :: [CExpr] }
+  = CCall {rty :: CType, rname :: Var, func :: Var, args :: [CExpr]}
   | CRet CExpr
   | CIf CExpr CStmt CStmt
   | CWhile CExpr CStmt
-  | CBind { rty :: CType, rname :: Var, expr :: CExpr }
+  | CBind {rty :: CType, rname :: Var, expr :: CExpr}
   deriving stock (Show)
 
 data CDef = CDef

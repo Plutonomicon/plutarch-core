@@ -1,7 +1,7 @@
 module Plutarch.Frontends.Nix (PNix) where
 
 import Plutarch.Core (PConstructable, PDSL)
-import Plutarch.Frontends.Data (PAny, PSOP, PRecursion)
+import Plutarch.Frontends.Data (PAny, PRecursion, PSOP)
 import Plutarch.Frontends.LC (PLC, PPolymorphic)
 import Plutarch.Frontends.Untyped (PUntyped)
 
@@ -15,4 +15,3 @@ class
   , PRecursion e
   ) =>
   PNix e
-

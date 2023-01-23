@@ -69,8 +69,8 @@ common c
 library
   import:          c
   exposed-modules:
-    Plutarch.Backends.Nix
     Plutarch.Backends.C
+    Plutarch.Backends.Nix
     Plutarch.Core
     Plutarch.Frontends.Data
     Plutarch.Frontends.Harvard

@@ -29,12 +29,12 @@ module Plutarch.Core (
   PAll,
 ) where
 
-import Generics.SOP (All)
 import Data.Functor.Compose (Compose)
 import Data.Kind (Constraint, Type)
 import Data.Proxy (Proxy (Proxy))
 import GHC.Records (HasField (getField))
 import GHC.Stack (HasCallStack)
+import Generics.SOP (All)
 import Plutarch.Internal.WithDictHack (unsafeWithDict)
 import Plutarch.PType (
   MkPTypeF,
