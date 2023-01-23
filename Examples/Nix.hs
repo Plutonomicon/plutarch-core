@@ -133,12 +133,11 @@ pplus = pfix # (plam \self x y -> f self x y) where
   f self x y = pmatch x \case
     PNat x' -> pmatch x' \case
       PFix x'' -> pmatch x'' \case
-        PN -> y -- pcon $ PNat $$ PFix $$ PN
+        PN -> y
         PS x''' -> pmatch (self # (pcon $ PNat x''') # y) \case
           PNat r -> pcon $ PNat $ pcon $ PFix $ pcon $ PS r
 
 data PLib ef = PLib
-  -- FIXME: replace with foralls
   { pmutate :: ef /$ PMyTriple PAny PAny PAny #-> PMyTriple PAny PAny PAny
   , pconst :: ef /$ PForall PConstF
   , pswap :: ef /$ PMyEither PAny PAny #-> PMyEither PAny PAny

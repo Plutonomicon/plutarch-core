@@ -2,7 +2,7 @@ module Main (main) where
 
 import Data.Text.IO (writeFile)
 import Examples.Nix qualified
---import Examples.C qualified
+import Examples.C qualified
 import System.Directory (createDirectoryIfMissing)
 import Prelude hiding (writeFile)
 

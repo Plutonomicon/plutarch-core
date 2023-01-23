@@ -5,6 +5,8 @@ module Plutarch.Prelude (
   PHasRepr (..),
   PConstructable,
   IsPType,
+  IsPTypePrim,
+  PDSLKind,
   PReprNewtype,
   PForall1 (..),
   PSome1 (..),
@@ -29,6 +31,9 @@ module Plutarch.Prelude (
   T,
   pany,
   PDSL,
+  PIO,
+  TermIO,
+  DerivePReprPrimitive,
 ) where
 
 import Data.Kind (Constraint, Type)
