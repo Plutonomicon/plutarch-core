@@ -12,37 +12,27 @@ import Data.Proxy (Proxy (Proxy))
 import Data.Coerce (Coercible)
 import Generics.SOP.Dict (Dict (Dict))
 import GHC.Fingerprint (Fingerprint)
+import Numeric.Natural (Natural)
 
 witness :: c => Proxy c -> ()
 witness c = let _ = witness c in ()
 
-data ElemOf e es = UnsafeElemOf (TypeRep e)
+data ElemOf a as = UnsafeIElemOf Natural (TypeRep a)
 
-here :: Typeable e => ElemOf e (e ': es)
-here = UnsafeElemOf typeRep
+here :: Typeable a => ElemOf a (a ': as)
+here = UnsafeIElemOf 0 typeRep
 
-there :: ElemOf e es -> ElemOf e (e' ': es)
-there (UnsafeElemOf r) = UnsafeElemOf r
+there :: ElemOf a es -> ElemOf a (a' ': es)
+there (UnsafeIElemOf i t) = UnsafeIElemOf (i + 1) t
 
 type PType = Type
-newtype Tag = Tag Type
-type TermTy = Tag -> Type
-type Language = TermTy -> TermTy
+type Tag = Type
+type TermTy = [WrappedLanguage] -> Tag -> Type
+type Language = TermTy -> [WrappedLanguage] -> Tag -> Type
+newtype WrappedLanguage = WrappedLanguage Language
+type L = 'WrappedLanguage
 
-class UnsafeRepresentational l where
-  representational :: forall term term'. Coercible term term' => Dict (Coercible (l term)) (l term')
-
-unsafeMakeCoercible :: Dict (Coercible a) b
-unsafeMakeCoercible = unsafeCoerce (Dict :: Dict (Coercible ()) ())
-
-instance {-# OVERLAPPABLE #-}
-  (forall term term'.
-    Coercible term term' =>
-    Coercible (l term) (l term')
-  ) => UnsafeRepresentational l where
-  representational = Dict
-type Representational = UnsafeRepresentational
-
+{-
 class (Typeable l, Representational l) => IsLanguage (l :: Language)
 
 class CryptoHashable (a :: Type) where
@@ -109,15 +99,13 @@ instance Reorder ls ls' => Reorder (l ': ls) (l ': ls') where
 
 instance {-# OVERLAPPABLE #-} (Inject l ls', Reorder ls ls') => Reorder (l ': ls) ls' where
   reorder = let _ = witness (Proxy @(Inject l ls', Reorder ls ls')) in reorderMaybe
+-}
 
-data Expr' (a :: PType)
-type Expr a = 'Tag (Expr' a)
+data Expr (a :: PType)
+data Eff (a :: PType)
+data TypeInfo (a :: PType)
 
-data Eff' (a :: PType)
-type Eff a = 'Tag (Eff' a)
-
-data TypeInfo' (a :: PType)
-type TypeInfo a = 'Tag (TypeInfo' a)
+{-
 
 data Opaque (l :: Language) :: Language where
   Opaque :: l term tag -> Opaque l term tag
@@ -125,12 +113,26 @@ data Opaque (l :: Language) :: Language where
 instance Representational l => UnsafeRepresentational (Opaque l) where
   representational = unsafeMakeCoercible
 
+-}
+
 data Arithmetic :: Language where
-  Add :: term (Expr Int) -> term (Expr Int) -> Arithmetic term (Expr Int)
-  IntLiteral :: Int -> Arithmetic term (Expr Int)
-  Double :: term (Expr Int) %1 -> Arithmetic term (Expr Int)
-  IntTy :: Arithmetic term (TypeInfo Int)
-  deriving anyclass (IsLanguage)
+  Add :: term ls (Expr Int) -> term ls (Expr Int) -> Arithmetic term ls (Expr Int)
+  IntLiteral :: Int -> Arithmetic term ls (Expr Int)
+  Double :: term ls (Expr Int) -> Arithmetic term ls (Expr Int)
+  IntTy :: Arithmetic term ls (TypeInfo Int)
+
+data VarIdx :: [PType] -> Language where
+  VarIdx :: ElemOf a as -> VarIdx as term ls (Expr a)
+
+data LinearVarIdx :: Language where
+
+data If :: Language where
+  If :: term ls (Expr Bool) -> term ls (Expr a) -> term ls (Expr a) -> If term ls (Expr a)
+
+data LC :: Language where
+  App :: term ls (Expr (a -> b)) -> term ls (Expr a) -> LC term ls (Expr b)
+  Lam :: term (L (VarIdx (a ': vars)) ': ls) (Expr b) -> LC term (L (VarIdx vars) ': ls) (Expr (a -> b))
+{-
 
 instance CryptoHashable Int where
   cryptoHash f x = f x []
@@ -253,4 +255,5 @@ pop_HasOnlyDouble :: Inject Arithmetic ls => ClosedTerm (HasOnlyDouble ': ls) ta
 pop_HasOnlyDouble = popTerm f where
   f :: Inject Arithmetic ls => Send ls term -> HasOnlyDouble term tag -> term tag
   f (Send send) (AlsoDouble t) = send $ Double t
+-}
 -}
