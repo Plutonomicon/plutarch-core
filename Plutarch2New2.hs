@@ -5,255 +5,269 @@
 
 module Plutarch2New where
 
-import Data.Kind (Constraint, Type)
-import Type.Reflection (Typeable, TypeRep, eqTypeRep, typeRep, pattern HRefl)
-import Unsafe.Coerce (unsafeCoerce)
-import Data.Proxy (Proxy (Proxy))
-import Data.Coerce (Coercible)
-import Generics.SOP.Dict (Dict (Dict))
-import GHC.Fingerprint (Fingerprint)
+import Data.Kind (Type)
+import Type.Reflection (Typeable, TypeRep, typeRep)
+import Data.Proxy (Proxy)
 import Numeric.Natural (Natural)
+import Data.Functor.Const (Const (Const), getConst)
+import GHC.TypeLits
+import GHC.Exts
 
 witness :: c => Proxy c -> ()
 witness c = let _ = witness c in ()
 
-data ElemOf a as = UnsafeIElemOf Natural (TypeRep a)
+data ElemOf a as = UnsafeElemOf Natural (TypeRep a)
 
 here :: Typeable a => ElemOf a (a ': as)
-here = UnsafeIElemOf 0 typeRep
+here = UnsafeElemOf 0 typeRep
 
-there :: ElemOf a es -> ElemOf a (a' ': es)
-there (UnsafeIElemOf i t) = UnsafeIElemOf (i + 1) t
+there :: ElemOf a as -> ElemOf a (a' ': as)
+there (UnsafeElemOf i t) = UnsafeElemOf (i + 1) t
+
+class CElemOf a as where
+  elemOf :: ElemOf a as
+
+instance Typeable a => CElemOf a (a ': as) where
+  elemOf = here
+
+instance {-# OVERLAPPABLE #-} CElemOf a as => CElemOf a (a' ': as) where
+  elemOf = there elemOf
 
 type PType = Type
-type Tag = Type
-type TermTy = [WrappedLanguage] -> Tag -> Type
-type Language = TermTy -> [WrappedLanguage] -> Tag -> Type
-newtype WrappedLanguage = WrappedLanguage Language
-type L = 'WrappedLanguage
+type Tag = Type -- TODO: Possibly replace with newtype of Type
+type TermTy = [Language] -> Tag -> Type
+type Language = Type -- TODO: Possibly replace with newtype of Type
+data family L (l :: Language) :: TermTy -> [[Language]] -> Tag -> Type
 
-{-
-class (Typeable l, Representational l) => IsLanguage (l :: Language)
+data SBool :: Bool -> Type where
+  STrue :: SBool 'True
+  SFalse :: SBool 'False
 
-class CryptoHashable (a :: Type) where
-  cryptoHash :: (Int -> [b] -> b) -> a -> b
+class KnownBool b where
+  knownBool :: SBool b
 
--- FIXME: require representationality
-type Union :: [Language] -> Language
-data Union (ls :: [Language]) (term :: TermTy) (tag :: Tag) = forall l. Representational l => Union (ElemOf l ls) (l term tag)
+instance KnownBool 'True where
+  knownBool = STrue
 
-absurdUnion :: Union '[] term tag -> b
-absurdUnion (Union (UnsafeElemOf t) _) = error $ "Union should be empty; contains " <> show t
+instance KnownBool 'False where
+  knownBool = SFalse
 
-matchUnion ::
-  forall l ls term tag. IsLanguage l =>
-  Union (l ': ls) term tag ->
-  Either (Union ls term tag) (l term tag)
-matchUnion (Union (UnsafeElemOf l'r) l') = case (eqTypeRep (typeRep :: TypeRep l) l'r) of
-  Just HRefl -> Right l'
-  Nothing -> Left (Union (UnsafeElemOf l'r) l')
+class IsLanguageExpansible l ~ 'True => LangE l
+instance IsLanguageExpansible l ~ 'True => LangE l
+class IsLanguageExpansible l ~ 'True => LangC l
+instance IsLanguageExpansible l ~ 'True => LangC l
 
-class Inject (l :: Language) (ls :: [Language]) where
-  inject :: l term tag %n -> Union ls term tag
+type SwapInList :: [a] -> [a] -> a -> a -> Type
+data SwapInList xs ys x y where
+  SWBase :: SwapInList (x ': xs) (y ': xs) x y
+  SWInc :: SwapInList xs ys x y -> SwapInList (z ': xs) (z ': ys) x y
 
-instance (IsLanguage l) => Inject l (l ': ls) where
-  inject l = Union here l
+type SwapInList2 :: [[a]] -> [[a]] -> a -> a -> Type
+data SwapInList2 xss yss x y where
+  SwapInList2 :: SwapInList xss yss xs ys -> SwapInList xs ys x y -> SwapInList2 xss yss x y
 
-instance {-# OVERLAPPABLE #-} (IsLanguage l, Inject l ls) => Inject l (l' ': ls) where
-  inject l = let _ = witness (Proxy @(Inject l ls)) in Union (UnsafeElemOf typeRep) l
+--data Swappable (l :: Language) (l' :: Language) where
 
---newtype RawTerm ls tag = RawTerm (Union ls (RawTerm ))
+class
+  ( KnownBool (IsLanguageContractible l)
+  , KnownBool (IsLanguageExpansible l)
+  , Typeable l
+  ) => IsLanguage (l :: Language) where
+  type IsLanguageExpansible l :: Bool
+  type IsLanguageContractible l :: Bool
+  interpretIn ::
+    forall f lss lss' l0 l1 tag.
+    (Functor f, IsLanguage l0, IsLanguage l1) =>
+    SwapInList2 lss lss' l0 l1 ->
+    Interpreter l0 l1 f tag ->
+    L l Term lss tag ->
+    f (L l Term lss' tag)
+  interpretIn = undefined
 
-type family Injectable (x :: a) (xs :: [a]) :: Constraint where
-  Injectable x (x ': _) = ()
-  Injectable x (y ': xs) = Injectable x xs
+type ListAppend :: [a] -> [a] -> [a]
+type family ListAppend xs ys where
+  ListAppend '[] ys = ys
+  ListAppend (x ': xs) ys = x ': (ListAppend xs ys)
 
-type family Reorderable (xs :: [a]) (ys :: [a]) :: Constraint where
-  Reorderable (x ': xs) (x ': ys) = Reorderable xs ys
-  Reorderable (x ': xs) ys = (Injectable x ys, Reorderable xs ys)
+type ListAppendAll :: [[a]] -> [a]
+type family ListAppendAll xss where
+  ListAppendAll '[] = '[]
+  ListAppendAll (xs ': xss) = ListAppend xs (ListAppendAll xss)
 
-data S = S
-type Term :: S -> [Language] -> TermTy
-data Term (s :: S) ls tag = Term
-  { unTerm :: Union ls (Term s ls) tag
-  }
-unTerm :: Term s ls tag -> Union ls (Term s ls) tag
-unTerm t = t.unTerm
+type LengthOf :: [a] -> Type
+data LengthOf xs where
+  LengthZero :: LengthOf '[]
+  LengthSucc :: LengthOf xs -> LengthOf (x ': xs)
 
-send :: (IsLanguage l, Inject l ls) => l (Term s ls) tag %n -> Term s ls tag
-send x = Term (inject x)
+class CLengthOf (xs :: [a]) where
+  lengthOf :: LengthOf xs
+instance CLengthOf '[] where
+  lengthOf = LengthZero
+instance CLengthOf xs => CLengthOf (x ': xs) where
+  lengthOf = LengthSucc lengthOf
 
-reorderMaybe :: Term s ls tag -> Term s ls' tag
-reorderMaybe = unsafeCoerce
+-- TODO: Don't store length of last list, technically not needed
+type LengthsOf :: [[a]] -> Type
+data LengthsOf xss where
+  LNil :: LengthsOf '[]
+  LCons :: LengthOf xs -> LengthsOf xss -> LengthsOf (xs ': xss)
 
--- Warning! _Resolving_ this constraint is O(n*m) unfortunately
--- since we can't sort then compare ls and ls' (I think?).
-class Reorder ls ls' where
-  reorder :: Term s ls tag -> Term s ls' tag
+class CLengthsOf xss where
+  lengthsOf :: LengthsOf xss
+instance CLengthsOf '[] where
+  lengthsOf = LNil
+instance (CLengthOf xs, CLengthsOf xss) => CLengthsOf (xs ': xss) where
+  lengthsOf = LCons lengthOf lengthsOf
 
-instance Reorder '[] ls' where
-  reorder = reorderMaybe
+data Union (l :: Language) (l' :: Language)
+type Term :: TermTy
+data Term ls tag where
+  Send :: IsLanguage l => LengthsOf lss -> TypeRep l -> L l Term lss tag -> Term (l ': ListAppendAll lss) tag
+  Expand :: IsLanguageExpansible l ~ 'True => Term ls tag -> Term (l ': ls) tag
+  Contract :: IsLanguageContractible l ~ 'True => ElemOf l ls -> Term (l ': ls) tag -> Term ls tag
+  Swap :: Term (l ': l' ': ls) tag -> Term (l' ': l ': ls) tag
+  Pack :: Term (l ': l' ': ls) tag -> Term (Union l l' ': ls) tag
+  Unpack :: Term (Union l l' ': ls) tag -> Term (l ': l' ': ls) tag
+  Rotate :: Term (l0 ': l1 ': l2 ': ls) tag -> Term (l2 ': l0 ': l1 ': ls) tag
 
-instance Reorder ls ls' => Reorder (l ': ls) (l ': ls') where
-  reorder = let _ = witness (Proxy @(Reorder ls ls')) in reorderMaybe
+data Interpreter l l' f tag
+  = Interpreter
+    (forall lss. L l (TermF f) lss tag -> f (L l' Term lss tag))
+    (forall lss. L l Term lss tag -> f (L l' Term lss tag))
 
-instance {-# OVERLAPPABLE #-} (Inject l ls', Reorder ls ls') => Reorder (l ': ls) ls' where
-  reorder = let _ = witness (Proxy @(Inject l ls', Reorder ls ls')) in reorderMaybe
--}
+runInterpreterStep :: Interpreter l l' f tag -> L l (TermF f) lss tag -> f (L l' Term lss tag)
+runInterpreterStep (Interpreter step _) = step
 
-data Expr (a :: PType)
+runInterpreterBase :: Interpreter l l' f tag -> L l Term lss tag -> f (L l' Term lss tag)
+runInterpreterBase (Interpreter _ base) = base
+
+interpret ::
+  forall f ls ls' l l' tag.
+  (Functor f, IsLanguage l, IsLanguage l') =>
+  SwapInList ls ls' l l' ->
+  Interpreter l l' f tag ->
+  Term ls tag ->
+  f (Term ls' tag)
+interpret SWBase intr (Send lengths tyrep x) = Send undefined undefined <$> runInterpreterBase intr x
+
+sendLin :: (IsLanguage l, CLengthsOf lss, Typeable l) => L l Term lss tag -> Term (l ': ListAppendAll lss) tag
+sendLin x = Send lengthsOf typeRep x
+
+--class AllEqual (lss :: [[Language]]) (ls :: [Language])
+--instance AllEqual '[] '[]
+
+--send :: (CElemOf l ls, IsLanguageContractible l ~ True) => L l Term lss tag -> Term ls tag
+--send x = undefined -- Send elemOf x
+
+type TermF :: (Type -> Type) -> TermTy
+newtype TermF f ls tag = TermF (f (Term ls tag))
+unTermF :: TermF f ls tag -> f (Term ls tag)
+unTermF (TermF t) = t
+
+data Multiplicity = Free | Linear
+data Expr (w :: Multiplicity) (a :: PType)
+type FreeExpr = Expr 'Free
+type LinExpr = Expr 'Linear
 data Eff (a :: PType)
 data TypeInfo (a :: PType)
 
+data Arithmetic
+data instance L Arithmetic _term _ls _tag where
+  Add :: term ls0 (Expr w Int) -> term ls1 (Expr w Int) -> L Arithmetic term '[ls0, ls1] (Expr w Int)
+  IntLiteral :: Int -> L Arithmetic term '[] (Expr w Int)
+  Double :: term ls0 (Expr w Int) -> L Arithmetic term '[ls0] (Expr w Int)
+  IntTy :: L Arithmetic term '[] (TypeInfo Int)
+instance IsLanguage Arithmetic where
+  type IsLanguageContractible _ = 'True
+  type IsLanguageExpansible _ = 'True
+  interpretIn (SwapInList2 SWBase idx) f (Add x y) = flip Add y <$> interpret idx f x
+  interpretIn (SwapInList2 (SWInc SWBase) idx) f (Add x y) = Add x <$> interpret idx f y
+  interpretIn (SwapInList2 (SWInc (SWInc idx')) _) _ (Add _ _) = case idx' of
+  interpretIn (SwapInList2 SWBase idx) f (Double x) = Double <$> interpret idx f x
+
+data HasLinearVar (a :: PType)
+data instance L (HasLinearVar _a) _term _ls _tag where
+  LinearVar :: L (HasLinearVar a) term '[] (LinExpr a)
+instance Typeable a => IsLanguage (HasLinearVar a) where
+  type IsLanguageContractible _ = 'False
+  type IsLanguageExpansible _ = 'False
+
+data (a :: PType) --> (b :: PType)
+infixr 0 -->
+
+data LinearLC
+data instance L LinearLC _term _ls _tag where
+  LinLam :: term (HasLinearVar a ': ls0) (LinExpr b) -> L LinearLC term '[ls0] (LinExpr (a --> b))
+  LinApp :: term ls0 (LinExpr (a --> b)) -> term ls1 (LinExpr a) -> L LinearLC term '[ls0, ls1] (LinExpr b)
+instance IsLanguage LinearLC where
+  type IsLanguageContractible _ = 'True
+  type IsLanguageExpansible _ = 'True
+
+data HasFreeVar (a :: PType)
+data instance L (HasFreeVar _a) _term _ls _tag where
+  FreeVar :: L (HasFreeVar a) term '[] (FreeExpr a)
+instance Typeable a => IsLanguage (HasFreeVar a) where
+  type IsLanguageContractible _ = 'True
+  type IsLanguageExpansible _ = 'True
+
+data FreeLC
+data instance L FreeLC _term _ls _tag where
+  MakeLin :: term ls0 (FreeExpr a) -> L FreeLC term '[ls0] (LinExpr a)
+  FreeLam :: term (HasFreeVar a ': ls0) (FreeExpr a) -> L FreeLC term '[ls0] (FreeExpr (a -> b))
+  FreeApp :: term ls0 (FreeExpr (a -> b)) -> term ls1 (FreeExpr a) -> L FreeLC term '[ls0, ls1] (FreeExpr b)
+instance IsLanguage FreeLC where
+  type IsLanguageContractible _ = 'True
+  type IsLanguageExpansible _ = 'True
+
+data HOAS_LC
+data instance L HOAS_LC _term _ls _tag where
+  HOAS_Lam :: (term '[] (FreeExpr a) -> term ls0 (FreeExpr b)) -> L HOAS_LC term '[ls0] (FreeExpr (a -> b))
+instance IsLanguage HOAS_LC where
+  type IsLanguageContractible _ = 'True
+  type IsLanguageExpansible _ = 'True
+
+double :: Term '[LinearLC] (LinExpr (Int --> Int))
+double = sendLin $ LinLam $ sendLin LinearVar
+
+add :: Term '[LinearLC, Arithmetic, LinearLC] (LinExpr (Int --> Int --> Int))
+add = Unpack $ Swap $ sendLin $ LinLam $ Swap $ Pack $ sendLin $ LinLam $ Swap $ sendLin $ Add (sendLin (LinearVar @Int)) (sendLin (LinearVar @Int))
+
+addSelf :: Term '[FreeLC, Arithmetic] (FreeExpr (Int -> Int))
+addSelf = sendLin $ FreeLam $ Swap $ Contract elemOf $ Rotate $ sendLin $ Add (sendLin FreeVar) (sendLin $ FreeVar)
+
+addSelf2 :: Term '[HOAS_LC, Arithmetic] (FreeExpr (Int -> Int))
+addSelf2 = sendLin $ HOAS_Lam \x -> sendLin $ Add x x
+
+eleven :: Term '[Arithmetic] (FreeExpr Int)
+eleven = Contract here $ Contract here $ sendLin $ Add (sendLin $ IntLiteral 5) (sendLin $ IntLiteral 6)
+
+data DummyLang
+data instance L DummyLang _term _ls _tag where
+instance IsLanguage DummyLang where
+  type IsLanguageExpansible _ = 'True
+  type IsLanguageContractible _ = 'True
+
+interpretArithmetic :: Term '[Arithmetic] (FreeExpr Int) -> Int
+interpretArithmetic x = getConst $ interpret SWBase (Interpreter step base) x where
+  step :: L Arithmetic (TermF (Const Int)) ls' (FreeExpr Int) -> Const Int (L DummyLang Term ls' (FreeExpr Int))
+  step (IntLiteral n) = Const n
+  step (Add (TermF (Const x)) (TermF (Const y))) = Const (x + y)
+  step (Double (TermF (Const x))) = Const $ x + x
+  base :: L Arithmetic Term ls' (FreeExpr Int) -> Const Int (L DummyLang Term ls' (FreeExpr Int))
+  base (IntLiteral n) = Const n
+  base (Add _ _) = error "FIXME: prove impossible"
+  base (Double _) = error "FIXME: prove impossible"
 {-
 
-data Opaque (l :: Language) :: Language where
-  Opaque :: l term tag -> Opaque l term tag
-  deriving anyclass (IsLanguage)
-instance Representational l => UnsafeRepresentational (Opaque l) where
-  representational = unsafeMakeCoercible
+jkk
+data OnlyAdds
+data instance L OnlyAdds _term _ls _tag where
+  OnlyAdd :: term ls (Expr Int) -> term ls (Expr Int) -> L OnlyAdds term ls (Expr Int)
+instance IsLanguage OnlyAdds where
+  type IsLanguageContractible _ = 'True
+  type IsLanguageExpansible _ = 'True
 
--}
-
-data Arithmetic :: Language where
-  Add :: term ls (Expr Int) -> term ls (Expr Int) -> Arithmetic term ls (Expr Int)
-  IntLiteral :: Int -> Arithmetic term ls (Expr Int)
-  Double :: term ls (Expr Int) -> Arithmetic term ls (Expr Int)
-  IntTy :: Arithmetic term ls (TypeInfo Int)
-
-data VarIdx :: [PType] -> Language where
-  VarIdx :: ElemOf a as -> VarIdx as term ls (Expr a)
-
-data LinearVarIdx :: Language where
-
-data If :: Language where
-  If :: term ls (Expr Bool) -> term ls (Expr a) -> term ls (Expr a) -> If term ls (Expr a)
-
-data LC :: Language where
-  App :: term ls (Expr (a -> b)) -> term ls (Expr a) -> LC term ls (Expr b)
-  Lam :: term (L (VarIdx (a ': vars)) ': ls) (Expr b) -> LC term (L (VarIdx vars) ': ls) (Expr (a -> b))
-{-
-
-instance CryptoHashable Int where
-  cryptoHash f x = f x []
-
-instance (forall tag'. CryptoHashable (term tag')) => CryptoHashable (Arithmetic term tag) where
-  cryptoHash :: (Int -> [a] -> a) -> Arithmetic term tag -> a
-  cryptoHash f (Add x y) = f 0 [cryptoHash f x, cryptoHash f y]
-  cryptoHash f (IntLiteral n) = f 1 [cryptoHash f n]
-  cryptoHash f (Double x) = f 2 [cryptoHash f x]
-  cryptoHash f IntTy = f 3 []
-
-data LetBindings :: Language where
-  Let :: term (TypeInfo a) -> (term (Expr a) -> term (Expr b)) -> term (Expr a) -> LetBindings term (Expr b)
-  deriving anyclass (IsLanguage)
-
-instance (forall tag'. CryptoHashable (term tag')) => CryptoHashable (LC term tag) where
-
-data Proc (a :: PType) (b :: PType)
-
-data LC :: Language where
-  MkLam :: (term (Expr a) -> term (Expr b)) -> LC term (Expr (a -> b))
-  AppLam :: term (TypeInfo a) -> term (Expr (a -> b)) -> term (Expr a) -> LC term (Expr b)
-  --MkProc :: (term (Expr a) -> term (Eff b)) -> LC term (Expr (Proc a b))
-  --AppProc :: term (TypeInfo a) -> term (Expr (Proc a b)) -> term (Expr a) -> LC term (Eff b)
-  FunTy :: term (TypeInfo a) -> term (TypeInfo b) -> LC term (TypeInfo (a -> b))
-  deriving anyclass (IsLanguage)
-
-data LC_HOAS :: Language where
-  MkLamHOAS :: (term (Expr a) -> term (Expr b)) -> LC_HOAS term (Expr (a -> b))
-
-data LC_DB :: Language where
-  MkLamDB :: term (Expr b) -> LC_DB term (Expr (a -> b))
- 
-data Untyped :: Language where
-  DummyTy :: Untyped term (TypeInfo a)
-  deriving anyclass (IsLanguage)
-
-data SequenceEff :: Language where
-  SequenceEff :: term (TypeInfo a) -> term (Eff a) -> (term (Expr a) -> term (Eff b)) -> SequenceEff term (Eff b)
-  deriving anyclass (IsLanguage)
-
-data LCDBType = LCDBInt | LCDBFun LCDBType LCDBType
-  deriving stock (Show)
-
-data LCDB = DoubleDB LCDB | LvlDB Int | AppDB LCDB LCDB | LamDB LCDBType LCDB | LitDB Int | AddDB LCDB LCDB
-  deriving stock (Show)
-
-data VarIdx :: Language where
-  VarIdx :: Int -> VarIdx term (Expr a)
-  deriving anyclass (IsLanguage)
-
-data VarLvl :: Language where
-  VarLvl :: Int -> VarLvl term (Expr a)
-  deriving anyclass (IsLanguage)
-
-newtype ClosedTerm ls tag = ClosedTerm { openClosedTerm :: forall s. Term s ls tag }
-openClosedTerm :: ClosedTerm ls tag -> Term s ls tag
-openClosedTerm (ClosedTerm x) = x
-unsafeCloseOpenTerm :: Term s ls tag -> ClosedTerm ls tag
-unsafeCloseOpenTerm = unsafeCoerce
-
-{-
-interpret :: ClosedTerm '[Arithmetic, LC] (TypeInfo a) -> ClosedTerm '[Arithmetic, LC] (Expr a) -> LCDB
-interpret = \tyinfo t -> interpret' 0 (reorder $ openClosedTerm tyinfo) (reorder $ openClosedTerm t) where
-  interpret' :: Int -> Term s '[Opaque VarLvl, Arithmetic, LC] (TypeInfo a) -> Term s '[Opaque VarLvl, Arithmetic, LC] (Expr a) -> LCDB
-  interpret' lvl tyinfo (Term u) = case matchUnion u of
-    Right (Opaque (VarLvl lvl)) -> LvlDB lvl
-    Left u -> case matchUnion u of
-      Right (Add x y) -> AddDB (interpret' lvl (send IntTy) x) (interpret' lvl (send IntTy) y)
-      Right (IntLiteral l) -> LitDB l
-      Right (Double x) -> DoubleDB (interpret' lvl (send IntTy) x)
-      Left u -> case matchUnion u of
-        Right (AppLam tyinfo' x y) -> AppDB (interpret' lvl (send $ FunTy tyinfo' (reorder tyinfo)) x) (interpret' lvl undefined y)
-        Right (MkLam f) ->
-          case matchUnion (unTerm tyinfo) of
-            Right (Opaque x) -> case x of
-            Left u -> case matchUnion u of
-              Right x -> case x of
-              Left u -> case matchUnion u of
-                Right (FunTy _ b) -> LamDB LCDBInt (interpret' (lvl + 1) b $ f (send $ Opaque $ VarLvl lvl))
-                Left u -> absurdUnion u
-        Right (MkProc _) -> error "unimplemented" --
-        Left u -> absurdUnion u
--}
-
-takeTwoAndAdd :: Term s '[Arithmetic, LC] (Expr (Int -> Int -> Int))
-takeTwoAndAdd = send $ MkLam \x -> send $ MkLam \y -> send $ Add y (reorder x)
-
---result :: LCDB
---result = interpret (ClosedTerm $ send $ FunTy (send IntTy) (send $ FunTy (send IntTy) $ send IntTy)) $ ClosedTerm takeTwoAndAdd
-
-data HasPairs :: Language where
-  MkPair :: term (Expr a) -> term (Expr b) -> HasPairs term (Expr (a, b))
-  FstPair :: term (Expr (a, b)) -> HasPairs term (Expr a)
-  SndPair :: term (Expr (a, b)) -> HasPairs term (Expr b)
-
-data LinLam (a :: PType) (b :: PType)
-
-data Lin :: Language where
-  MkLinLam :: (term (Expr a) %1 -> term (Expr b)) -> Lin term (Expr (LinLam a b))
-  AppLinLam :: term (TypeInfo a) -> term (Expr (LinLam a b)) -> term (Expr a) -> Lin term (Expr b)
-  deriving anyclass (IsLanguage)
-
-linId :: Term s '[Arithmetic, Lin] (Expr (LinLam Int Int))
-linId = send $ MkLinLam \x -> send (Double x)
-
-data HasOnlyDouble :: Language where
-  AlsoDouble :: term (Expr Int) -> HasOnlyDouble term (Expr Int)
-
-newtype Send ls term = Send ( forall l tag. (IsLanguage l, Inject l ls) => l term tag -> term tag )
-runSend :: forall ls term l tag. (IsLanguage l, Inject l ls) => Send ls term -> l term tag -> term tag
-runSend (Send f) = f
-
-{-
-popTerm :: (forall term tag'. Send ls term -> l term tag' -> term tag') -> ClosedTerm (l ': ls) tag -> ClosedTerm ls tag
-popTerm f = \(ClosedTerm t) -> ClosedTerm $ go t where
-  go = undefined
-
-pop_HasOnlyDouble :: Inject Arithmetic ls => ClosedTerm (HasOnlyDouble ': ls) tag -> ClosedTerm ls tag
-pop_HasOnlyDouble = popTerm f where
-  f :: Inject Arithmetic ls => Send ls term -> HasOnlyDouble term tag -> term tag
-  f (Send send) (AlsoDouble t) = send $ Double t
--}
+onlyAddsToArithmetic :: Term (OnlyAdds ': ls) tag -> Term (Arithmetic ': ls) tag
+onlyAddsToArithmetic = runIdentity . interpret \case
+  OnlyAdd (TermF (Identity x)) (TermF (Identity y)) -> Identity $ Add x y
 -}
