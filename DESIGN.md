@@ -157,20 +157,53 @@ lambda abstractions.
 
 # Implementation
 
-`Term` takes a list of languages and a tag.
-Each language defines a list of constructors, each of a tag.
-When you make a term, it only includes the language of the constructor you used.
-Some languages support being added arbitrarily, others don't.
-You can make terms from other terms by reordering the list of languages in the term.
-The index of each language in the _language stack_ is distinct and used.
-Each language must implement a type class to support the operations necessary.
+```haskell
+type Term :: [Language] -> Tag -> Type
+```
+The fundamental data type of importance.
+The Term is not specialised to expressions, or any specific type
+of AST node, instead it recognises that there are many types of AST
+nodes beyond expressions. Not all languages are varants of the lambda calculus.
+There are pure expressions, impure expressions, linearity, effects, variables,
+type information, and more. Each of these can be represented as a tag.
+The tag can be thought of as a _filter_ on the constructors possible,
+the constructors of each constituent language.
+Each index in the stack of languages is meaningful and distinct.
+Languages can be _expansible_ and _contractible_.
+To be expansible means to be addible unconditionally to the stack.
+To be contractible means to be collapsible with another member of itself in the stack.
+Both of these represent powers and freedoms that linearly bound variables do not have.
+Necessarily, each member of the language stack is distinct and not necessarily unique.
+We can have two instances of the same language, and explicitly choose which to use.
+If contractible, we can interpret one in terms of the other (or equivalently, the opposite
+way around). If expansible, we can pretend we use it when we don't.
+This is similar to the structural rules of weakening and contraction.
+Indeed, the stack of languages is itself _linear_. The languages are akin to the types
+of the stack members in this eDSL at the type-level, each of which declares whether
+it supports weakening and contraction. Notably, exchange is always supported.
+In fact, we can arbitrarily reorder the members of the stack as fit.
 
-Partial interpretation happens bottom-up as a fold. State gets pushed up along with the term,
-the tag of the term must not change. Work on the same thunk is deduplicated if the thunk
-is marked using a special marker function.
+Using a (constructor of a) language, morally similar to sending an effect
+in an effect system, always appends an instance of the language to the stack.
+Constructors have AST nodes as arguments, each of which has their own
+(not necessarily unique) language stack. This is denoted by a list of stacks
+in the type of the constructor. When "sent", the list is flattened, collapsing
+it into one stack, but we retain the structure as run-time information to later
+reconstruct.
+Each embedded AST node can be of an _arbitrary_ language stack, enabling
+embedding variables as languages. Indeed, linearly bound variables form their
+own incontractible inexpansible language of variables. Linear lambdas prepend such
+a language to the language stack of the body.
 
-Final interpretation, turning the term into something that is not a term, is also done by a fold,
-albeit no transformed term is bubbled up.
+Given such a system, how do we interpret it? What is the meaning of a term
+of a specific language stack? How do interpret only _part_ of the term, transforming
+the languages in the stack? Can we, for example, turn HOAS into explicitly bound variables
+without disturbing the other parts?
+How do we share the work done on multiple appearances of the same node in the AST?
+How do we recover the graph from the tree, while still enabling arbitrary interpretations?
 
-Deduplicating common top-level definitions at the final step happens by hashing everything,
-and mapping uses of closed terms to the variable name assigned.
+The interpretation is modelled as a _fold_, that starts from the bottom and goes all the way up.
+Each step accumulates information that is bubbled up.
+The interpretation turns a language `l` into a language `l'`.
+If the former is expansible, the latter has to be too.
+If the former is contractible, the latter has to be too.
