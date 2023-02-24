@@ -150,7 +150,7 @@ interpret ::
   f (Term ls' tag)
 interpret SWBase intr (Send lengths tyrep x) = Send undefined undefined <$> runInterpreterBase intr x
 
-sendLin :: (IsLanguage l, CLengthsOf lss, Typeable l) => L l Term lss tag -> Term (l ': ListAppendAll lss) tag
+sendLin :: (IsLanguage l, CLengthsOf lss) => L l Term lss tag -> Term (l ': ListAppendAll lss) tag
 sendLin x = Send lengthsOf typeRep x
 
 --class AllEqual (lss :: [[Language]]) (ls :: [Language])
