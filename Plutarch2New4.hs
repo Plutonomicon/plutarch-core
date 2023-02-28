@@ -17,34 +17,92 @@
 -- - Optics
 -- - Plugins for syntax
 
-module Plutarch2New3 where
+module Plutarch2New4 where
 
 import Data.Kind (Type)
 import Type.Reflection (Typeable, TypeRep, typeRep)
-import Data.Proxy (Proxy)
+import Data.Proxy (Proxy (Proxy))
 import Numeric.Natural (Natural)
 import Data.Functor.Const (Const (Const), getConst)
-import GHC.TypeLits
 import GHC.Exts
 import Unsafe.Coerce
 import Data.Type.Equality
 
+data Nat = N | S Nat
+data SNat (n :: Nat) where
+  SN :: SNat 'N
+  SS :: SNat n -> SNat ('S n)
+
 type Tag = Type
-type TermTy = [Language] -> Tag -> Type
+data LanguageBuiltinArg paramt = LanguageBuiltinArg { check_tag :: paramt -> Tag -> Type, extra_langs :: [Language] }
+data LanguageBuiltin = forall (paramt :: Type). LanguageBuiltin
+    { dat :: paramt -> Type
+    , check_tag :: paramt -> Tag -> Type
+    , argss :: [(LanguageBuiltinArg paramt, [LanguageBuiltinArg paramt])]
+    }
 type Language = Type
-data family L (l :: Language) :: TermTy -> [[Language]] -> Tag -> Type
+type family LanguageBuiltins (l :: Language) :: [LanguageBuiltin]
 
-type ListAppend :: [a] -> [a] -> [a]
-type family ListAppend xs ys where
-  ListAppend '[] ys = ys
-  ListAppend (x ': xs) ys = x ': (ListAppend xs ys)
+data Append xs ys r where
+  Append0 :: Append '[] ys ys
+  Append1 :: Append xs ys r -> Append (x ': xs) ys (x ': r)
 
-type ListAppendAll :: [[a]] -> [a]
-type family ListAppendAll xss where
-  ListAppendAll '[] = '[]
-  ListAppendAll '[xs] = xs
-  ListAppendAll (xs ': xss) = ListAppend xs (ListAppendAll xss)
+type TermTy = [Language] -> Tag -> Type
+data ExtractArgs args param term ls where
+  ExtractArgsN ::
+    check_tag param tag ->
+    Append extra_langs ls ls' ->
+    term ls' tag ->
+    ExtractArgs '( 'LanguageBuiltinArg check_tag extra_langs, '[]) param term ls
+  ExtractArgsS ::
+    check_tag param tag ->
+    Append extra_langs ls ls' ->
+    term ls' tag ->
+    ExtractArgs '(last_arg, args) param term ls ->
+    ExtractArgs '(last_arg, ('LanguageBuiltinArg check_tag extra_langs ': args)) param term ls
 
+data ExtractArgss argss param term lss where
+  ExtractArgssN :: ExtractArgss '[] param term '[]
+  ExtractArgssS :: ExtractArgs args param term ls -> ExtractArgss argss param term lss -> ExtractArgss (args ': argss) param term (ls ': lss)
+
+data ElemOf x xs where
+  Here :: ElemOf x (x ': xs)
+  There :: ElemOf x xs -> ElemOf x (x' ': xs)
+
+type L :: Language -> TermTy -> [[Language]] -> Tag -> Type
+data L l term lss tag where
+  L ::
+    ElemOf ('LanguageBuiltin dat check_tag argss) (LanguageBuiltins l) ->
+    dat param ->
+    check_tag param tag ->
+    ExtractArgss argss param term lss ->
+    L l term lss tag
+
+data Expr (a :: Type)
+
+data Bools
+data IsBool (u :: ()) tag where
+  IsBool :: IsBool u (Expr Bool)
+type instance LanguageBuiltins Bools =
+  '[ 'LanguageBuiltin Proxy IsBool '[ '( 'LanguageBuiltinArg IsBool '[], '[]), '( 'LanguageBuiltinArg IsBool '[], '[])]
+   , 'LanguageBuiltin (Const Bool) IsBool '[]
+   ]
+
+data Ints
+data IsInt (u :: ()) tag where
+  IsInt :: IsInt u (Expr Int)
+type instance LanguageBuiltins Ints =
+  '[ 'LanguageBuiltin Proxy IsInt '[ '( 'LanguageBuiltinArg IsInt '[], '[]), '( 'LanguageBuiltinArg IsInt '[], '[])]
+   , 'LanguageBuiltin (Const Int) IsInt '[]
+   ]
+
+data IntBoolConversions
+type instance LanguageBuiltins IntBoolConversions =
+  '[ 'LanguageBuiltin Proxy IsBool '[ '( 'LanguageBuiltinArg IsInt '[], '[])]
+   , 'LanguageBuiltin Proxy IsInt '[ '( 'LanguageBuiltinArg IsBool '[], '[])]
+   ]
+
+{-
 type LengthOf :: [a] -> Type
 data LengthOf xs where
   LengthZero :: LengthOf '[]
@@ -181,23 +239,6 @@ data Term ls tag where
   Send :: RB lss ls' -> ListEqMod1 ls' ls l -> L l Term lss tag -> Term ls tag
   --Bring :: ListEqMod1 ls' ls l -> Term ls tag -> Term (l ': ls') tag
 
-data Expr (a :: Type)
-
-data Bools
-data instance L Bools term ls tag where
-  Xor :: term ls0 (Expr Bool) -> term ls1 (Expr Bool) -> L Bools term '[ls0, ls1] (Expr Bool)
-  BoolLit :: Bool -> L Bools term '[] (Expr Bool)
-
-data Ints
-data instance L Ints term ls tag where
-  Mult :: term ls0 (Expr Int) -> term ls1 (Expr Int) -> L Ints term '[ls0, ls1] (Expr Int)
-  IntLit :: Int -> L Ints term '[] (Expr Int)
-
-data IntBoolConversions
-data instance L IntBoolConversions term ls tag where
-  IntAsBool :: term ls0 (Expr Int) -> L IntBoolConversions term '[ls0] (Expr Bool)
-  BoolAsInt :: term ls0 (Expr Bool) -> L IntBoolConversions term '[ls0] (Expr Int)
-
 data SList (xs :: [a]) where
   SConsNil :: SList '[x]
   SCons :: SList xs -> SList (x ': xs)
@@ -249,4 +290,5 @@ conv_3 (Bring idx x) = conv_4 idx x
 
 --conv_4 :: ListEqMod1 ls' ls Bools -> Term ls (Expr Bool) -> Term (IntBoolConversions ':) (Expr Int)
 --conv_4 (Bring idx (x :: Term _ (Expr Bool))) = _ $ conv_4 _ x
+---}
 ---}
