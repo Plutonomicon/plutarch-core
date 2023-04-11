@@ -14,10 +14,11 @@
           text-builder-linear = hLib.markUnbroken (prev.text-builder-linear.override { text = final.text_2_0_1; });
         };
       };
-      hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskell.packages.ghc924; # ghc942
+      hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskell.packages.ghc924; # ghc944
       formattersFor = system: with (pkgsFor system); [
         nixpkgs-fmt
         haskellPackages.cabal-fmt
+        haskell.packages.ghc924.haskell-language-server
         (haskell.lib.compose.dontCheck haskell.packages.ghc944.fourmolu_0_10_1_0)
       ];
       regen = system: (pkgsFor system).writeShellApplication {

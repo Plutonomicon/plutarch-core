@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE NondecreasingIndentation #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.Backends.Nix (compileAp, compileTy) where
@@ -44,7 +43,7 @@ import Plutarch.Core (
   PAp (papl, papr),
   PConcreteEf,
   PConstructablePrim (pcaseImpl, pconImpl, pmatchImpl),
-  PDSL (IsPTypePrimData, PEffect),
+  PDSL (IsPTypePrimData, PIO, punsafePerformIO),
   PDSLKind (PDSLKind),
   Term (Term),
   UnPDSLKind,
@@ -58,13 +57,15 @@ import Plutarch.Frontends.Data (
   PAny (PAny),
   PConstructorInfo (PConstructor, PInfix, PRecord),
   PEither (PLeft, PRight),
+  PFix (PFix),
   PHasNewtypes,
   PPair (PPair),
+  PRecursion,
   PSOP,
  )
 import Plutarch.Frontends.LC (PPolymorphic)
 import Plutarch.Frontends.Nix (PNix)
-import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce))
+import Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce, punsafeGiveType))
 import Plutarch.PType (PCode, Pf' (Pf'), pHs_inverse)
 import Plutarch.Prelude
 import Plutarch.Repr.Newtype (PNewtyped (PNewtyped))
@@ -77,6 +78,7 @@ data NixType
   = NFunTy NixType NixType
   | NTyLam NixType Text NixType
   | NForallTy NixType
+  | NFixTy NixType
   | NSomeTy NixType
   | NTyVar Text
   | NSetTy [(Text, NixType)]
@@ -85,6 +87,7 @@ data NixType
   | NUnionTy NixType NixType
   | NFixedStringTy Text
   | NType
+  | NUntyped
   deriving stock (Show)
 
 getTabs :: ReaderT Int Identity TB.Builder
@@ -119,6 +122,9 @@ serialiseTy' (NTyLam t v x) = do
 serialiseTy' (NForallTy x) = do
   x' <- serialiseTy' x
   pure $ "(forall " <> x' <> ")"
+serialiseTy' (NFixTy x) = do
+  x' <- serialiseTy' x
+  pure $ "(fix " <> x' <> ")"
 serialiseTy' (NSomeTy x) = do
   x' <- serialiseTy' x
   pure $ "(some " <> x' <> ")"
@@ -130,6 +136,7 @@ serialiseTy' (NUnionTy a b) = do
   pure $ "(" <> a' <> "|" <> b' <> ")"
 serialiseTy' (NFixedStringTy s) = pure $ "\"" <> TB.fromText s <> "\""
 serialiseTy' NType = pure $ "*"
+serialiseTy' NUntyped = pure $ "(N/A)"
 
 serialiseTy :: NixType -> Text
 serialiseTy t = TB.runBuilder $ runIdentity $ runReaderT (serialiseTy' t) 0
@@ -243,10 +250,11 @@ getTy :: forall m a. IsPType (Impl m) a => Proxy m -> Proxy a -> M NixType
 getTy _ _ = case isPType :: IsPTypeData (Impl m) a of IsPTypeData (IsPTypePrimData t) -> t
 
 instance PDSL (Impl m) where
-  -- FIXME: fix PEffect
-  newtype PEffect (Impl m) a = PEffect (Identity a)
+  -- FIXME: fix PIO
+  newtype PIO (Impl m) a = PIO (Identity a)
     deriving newtype (Functor, Applicative, Monad)
   newtype IsPTypePrimData (Impl m) _ = IsPTypePrimData (M NixType)
+  punsafePerformIO (PIO x) = runIdentity x
 
 instance (IsPType (Impl m) a, IsPType (Impl m) b) => IsPTypePrim (Impl m) (a #-> b) where
   isPTypePrim = IsPTypePrimData do
@@ -320,6 +328,15 @@ instance
     pure $ NForallTy body
 
 instance
+  forall m (f :: PType -> PType).
+  IsPType (Impl m) ('PLam f :: PHs (PPType #-> PPType)) =>
+  IsPTypePrim (Impl m) (PFix f)
+  where
+  isPTypePrim = IsPTypePrimData do
+    body <- getTy (Proxy @m) (Proxy @('PLam f :: PHs (PPType #-> PPType)))
+    pure $ NFixTy body
+
+instance
   forall m a (f :: PHs a -> PType).
   IsPType (Impl m) ('PLam f :: PHs (a #-> PPType)) =>
   IsPTypePrim (Impl m) (PSome1 f)
@@ -369,6 +386,7 @@ instance Applicative m => PAp m (Impl m) where
 
 instance PUntyped (Impl m) where
   punsafeCoerce t = coerce t
+  punsafeGiveType = IsPTypeData $ IsPTypePrimData $ pure NUntyped
 
 instance PPolymorphic (Impl m)
 
@@ -477,10 +495,18 @@ instance
     let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
     withIsPType d $ case pHs_inverse @a of
       Refl -> do
-        -- Why is GHC so ungodly stupid? Why the fuck do I need this much indentation?
         let PForall1 (t :: Term (Impl m) (f (TyVar @a))) = t'
         succLvl $ runTerm t
   pmatchImpl t f = f (PForall1 (Term $ changeTy t))
+  pcaseImpl = error "FIXME"
+
+instance
+  forall m (f :: PType -> PType).
+  IsPType (Impl m) ('PLam f :: PHs (PPType #-> PPType)) =>
+  PConstructablePrim (Impl m) (PFix f)
+  where
+  pconImpl (PFix t) = Impl $ runTerm t
+  pmatchImpl t f = f (PFix (Term $ changeTy t))
   pcaseImpl = error "FIXME"
 
 instance
@@ -498,25 +524,9 @@ instance
       withIsPType d $ runTerm $ f (PSome1 (Proxy @(TyVar @a)) (Term $ changeTy t))
   pcaseImpl = error "FIXME"
 
-{-
-instance
-  forall m a (f :: PHs a -> PType).
-  IsPType (Impl m) ( 'PLam f :: PHs (a #-> PPType)) =>
-  PConstructablePrim (Impl m) (PSome1 f)
-  where
-  -- TODO: Add explicit big lambda at term-level? Otherwise you get weird comments
-  pconImpl t' = Impl do
-    lvl <- varify <$> getLvl
-    let d :: IsPTypeData (Impl m) (TyVar @a) = IsPTypeData $ IsPTypePrimData $ pure $ NTyVar lvl
-    withIsPType d $ case pHs_inverse @a of Refl -> do -- Why is GHC so ungodly stupid? Why the fuck do I need this much indentation?
-                                                      let PForall1 (t :: Term (Impl m) (f (TyVar @a))) = t'
-                                                      succLvl $ runTerm t
-  pmatchImpl t f = f (PForall1 (Term $ changeTy t))
-  pcaseImpl = error "FIXME"
--}
-
 instance PHasNewtypes (Impl m)
 instance Applicative m => PSOP (Impl m)
+instance PRecursion (Impl m)
 instance Applicative m => PNix (Impl m)
 
 compileTy' :: forall a. (IsPType (Impl Identity) a) => Proxy a -> Text

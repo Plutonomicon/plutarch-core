@@ -1,10 +1,7 @@
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
-
 module Plutarch.Frontends.Nix (PNix) where
 
 import Plutarch.Core (PConstructable, PDSL)
-import Plutarch.Frontends.Data (PAny, PSOP)
+import Plutarch.Frontends.Data (PAny, PRecursion, PSOP)
 import Plutarch.Frontends.LC (PLC, PPolymorphic)
 import Plutarch.Frontends.Untyped (PUntyped)
 
@@ -15,5 +12,6 @@ class
   , PPolymorphic e
   , PConstructable e PAny
   , PSOP e
+  , PRecursion e
   ) =>
   PNix e

@@ -56,7 +56,6 @@ common c
     -Wno-missing-safe-haskell-mode -Wno-missing-local-signatures
     -Wno-prepositive-qualified-module -Wno-missing-import-lists
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
-    -fprint-explicit-kinds -fprint-equality-relations
     -fprint-explicit-foralls -fno-show-valid-hole-fits
 
   build-depends:
@@ -69,9 +68,11 @@ common c
 library
   import:          c
   exposed-modules:
+    Plutarch.Backends.C
     Plutarch.Backends.Nix
     Plutarch.Core
     Plutarch.Frontends.Data
+    Plutarch.Frontends.Harvard
     Plutarch.Frontends.LC
     Plutarch.Frontends.Nix
     Plutarch.Frontends.Partial

@@ -7,7 +7,7 @@ import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
 import Data.Type.Equality ((:~:) (Refl))
 import Plutarch.Backends.Nix (compileAp)
-import Plutarch.Frontends.Data (PAny)
+import Plutarch.Frontends.Data (PAny, PFix (PFix))
 import Plutarch.Frontends.Nix (PNix)
 import Plutarch.Helpers (PForall, PForallF (PForallF), pforall)
 import Plutarch.PType (pHs_inverse)
@@ -83,8 +83,63 @@ ptop = pforall $ pcon $ PTopF $ plam $ const $$ PMyUnit $$ PUnit
 psometop :: (PNix e) => Term e (PSome1 PTopF)
 psometop = pcon $ PSome1 Proxy $ pcon $ PTopF $ plam \(_ :: T PUnit) -> pcon $ PMyUnit $$ PUnit
 
+-- Taken from Unraveling recursion (2019) by Kireev et al.
+newtype PSelfF a self ef = PSelfF (ef /$ (self #-> a))
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+newtype PSelf a ef = PSelf (ef /$ PFix (PSelfF a))
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+
+pself :: (PNix e, IsPType e a) => Term e $ (PSelf a #-> a) #-> PSelf a
+pself = plam \s -> pcon $ PSelf $ pcon $ PFix $ pcon $ PSelfF $ plam \x -> s # (pcon $ PSelf x)
+
+punself :: (PNix e, IsPType e a) => Term e $ PSelf a #-> PSelf a #-> a
+punself = plam \s -> pmatch s \case
+  PSelf s' -> pmatch s' \case
+    PFix s'' -> pmatch s'' \case
+      PSelfF s''' -> plam \y -> s''' # (pmatch y \case PSelf y' -> y')
+
+pselfApply :: (PNix e, IsPType e a) => Term e $ PSelf a #-> a
+pselfApply = plam \s -> punself # s # s
+
+pY :: (PNix e, IsPType e a) => Term e $ (a #-> a) #-> a
+pY = plam \f -> (plam \z -> f # (pselfApply # z)) # (pself # (plam \z -> f # (pselfApply # z)))
+
+newtype PYF a ef = PYF (ef /$ (a #-> a) #-> a)
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+
+pYPoly :: PNix e => Term e (PForall PYF)
+pYPoly = pforall $ pcon $ PYF pY
+
+pfix :: forall e a b. (PNix e, IsPType e a, IsPType e b) => Term e $ ((a #-> b) #-> a #-> b) #-> a #-> b
+pfix = plam \f -> fzz f # (pself # fzz f)
+  where
+    expand :: Term e (a #-> b) -> Term e (a #-> b)
+    expand f = plam \x -> f # x
+    fzz :: Term e ((a #-> b) #-> a #-> b) -> Term e (PSelf (a #-> b) #-> a #-> b)
+    fzz f = plam \z -> f # (expand $ pselfApply # z)
+
+data PNatF a ef = PN | PS (ef /$ a)
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+newtype PNat ef = PNat (ef /$ PFix PNatF)
+  deriving stock (Generic)
+  deriving anyclass (PHasRepr)
+
+pplus :: forall e. PNix e => Term e $ PNat #-> PNat #-> PNat
+pplus = pfix # (plam \self x y -> f self x y)
+  where
+    f :: Term e (PNat #-> PNat #-> PNat) -> Term e PNat -> Term e PNat -> Term e PNat
+    f self x y = pmatch x \case
+      PNat x' -> pmatch x' \case
+        PFix x'' -> pmatch x'' \case
+          PN -> y
+          PS x''' -> pmatch (self # (pcon $ PNat x''') # y) \case
+            PNat r -> pcon $ PNat $ pcon $ PFix $ pcon $ PS r
+
 data PLib ef = PLib
-  -- FIXME: replace with foralls
   { pmutate :: ef /$ PMyTriple PAny PAny PAny #-> PMyTriple PAny PAny PAny
   , pconst :: ef /$ PForall PConstF
   , pswap :: ef /$ PMyEither PAny PAny #-> PMyEither PAny PAny
@@ -92,6 +147,8 @@ data PLib ef = PLib
   , ptop :: ef /$ PForall PTopF
   , pproxy :: ef /$ PForall (PProxy @PUnit)
   , psometop :: ef /$ PSome1 PTopF
+  , pYPoly :: ef /$ PForall PYF
+  , pplus :: ef /$ PNat #-> PNat #-> PNat
   }
   deriving stock (Generic)
   deriving anyclass (PHasRepr)
@@ -107,6 +164,8 @@ plib =
       , ptop
       , pproxy
       , psometop
+      , pYPoly
+      , pplus
       }
 
 example :: Text

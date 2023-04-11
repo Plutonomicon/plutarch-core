@@ -1,6 +1,7 @@
-module Plutarch.Frontends.Untyped (PUntyped (punsafeCoerce)) where
+module Plutarch.Frontends.Untyped (PUntyped (..)) where
 
-import Plutarch.Core (IsPType, PDSL, Term)
+import Plutarch.Core (IsPType, IsPTypeData, PDSL, Term)
 
-class PDSL edsl => PUntyped edsl where
-  punsafeCoerce :: (IsPType edsl a, IsPType edsl b) => Term edsl a -> Term edsl b
+class PDSL e => PUntyped e where
+  punsafeCoerce :: (IsPType e a, IsPType e b) => Term e a -> Term e b
+  punsafeGiveType :: IsPTypeData e x
