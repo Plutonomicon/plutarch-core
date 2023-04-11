@@ -202,6 +202,7 @@ interpret ::
   f (Term ls' tag)
 interpret SWBase intr (Send lengths _ x) = Send lengths typeRep <$> runInterpreterBase intr x
 
+
 contract :: (IsLanguageContractible l ~ 'True, CElemOf l ls) => Term (l ': ls) tag -> Term ls tag
 contract x = Contract elemOf x
 
