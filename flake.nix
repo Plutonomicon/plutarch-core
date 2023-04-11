@@ -18,6 +18,7 @@
       formattersFor = system: with (pkgsFor system); [
         nixpkgs-fmt
         haskellPackages.cabal-fmt
+        haskell.packages.ghc924.haskell-language-server
         (haskell.lib.compose.dontCheck haskell.packages.ghc944.fourmolu_0_10_1_0)
       ];
       regen = system: (pkgsFor system).writeShellApplication {

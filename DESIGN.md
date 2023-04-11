@@ -204,6 +204,22 @@ How do we recover the graph from the tree, while still enabling arbitrary interp
 
 The interpretation is modelled as a _fold_, that starts from the bottom and goes all the way up.
 Each step accumulates information that is bubbled up.
-The interpretation turns a language `l` into a language `l'`.
-If the former is expansible, the latter has to be too.
-If the former is contractible, the latter has to be too.
+The interpretation turns a term of languages `ListAppend ls ls''` into `ListAppend ls' ls''`.
+Say we are interpreting `l`, which in its child allows an extra language `l'`.
+Take for example
+```haskell
+data Arithmetic
+data instance L Arithmetic term ls tag where
+  Add :: term ls0 (Expr w Int) -> term ls1 (Expr w Int) -> L Arithmetic term '[ls0, ls1] (Expr w Int)
+  Mult :: term ls0 (Expr w Int) -> term ls1 (Expr w Int) -> L Arithmetic term '[ls0, ls1] (Expr w Int)
+  IntLiteral :: Int -> L Arithmetic term '[] (Expr w Int)
+  Double :: term ls0 (Expr w Int) -> L Arithmetic term '[ls0] (Expr w Int)
+  IntTy :: L Arithmetic term '[] (TypeInfo Int)
+  IsZero :: term ls0 (Expr w Int) -> L Arithmetic term '[ls0] (Expr w Bool)
+
+data Arithmetic2
+data instance L Arithmetic2 term ls tag where
+  Arithmetic2 :: term (Arithmetic ': ls0) tag -> L Arithmetic2 term '[ls0] tag
+```
+
+Assume we have a `Term (Arithmetic2 ': ls) (Expr w Int)`, how do we turn it into an `Term (Arithmetic ': ls) (Expr w Int)`?
