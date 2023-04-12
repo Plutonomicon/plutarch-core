@@ -9,9 +9,9 @@ common c
   default-language:   GHC2021
   default-extensions:
     BlockArguments
+    DataKinds
     LambdaCase
     TypeFamilies
-    DataKinds
 
   ghc-options:
     -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures
@@ -22,7 +22,7 @@ common c
     -fprint-explicit-foralls -fno-show-valid-hole-fits
 
   build-depends:
-    , base                 >=4.15
+    , base          >=4.15
     , generics-sop
     , text
     , transformers

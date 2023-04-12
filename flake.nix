@@ -10,7 +10,7 @@
       pkgsFor = system: nixpkgs.legacyPackages.${system};
       hsOverlay = hLib: hsPkgs: hsPkgs.override {
         overrides = final: prev: {
-          plutarch-core = final.callPackage ./plutarch-core.nix {};
+          plutarch-core = final.callPackage ./plutarch-core.nix { };
         };
       };
       hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskellPackages;
