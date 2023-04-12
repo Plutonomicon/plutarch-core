@@ -202,24 +202,29 @@ without disturbing the other parts?
 How do we share the work done on multiple appearances of the same node in the AST?
 How do we recover the graph from the tree, while still enabling arbitrary interpretations?
 
-The interpretation is modelled as a _fold_, that starts from the bottom and goes all the way up.
-Each step accumulates information that is bubbled up.
-The interpretation turns a term of languages `ListAppend ls ls''` into `ListAppend ls' ls''`.
-Say we are interpreting `l`, which in its child allows an extra language `l'`.
-Take for example
-```haskell
-data Arithmetic
-data instance L Arithmetic term ls tag where
-  Add :: term ls0 (Expr w Int) -> term ls1 (Expr w Int) -> L Arithmetic term '[ls0, ls1] (Expr w Int)
-  Mult :: term ls0 (Expr w Int) -> term ls1 (Expr w Int) -> L Arithmetic term '[ls0, ls1] (Expr w Int)
-  IntLiteral :: Int -> L Arithmetic term '[] (Expr w Int)
-  Double :: term ls0 (Expr w Int) -> L Arithmetic term '[ls0] (Expr w Int)
-  IntTy :: L Arithmetic term '[] (TypeInfo Int)
-  IsZero :: term ls0 (Expr w Int) -> L Arithmetic term '[ls0] (Expr w Bool)
+The trick is to first notice that expansibility and contractibility isn't inherent.
+They can be emulated as constructors of the language.
+Then, because of linearity, interpretation becomes trivial:
+Given a language `l` in a list of languages `ls`,
+a term `Term ls tag` possibly holds a node of language `l`.
+The interpretation function will be morally run only once (exceptions apply);
+it will map a node of language `l` to a node of language `l'`.
 
-data Arithmetic2
-data instance L Arithmetic2 term ls tag where
-  Arithmetic2 :: term (Arithmetic ': ls0) tag -> L Arithmetic2 term '[ls0] tag
-```
+What about interpreting multiple languages at once?
+There is no such thing as a "multi-language node", so we necessarily
+always handle a specific root language.
+However, the node contains nested languages, some of which may be of interest.
+We take this to the limit, and say that we can interpret `Term ls tag` into
+`Term ls' tag`, with `Interpret ls ls'`, a list of interpreters, one for each
+`l` & `l'` in `ls` & `ls'`.
+Each interpreter must additionally map the nested languages from `ls` to `ls'` too.
+A node can contain multiple subnodes, and nodes of different subsets of `ls`.
+For each subnode, we choose a single interpretation function from `Interpret ls ls'`,
+which transforms the node and its nested nodes/languages. If the node did not contain
+some language, then it will not transform it either.
 
-Assume we have a `Term (Arithmetic2 ': ls) (Expr w Int)`, how do we turn it into an `Term (Arithmetic ': ls) (Expr w Int)`?
+How do we recover the simple functionality of folding over a contractible language?
+Contractibility itself represents a node, hence the interpreter will in that case
+recurse without delegating the recursion elsewhere.
+
+Altogether, this should give us all the power we need.

@@ -1,182 +1,96 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
-
 module Plutarch.Core (
-  PDSL (..),
-  PDSLKind (..),
-  UnPDSLKind,
   Term (..),
-  ClosedTerm,
-  unTerm,
-  PConcrete,
-  PConcreteEf,
-  IsPType (..),
-  isPTypeQuantified,
-  IsPTypeData (IsPTypeData),
-  PConstructable (..),
-  PConstructablePrim (..),
-  PAp (..),
-  PEmbeds (..),
-  Compile,
-  CompileTy,
-  CompileAp,
-  IsPTypePrim (..),
-  withIsPType,
-  PPure (..),
-  PSubDSL (..),
-  TermIO,
-  PAll,
+  runInterpreter,
+  Interpret (..),
+  Term' (..),
+  InterpretAllIn (..),
+  InterpretIn (..),
+  Permute (..),
+  ListEqMod1 (..),
+  SubLS (..),
+  Tag,
+  Language,
+  L,
 ) where
 
-import Data.Functor.Compose (Compose)
-import Data.Kind (Constraint, Type)
-import Data.Proxy (Proxy (Proxy))
-import GHC.Records (HasField (getField))
-import GHC.Stack (HasCallStack)
-import Generics.SOP (All)
-import Plutarch.Internal.WithDictHack (unsafeWithDict)
-import Plutarch.PType (
-  MkPTypeF,
-  PHs,
-  PType,
-  PTypeF,
- )
-import Plutarch.Reduce (NoReduce)
-import Plutarch.Repr (PIsRepr, PRepr, PReprC, PReprSort, prfrom, prto)
+import Data.Kind (Type)
 
-newtype PDSLKind = PDSLKind (PType -> Type)
+type Tag = Type
+type Language = Type
+type L :: Language -> [Language] -> Tag -> Type
+data family L l ls tag
 
-type family UnPDSLKind (e :: PDSLKind) :: PType -> Type where
-  UnPDSLKind ('PDSLKind e) = e
+{- | Isomorphic to naturals.
+ @ListEqMod1 xs ys x@ tells us that @xs@ is equal to @ys@, modulo @x@,
+ i.e., if you remove a specific @x@ from @ys@, you get @xs@.
+ You can also think of it as inserting @x@ into @xs@, resulting in @ys@.
+ Representationally it is an index into a list.
+-}
+type ListEqMod1 :: [a] -> [a] -> a -> Type
+data ListEqMod1 xs ys x where
+  ListEqMod1N :: ListEqMod1 xs (x : xs) x
+  ListEqMod1S :: ListEqMod1 xs ys x -> ListEqMod1 (y : xs) (y : ys) x
 
-type NoTypeInfo :: forall k. PHs k -> Constraint
-class NoTypeInfo a
-instance NoTypeInfo a
+{- | @Permute xs ys@ tells us we can permute @xs@ into @ys@.
+ The proof of that is a list of indices into @ys@, each one
+ being the corresponding index from the element in @xs@ into @ys@.
+-}
+type Permute :: [a] -> [a] -> Type
+data Permute xs ys where
+  PermuteN :: Permute '[] '[]
+  PermuteS :: ListEqMod1 ys ys' x -> Permute xs ys -> Permute (x : xs) ys'
 
--- FIXME: support untyped languages, i.e., forall x. IsPType e x
-class Monad (PIO e) => PDSL (e :: PDSLKind) where
-  -- FIXME: possibly add boolean parameter to indicate purity
-  data PIO e :: Type -> Type
-  data IsPTypePrimData e :: forall (a :: PType). PHs a -> Type
-  punsafePerformIO :: IsPType e a => TermIO e a -> Term e a
+-- @SubLS xs ys zs ws (Just '(x, y))@ shows that @xs@ and @ys@ share a common suffix,
+-- with the prefix containing @zs@ in @xs@ and @ws@ in @ys@, except for @x@ and @y@.
+type SubLS :: [Language] -> [Language] -> [Language] -> [Language] -> Maybe (Language, Language) -> Type
+data SubLS xs ys zs ws except where
+  SubLSBase :: SubLS xs xs '[] '[] Nothing
+  SubLSSwap :: SubLS xs ys zs ws except -> SubLS (x : xs) (y : ys) (x : zs) (y : ws) except
+  SubLSSkip :: SubLS xs ys zs ws except -> SubLS xs ys (x : zs) (y : ws) except
+  SubLSExcept :: SubLS xs ys zs ws Nothing -> SubLS xs ys (x : zs) (y : ws) (Just '(x, y))
 
-type TermIO e a = PIO e (Term e a)
+{- | Interpret a term of root language l to
+ a term of root language l'. The inner languages
+ are mappped from ls to ls'.
+-}
+type InterpretIn :: [Language] -> [Language] -> Language -> Language -> Type
+newtype InterpretIn ls ls' l l'
+  = InterpretIn
+      ( forall ls0 ls1 tag.
+        SubLS ls0 ls1 ls ls' (Just '(l, l')) ->
+        Term' l ls0 tag ->
+        Term' l' ls1 tag
+      )
 
-class PPure e where
-  pperformIO :: IsPType e a => TermIO e a -> Term e a
+runInterpreter ::
+  InterpretIn ls ls' l l' ->
+  SubLS ls0 ls1 ls ls' (Just '(l, l')) ->
+  Term' l ls0 tag ->
+  Term' l' ls1 tag
+runInterpreter (InterpretIn f) = f
 
-class PSubDSL e cs where
-  psubDSL :: (forall e'. PAll e' cs => (forall b. Term e b -> Term e' b) -> Term e' a) -> Term e a
+{- | @InterpretAllIn ls0 ls1 ls2 ls3@ contains functions to
+ interpret terms which root nodes are in the languages of @ls2@ into
+ root nodes which languages are of @ls3@, while mapping the inner languages
+ from @ls0@ to @ls1@.
+-}
+type InterpretAllIn :: [Language] -> [Language] -> [Language] -> [Language] -> Type
+data InterpretAllIn ls0 ls1 ls2 ls3 where
+  InterpretAllInN :: InterpretAllIn ls0 ls1 '[] '[]
+  InterpretAllInS :: InterpretIn ls0 ls1 l l' -> InterpretAllIn ls0 ls1 ls2 ls3 -> InterpretAllIn ls0 ls1 (l : ls2) (l' : ls3)
 
-type IsPTypePrim :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
-class IsPTypePrim (e :: PDSLKind) (x :: PHs a) where
-  isPTypePrim :: IsPTypePrimData e x
+-- | @Interpret ls ls'@ contains functions to interpret the languages @ls@ to @ls'@.
+type Interpret :: [Language] -> [Language] -> Type
+newtype Interpret ls ls' = Interpret (InterpretAllIn ls ls' ls ls')
 
-type role Term nominal nominal
-newtype Term (e :: PDSLKind) (a :: PType) where
-  Term :: UnPDSLKind e (PRepr a) -> Term e a
+-- | Like @Term@, but explicitly notes the language of the root node.
+type Term' :: Language -> [Language] -> Tag -> Type
+data Term' l ls tag where
+  Term' :: L l ls0 tag -> Interpret ls0 ls1 -> Permute ls1 ls2 -> Term' l ls2 tag
 
-unTerm :: Term e a -> UnPDSLKind e (PRepr a)
-unTerm (Term t) = t
-
-class c e => PImplements e c
-instance c e => PImplements e c
-
-type PAll e cs = All (PImplements e) cs
-
-type ClosedTerm (cs :: [PDSLKind -> Constraint]) (a :: PType) = forall e. PAll e cs => Term e a
-
-type IsPTypeData :: PDSLKind -> forall (a :: PType). PHs a -> Type
-newtype IsPTypeData e x = IsPTypeData (IsPTypePrimData e (PRepr x))
-
-type IsPType :: PDSLKind -> forall (a :: PType). PHs a -> Constraint
--- FIXME: remove GiveRepr superclass, should be unnecessary, maybe GHC bug?
-class IsPType e (x :: PHs a) where
-  isPType :: IsPTypeData e x
-instance
-  ( IsPTypePrim e (PRepr x)
-  ) =>
-  IsPType e (x :: PHs a)
-  where
-  isPType = IsPTypeData isPTypePrim
-
-withIsPType :: forall e x a. IsPTypeData e x -> (IsPType e x => a) -> a
-withIsPType x = unsafeWithDict (Proxy @(IsPType e x)) x
-
-isPTypeQuantified ::
-  forall e f y.
-  (forall x. IsPType e x => IsPType e (f x)) =>
-  Proxy e ->
-  Proxy f ->
-  IsPTypeData e y ->
-  IsPTypeData e (f y)
-isPTypeQuantified _ _ y = withIsPType y $ isPType @e @_ @(f y)
-
-type PConcreteEf :: PDSLKind -> PTypeF
-type PConcreteEf e = MkPTypeF (IsPType e) (Compose NoReduce (Term e))
-
-type PConcrete :: PDSLKind -> PType -> Type
-type PConcrete e a = a (PConcreteEf e)
-
-class (PDSL e, IsPTypePrim e a) => PConstructablePrim e (a :: PType) where
-  pconImpl :: HasCallStack => PConcrete e a -> UnPDSLKind e a
-  pmatchImpl :: forall b. (HasCallStack, IsPType e b) => UnPDSLKind e a -> (PConcrete e a -> Term e b) -> Term e b
-  pcaseImpl :: forall b. (HasCallStack, IsPType e b) => UnPDSLKind e a -> (PConcrete e a -> PIO e (Term e b)) -> PIO e (Term e b)
-
--- | The crux of what an eDSL is.
-class IsPType e a => PConstructable e (a :: PType) where
-  pcon :: HasCallStack => PConcrete e a -> Term e a
-  pmatch ::
-    forall b.
-    (HasCallStack, IsPType e b) =>
-    Term e a ->
-    (PConcrete e a -> Term e b) ->
-    Term e b
-  pcase ::
-    forall b.
-    (HasCallStack, IsPType e b) =>
-    Term e a ->
-    (PConcrete e a -> PIO e (Term e b)) ->
-    PIO e (Term e b)
-
-instance (PIsRepr (PReprSort a), PReprC (PReprSort a) a, PConstructablePrim e (PRepr a)) => PConstructable e a where
-  pcon x = Term $ pconImpl (prfrom x)
-  pmatch (Term t) f = pmatchImpl t \x -> f (prto x)
-  pcase (Term t) f = pcaseImpl t \x -> f (prto x)
-
-class PDSL e => PAp (f :: Type -> Type) e where
-  papr :: HasCallStack => f a -> Term e b -> Term e b
-  papl :: HasCallStack => Term e a -> f b -> Term e a
-
-class PAp m e => PEmbeds (m :: Type -> Type) e where
-  pembed :: HasCallStack => m (Term e a) -> Term e a
-
-type CompileTy variant output =
-  forall a (x :: PHs a).
-  Proxy x ->
-  (forall e. variant e => IsPType e x) =>
-  output
-
-type CompileAp variant output =
-  forall a m.
-  Proxy a ->
-  (HasCallStack, Applicative m, (forall e. variant e => IsPType e a)) =>
-  (forall e. (variant e, PAp m e) => Term e a) ->
-  m output
-
-type Compile variant output =
-  forall a m.
-  Proxy a ->
-  (HasCallStack, Monad m, (forall e. variant e => IsPType e a)) =>
-  (forall e. (variant e, PEmbeds m e) => Term e a) ->
-  m output
-
-instance
-  ( PConstructable e r
-  , IsPType e a
-  , HasField name (PConcrete e r) (Term e a)
-  ) =>
-  HasField name (Term e r) (Term e a)
-  where
-  getField x = pmatch x \x' -> getField @name x'
+{- | @Term ls tag@ represents a term in the languages of @ls@,
+ with the tag @tag@, often representing an embedded type.
+-}
+type Term :: [Language] -> Tag -> Type
+data Term ls tag where
+  Term :: Term' l ls tag -> ListEqMod1 ls ls' l -> Term ls' tag
