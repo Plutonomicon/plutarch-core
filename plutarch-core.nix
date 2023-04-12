@@ -1,8 +1,8 @@
-{ mkDerivation, base, generics-sop, lib, text, transformers }:
+{ mkDerivation, base, lib }:
 mkDerivation {
   pname = "plutarch-core";
   version = "0.1.0";
   src = ./.;
-  libraryHaskellDepends = [ base generics-sop text transformers ];
+  libraryHaskellDepends = [ base ];
   license = lib.licenses.mit;
 }

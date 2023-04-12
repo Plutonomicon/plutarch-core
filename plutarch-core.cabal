@@ -21,11 +21,7 @@ common c
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
     -fprint-explicit-foralls -fno-show-valid-hole-fits
 
-  build-depends:
-    , base          >=4.15
-    , generics-sop
-    , text
-    , transformers
+  build-depends:      base >=4.15
 
 library
   import:          c
