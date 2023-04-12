@@ -8,47 +8,10 @@ extra-source-files: README.md
 common c
   default-language:   GHC2021
   default-extensions:
-    NoFlexibleInstances
-    NoMonomorphismRestriction
-    NoStarIsType
     BlockArguments
-    DataKinds
-    DefaultSignatures
-    DeriveAnyClass
-    DerivingStrategies
-    DerivingVia
-    DisambiguateRecordFields
-    DuplicateRecordFields
-    FunctionalDependencies
-    GADTs
-    ImpredicativeTypes
     LambdaCase
-    LexicalNegation
-    LiberalTypeSynonyms
-    MonadComprehensions
-    MultiWayIf
-    NegativeLiterals
-    NondecreasingIndentation
-    NumDecimals
-    OverloadedLabels
-    OverloadedLists
-    OverloadedRecordDot
-    OverloadedStrings
-    PackageImports
-    PatternSynonyms
-    QualifiedDo
-    QuantifiedConstraints
-    QuasiQuotes
-    RankNTypes
-    RecordWildCards
-    RecursiveDo
-    RoleAnnotations
     TypeFamilies
-    TypeFamilyDependencies
-    UnicodeSyntax
-    UnliftedFFITypes
-    UnliftedNewtypes
-    ViewPatterns
+    DataKinds
 
   ghc-options:
     -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures
@@ -61,38 +24,10 @@ common c
   build-depends:
     , base                 >=4.15
     , generics-sop
-    , text                 >=2
-    , text-builder-linear  >=0.1
+    , text
     , transformers
 
 library
   import:          c
   exposed-modules:
-    Plutarch.Backends.C
-    Plutarch.Backends.Nix
     Plutarch.Core
-    Plutarch.Frontends.Data
-    Plutarch.Frontends.Harvard
-    Plutarch.Frontends.LC
-    Plutarch.Frontends.Nix
-    Plutarch.Frontends.Partial
-    Plutarch.Frontends.Untyped
-    Plutarch.Helpers
-    Plutarch.Internal.CoerceTo
-    Plutarch.Internal.Unimplemented
-    Plutarch.Internal.WithDictHack
-    Plutarch.Internal.Witness
-    Plutarch.Prelude
-    Plutarch.PType
-    Plutarch.Reduce
-    Plutarch.Repr
-    Plutarch.Repr.Newtype
-    Plutarch.Repr.Primitive
-    Plutarch.Repr.SOP
-    Plutarch.TermCont
-
-executable examples
-  import:        c
-  main-is:       Examples/Main.hs
-  build-depends: directory
-  ghc-options:   -Wno-missing-home-modules -Wwarn

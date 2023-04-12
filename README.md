@@ -4,30 +4,42 @@
 
 `nix run .#regen` to fix formatting and `plutarch-core.nix`
 
+### Status
+
+Plutarch (2) is currently very much still a WIP.
+
+The first backend that will be focused on is likely Untyped Plutus Core, due to
+demand from users.
+
+A C backend will likely be the next.
+
 ### About
 
-Plutarch (2) is an eDSL framework for Haskell, that essentially gives you
-embedded data types.
-That is:
-- You can declare embedded data types.
-- You can interpret these data types in many ways (they are like HKDs).
-- You can support arbitrary data types by mapping them onto "core" data types
-  using "representations" (see `EIsRepr`).
+Plutarch (2) aims to be an eDSL framework.
+Given a task, it is practice to make an ad-hoc eDSL for that task,
+Accelerate, Clash, Plutarch 1, etc.
 
-The rest is mostly tooling around this. For example, optics, common
-backend tooling, example backends.
+Approaches like Compiling with Categories exist, but this still falls short.
+We lack _interoperability_, and _freedom_.
 
-AFAICT the techniques employed in Plutarch 2 are novel, but I might be wrong.
-Notably, we don't use TH magic. It's all pure Haskell, with many quantified constraints.
+An eDSL often has functions, but not always. It will very often
+not support the full feature set of Haskell (and if it did, you could instead
+translate STG to your backend!).
+We wish to type these limitations.
 
-The core design of Plutarch 2 has been settled.
-That is, `Plutarch.Core` and `Plutarch.EType` are unlikely to change.
-One missing feature is supporting arbitrary data kinds at the type-level,
-however, it is not yet clear if this is possible without type-level generic `to` and `from`.
+Plutarch (2) is the (WIP) result of over a year of research and pondering,
+aiming to solve all these issues.
 
-I originally designed Plutarch 1 for generating [UPLC](https://well-typed.com/blog/2022/08/plutus-cores/) for Cardano.
-Plutarch 2 is generic, and isn't Cardano-specific in any way. This repository contains no references to anything
-Cardano-related besides this README.
+There are many small novel contributions, albeit the biggest one is `Term`.
+It looks like `Free`, but without `Pure`.
+It supports reordering, and _partial_ reinterpretation (!), without sacrificing
+support for **linearity**.
+It is very powerful.
+
+Other small ideas include eDSL-level optimisations, top-level common expression elimination
+through hashing, avoiding redoing work through sharing thunks, supporting normal ADTs
+through Generics and a recursive HKD-like construction, each of which might be of
+independent interest too.
 
 ### Contact, support, further information
 

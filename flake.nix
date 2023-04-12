@@ -10,16 +10,15 @@
       pkgsFor = system: nixpkgs.legacyPackages.${system};
       hsOverlay = hLib: hsPkgs: hsPkgs.override {
         overrides = final: prev: {
-          plutarch-core = final.callPackage ./plutarch-core.nix { text = final.text_2_0_1; };
-          text-builder-linear = hLib.markUnbroken (prev.text-builder-linear.override { text = final.text_2_0_1; });
+          plutarch-core = final.callPackage ./plutarch-core.nix {};
         };
       };
-      hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskell.packages.ghc924; # ghc944
+      hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskellPackages;
       formattersFor = system: with (pkgsFor system); [
         nixpkgs-fmt
         haskellPackages.cabal-fmt
-        haskell.packages.ghc924.haskell-language-server
-        (haskell.lib.compose.dontCheck haskell.packages.ghc944.fourmolu_0_10_1_0)
+        haskellPackages.haskell-language-server
+        haskellPackages.fourmolu
       ];
       regen = system: (pkgsFor system).writeShellApplication {
         name = "regen";
