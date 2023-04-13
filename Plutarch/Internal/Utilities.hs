@@ -70,3 +70,40 @@ transPermute :: Permute xs ys -> Permute ys zs -> Permute xs zs
 transPermute PermuteN perm = case perm of
   PermuteN -> PermuteN
 transPermute (PermuteS idx rest) perm = idxPermute idx perm \idx' perm' -> PermuteS idx' (transPermute rest perm')
+
+data SameShapeAs xs ys where
+  SameShapeAsN :: SameShapeAs '[] '[]
+  SameShapeAsS :: SameShapeAs xs ys -> SameShapeAs (x : xs) (y : ys)
+
+extractShape :: InterpretAllIn xs ys zs ws -> SameShapeAs zs ws
+extractShape InterpretAllInN = SameShapeAsN
+extractShape (InterpretAllInS _ rest) = SameShapeAsS (extractShape rest)
+
+transInterpretIn :: SameShapeAs ys zs -> InterpretIn xs ys x y -> InterpretIn ys zs y z -> InterpretIn xs zs x z
+transInterpretIn =
+  \shape xy yz -> InterpretIn \subls term ->
+    helper shape subls \subls0 subls1 ->
+      runInterpreter yz subls1 $ runInterpreter xy subls0 term where
+  helper ::
+    SameShapeAs ys zs ->
+    SubLS ls0 ls2 xs zs (Just '(x, z)) ->
+    (forall ls1. SubLS ls0 ls1 xs ys (Just '(x, y)) -> SubLS ls1 ls2 ys zs (Just '(y, z)) -> b) ->
+    b
+  helper (SameShapeAsS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
+  helper (SameShapeAsS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
+  helper shape'@(SameShapeAsS shape) subls@(SubLSExcept rest) k = helper' shape rest \subls0 subls1 -> k (_ subls0) undefined
+  helper' ::
+    SameShapeAs ys zs ->
+    SubLS ls0 ls2 xs zs Nothing ->
+    (forall ls1. SubLS ls0 ls1 xs ys Nothing -> SubLS ls1 ls2 ys zs Nothing -> b) ->
+    b
+  helper' SameShapeAsN SubLSBase k = k SubLSBase SubLSBase
+  helper' (SameShapeAsS shape) (SubLSSkip rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
+  helper' (SameShapeAsS shape) (SubLSSwap rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
+
+transInterpret :: Interpret xs ys -> Interpret ys zs -> Interpret xs zs
+transInterpret = \(Interpret xys) (Interpret yzs) -> Interpret $ go xys yzs where
+  go :: InterpretAllIn xs ys xs ys -> InterpretAllIn ys zs ys zs -> InterpretAllIn xs zs xs zs
+  go InterpretAllInN yzs = case yzs of
+    InterpretAllInN -> InterpretAllInN
+  go (InterpretAllInS xy xys) (InterpretAllInS yz yzs) = InterpretAllInS (transInterpretIn (SameShapeAsS $ extractShape yzs) xy yz) undefined
