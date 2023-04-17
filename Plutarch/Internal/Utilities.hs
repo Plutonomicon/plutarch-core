@@ -10,6 +10,7 @@ module Plutarch.Internal.Utilities (
 
 import Data.Type.Equality ((:~:) (Refl))
 import Plutarch.Core
+import Data.SOP (NP, K)
 
 insertPermute :: ListEqMod1 xs xs' y -> Permute xs ys -> Permute xs' (y : ys)
 insertPermute ListEqMod1N perm = PermuteS ListEqMod1N perm
@@ -91,7 +92,7 @@ transInterpretIn =
     b
   helper (SameShapeAsS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
   helper (SameShapeAsS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
-  helper shape'@(SameShapeAsS shape) subls@(SubLSExcept rest) k = helper' shape rest \subls0 subls1 -> k (_ subls0) undefined
+  helper shape'@(SameShapeAsS shape) subls@(SubLSExcept rest) k = helper' shape rest \subls0 subls1 -> k (undefined subls0) undefined
   helper' ::
     SameShapeAs ys zs ->
     SubLS ls0 ls2 xs zs Nothing ->
@@ -107,3 +108,46 @@ transInterpret = \(Interpret xys) (Interpret yzs) -> Interpret $ go xys yzs wher
   go InterpretAllInN yzs = case yzs of
     InterpretAllInN -> InterpretAllInN
   go (InterpretAllInS xy xys) (InterpretAllInS yz yzs) = InterpretAllInS (transInterpretIn (SameShapeAsS $ extractShape yzs) xy yz) undefined
+
+swapInterpretPermute :: Permute xs ys -> Interpret ys zs -> (forall ws. Interpret xs ws -> Permute ws zs -> r) -> r
+swapInterpretPermute _ _ _ = undefined
+
+interpretTerm' :: Interpret ls ls' -> Term' l ls tag -> Term' l ls' tag
+interpretTerm' intrs' (Term' node intrs perm) =
+  swapInterpretPermute perm intrs'
+    \intrs'' perm' -> Term' node (transInterpret intrs intrs'') perm'
+
+interpret1 :: InterpretIn (l : ls) (l' : ls) l l' -> Interpret (l : ls) (l' : ls)
+interpret1 = undefined
+
+interpret2 :: InterpretIn (l0 : l1 : ls) (l0' : l1' : ls) l0 l0' -> InterpretIn (l0 : l1 : ls) (l0' : l1' : ls) l1 l1' -> Interpret (l0 : l1 : ls) (l0' : l1' : ls)
+interpret2 = undefined
+
+{-
+data Expr a :: Tag where
+data Bools' :: SimpleLanguage where
+  Xor :: Bools '[Expr Bool, Expr Bool] (Expr Bool)
+  BoolLit :: Bool -> Bools '[] (Expr Bool)
+type Bools = UnSimpleLanguage Bools'
+-}
+
+data Append xs ys zs where
+  AppendN :: Append '[] ys ys
+  AppendS :: Append xs ys zs -> Append (x : xs) ys (x : zs)
+
+data Contains subnodes ls where
+  ContainsN :: Contains '[] '[]
+  ContainsS :: Append ls ls' ls'' -> Term ls tag -> Contains subnodes ls' -> Contains (tag : subnodes) ls''
+
+type SimpleLanguage :: [Tag] -> Tag -> Type
+data InstSimpleLanguage :: SimpleLanguage -> Language where
+data instance L (InstSimpleLanguage l) ls tag where
+  SimpleLanguageNode :: Contains subnodes ls -> l subnodes tag -> L (InstSimpleLanguage l) ls tag
+  ContractSimpleLanguage :: Term (InstSimpleLanguage l : InstSimpleLanguage l : ls) tag -> L (InstSimpleLanguage l) ls tag
+  ExpandSimpleLanguage :: Term ls tag -> L (InstSimpleLanguage l) ls tag
+
+foldSimpleLanguage ::
+  (forall ls' tag' subnodes r. NP subnodes (K a) -> Contains subnodes ls -> l subnodes tag' -> (Term' l' ls tag', a)) ->
+  Term (InstSimpleLanguage l : ls) tag ->
+  (Term (l' : ls) tag, Maybe a)
+foldSimpleLanguage = undefined

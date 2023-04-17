@@ -21,7 +21,9 @@ common c
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
     -fprint-explicit-foralls -fno-show-valid-hole-fits
 
-  build-depends:      base >=4.15
+  build-depends:
+    base >=4.15
+    , sop-core ^>=0.5
 
 library
   import:          c
