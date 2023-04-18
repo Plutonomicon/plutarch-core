@@ -22,8 +22,8 @@ common c
     -fprint-explicit-foralls -fno-show-valid-hole-fits
 
   build-depends:
-    base >=4.15
-    , sop-core ^>=0.5
+    , base      >=4.15
+    , sop-core  ^>=0.5
 
 library
   import:          c

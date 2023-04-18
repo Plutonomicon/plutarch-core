@@ -8,9 +8,10 @@ module Plutarch.Internal.Utilities (
   transPermute,
 ) where
 
+import Data.Kind (Type)
+import Data.SOP (K, NP)
 import Data.Type.Equality ((:~:) (Refl))
 import Plutarch.Core
-import Data.SOP (NP, K)
 
 insertPermute :: ListEqMod1 xs xs' y -> Permute xs ys -> Permute xs' (y : ys)
 insertPermute ListEqMod1N perm = PermuteS ListEqMod1N perm
@@ -84,37 +85,41 @@ transInterpretIn :: SameShapeAs ys zs -> InterpretIn xs ys x y -> InterpretIn ys
 transInterpretIn =
   \shape xy yz -> InterpretIn \subls term ->
     helper shape subls \subls0 subls1 ->
-      runInterpreter yz subls1 $ runInterpreter xy subls0 term where
-  helper ::
-    SameShapeAs ys zs ->
-    SubLS ls0 ls2 xs zs (Just '(x, z)) ->
-    (forall ls1. SubLS ls0 ls1 xs ys (Just '(x, y)) -> SubLS ls1 ls2 ys zs (Just '(y, z)) -> b) ->
-    b
-  helper (SameShapeAsS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
-  helper (SameShapeAsS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
-  helper shape'@(SameShapeAsS shape) subls@(SubLSExcept rest) k = helper' shape rest \subls0 subls1 -> k (undefined subls0) undefined
-  helper' ::
-    SameShapeAs ys zs ->
-    SubLS ls0 ls2 xs zs Nothing ->
-    (forall ls1. SubLS ls0 ls1 xs ys Nothing -> SubLS ls1 ls2 ys zs Nothing -> b) ->
-    b
-  helper' SameShapeAsN SubLSBase k = k SubLSBase SubLSBase
-  helper' (SameShapeAsS shape) (SubLSSkip rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
-  helper' (SameShapeAsS shape) (SubLSSwap rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
+      runInterpreter yz subls1 $ runInterpreter xy subls0 term
+  where
+    helper ::
+      SameShapeAs ys zs ->
+      SubLS ls0 ls2 xs zs (Just '(x, z)) ->
+      (forall ls1. SubLS ls0 ls1 xs ys (Just '(x, y)) -> SubLS ls1 ls2 ys zs (Just '(y, z)) -> b) ->
+      b
+    helper (SameShapeAsS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
+    helper (SameShapeAsS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
+    helper shape'@(SameShapeAsS shape) subls@(SubLSExcept rest) k = helper' shape rest \subls0 subls1 -> k (undefined subls0) undefined
+    helper' ::
+      SameShapeAs ys zs ->
+      SubLS ls0 ls2 xs zs Nothing ->
+      (forall ls1. SubLS ls0 ls1 xs ys Nothing -> SubLS ls1 ls2 ys zs Nothing -> b) ->
+      b
+    helper' SameShapeAsN SubLSBase k = k SubLSBase SubLSBase
+    helper' (SameShapeAsS shape) (SubLSSkip rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
+    helper' (SameShapeAsS shape) (SubLSSwap rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
 
 transInterpret :: Interpret xs ys -> Interpret ys zs -> Interpret xs zs
-transInterpret = \(Interpret xys) (Interpret yzs) -> Interpret $ go xys yzs where
-  go :: InterpretAllIn xs ys xs ys -> InterpretAllIn ys zs ys zs -> InterpretAllIn xs zs xs zs
-  go InterpretAllInN yzs = case yzs of
-    InterpretAllInN -> InterpretAllInN
-  go (InterpretAllInS xy xys) (InterpretAllInS yz yzs) = InterpretAllInS (transInterpretIn (SameShapeAsS $ extractShape yzs) xy yz) undefined
+transInterpret = \(Interpret xys) (Interpret yzs) -> Interpret $ go xys yzs
+  where
+    go :: InterpretAllIn xs ys xs ys -> InterpretAllIn ys zs ys zs -> InterpretAllIn xs zs xs zs
+    go InterpretAllInN yzs = case yzs of
+      InterpretAllInN -> InterpretAllInN
+    go (InterpretAllInS xy xys) (InterpretAllInS yz yzs) = InterpretAllInS (transInterpretIn (SameShapeAsS $ extractShape yzs) xy yz) undefined
 
 swapInterpretPermute :: Permute xs ys -> Interpret ys zs -> (forall ws. Interpret xs ws -> Permute ws zs -> r) -> r
 swapInterpretPermute _ _ _ = undefined
 
 interpretTerm' :: Interpret ls ls' -> Term' l ls tag -> Term' l ls' tag
 interpretTerm' intrs' (Term' node intrs perm) =
-  swapInterpretPermute perm intrs'
+  swapInterpretPermute
+    perm
+    intrs'
     \intrs'' perm' -> Term' node (transInterpret intrs intrs'') perm'
 
 interpret1 :: InterpretIn (l : ls) (l' : ls) l l' -> Interpret (l : ls) (l' : ls)
@@ -139,15 +144,21 @@ data Contains subnodes ls where
   ContainsN :: Contains '[] '[]
   ContainsS :: Append ls ls' ls'' -> Term ls tag -> Contains subnodes ls' -> Contains (tag : subnodes) ls''
 
-type SimpleLanguage :: [Tag] -> Tag -> Type
-data InstSimpleLanguage :: SimpleLanguage -> Language where
+type SimpleLanguage = [Tag] -> Tag -> Type
+data InstSimpleLanguage :: SimpleLanguage -> Language
 data instance L (InstSimpleLanguage l) ls tag where
   SimpleLanguageNode :: Contains subnodes ls -> l subnodes tag -> L (InstSimpleLanguage l) ls tag
   ContractSimpleLanguage :: Term (InstSimpleLanguage l : InstSimpleLanguage l : ls) tag -> L (InstSimpleLanguage l) ls tag
   ExpandSimpleLanguage :: Term ls tag -> L (InstSimpleLanguage l) ls tag
 
+extractSimpleLanguage ::
+  (l subnodes tag -> NP (K a) subnodes -> a) ->
+  Term '[InstSimpleLanguage l] tag ->
+  a
+extractSimpleLanguage = undefined
+
 foldSimpleLanguage ::
-  (forall ls' tag' subnodes r. NP subnodes (K a) -> Contains subnodes ls -> l subnodes tag' -> (Term' l' ls tag', a)) ->
+  (forall ls' tag' subnodes r. NP (K a) subnodes -> Contains subnodes ls -> l subnodes tag' -> (Term' l' ls tag', a)) ->
   Term (InstSimpleLanguage l : ls) tag ->
   (Term (l' : ls) tag, Maybe a)
-foldSimpleLanguage = undefined
+foldSimpleLanguage _ _ = undefined
