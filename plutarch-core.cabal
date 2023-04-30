@@ -10,6 +10,7 @@ common c
   default-extensions:
     BlockArguments
     DataKinds
+    FunctionalDependencies
     LambdaCase
     TypeFamilies
 
@@ -20,6 +21,7 @@ common c
     -Wno-prepositive-qualified-module -Wno-missing-import-lists
     -Wno-all-missed-specializations -Wno-unticked-promoted-constructors
     -fprint-explicit-foralls -fno-show-valid-hole-fits
+    -Wno-unused-type-patterns
 
   build-depends:
     , base      >=4.15

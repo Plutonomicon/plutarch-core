@@ -5,7 +5,7 @@ module Plutarch.Core (
   Term' (..),
   InterpretAllIn (..),
   InterpretIn (..),
-  Permute (..),
+  Permutation (..),
   ListEqMod1 (..),
   SubLS (..),
   Tag,
@@ -31,14 +31,14 @@ data ListEqMod1 xs ys x where
   ListEqMod1N :: ListEqMod1 xs (x : xs) x
   ListEqMod1S :: ListEqMod1 xs ys x -> ListEqMod1 (y : xs) (y : ys) x
 
-{- | @Permute xs ys@ tells us we can permute @xs@ into @ys@.
+{- | @Permutation xs ys@ tells us we can permute @xs@ into @ys@.
  The proof of that is a list of indices into @ys@, each one
  being the corresponding index from the element in @xs@ into @ys@.
 -}
-type Permute :: [a] -> [a] -> Type
-data Permute xs ys where
-  PermuteN :: Permute '[] '[]
-  PermuteS :: ListEqMod1 ys ys' x -> Permute xs ys -> Permute (x : xs) ys'
+type Permutation :: [a] -> [a] -> Type
+data Permutation xs ys where
+  PermutationN :: Permutation '[] '[]
+  PermutationS :: ListEqMod1 ys ys' x -> Permutation xs ys -> Permutation (x : xs) ys'
 
 -- @SubLS xs ys zs ws (Just '(x, y))@ shows that @xs@ and @ys@ share a common suffix,
 -- with the prefix containing @zs@ in @xs@ and @ws@ in @ys@, except for @x@ and @y@.
@@ -86,7 +86,7 @@ newtype Interpret ls ls' = Interpret (InterpretAllIn ls ls' ls ls')
 -- | Like @Term@, but explicitly notes the language of the root node.
 type Term' :: Language -> [Language] -> Tag -> Type
 data Term' l ls tag where
-  Term' :: L l ls0 tag -> Interpret ls0 ls1 -> Permute ls1 ls2 -> Term' l ls2 tag
+  Term' :: L l ls0 tag -> Interpret ls0 ls1 -> Permutation ls1 ls2 -> Term' l ls2 tag
 
 {- | @Term ls tag@ represents a term in the languages of @ls@,
  with the tag @tag@, often representing an embedded type.
