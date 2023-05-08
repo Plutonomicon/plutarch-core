@@ -17,6 +17,7 @@ module Plutarch.Internal.Utilities (
   EmbedTwo,
   interpretTerm',
   interpretSome,
+  multicontract,
 ) where
 
 import Data.Kind (Type)
@@ -84,30 +85,31 @@ transPermutation PermutationN perm = case perm of
   PermutationN -> PermutationN
 transPermutation (PermutationS idx rest) perm = idxPermutation idx perm \idx' perm' -> PermutationS idx' (transPermutation rest perm')
 
-data SameShapeAs xs ys where
-  SameShapeAsN :: SameShapeAs '[] '[]
-  SameShapeAsS :: SameShapeAs xs ys -> SameShapeAs (x : xs) (y : ys)
+data SameShapeAs :: [a] -> [a] -> Maybe (a, a) -> Type where
+  SameShapeAsN :: SameShapeAs '[] '[] Nothing
+  SameShapeAsS :: SameShapeAs xs ys m -> SameShapeAs (x : xs) (y : ys) m
+  SameShapeAsJust :: SameShapeAs xs ys Nothing -> SameShapeAs (x : xs) (y : ys) (Just '(x, y))
 
-extractShape :: InterpretAllIn xs ys zs ws -> SameShapeAs zs ws
+extractShape :: InterpretAllIn xs ys zs ws -> SameShapeAs zs ws Nothing
 extractShape InterpretAllInN = SameShapeAsN
 extractShape (InterpretAllInS _ rest) = SameShapeAsS (extractShape rest)
 
-transInterpretIn :: SameShapeAs ys zs -> InterpretIn xs ys x y -> InterpretIn ys zs y z -> InterpretIn xs zs x z
+transInterpretIn :: SameShapeAs ys zs (Just '(y, z)) -> InterpretIn xs ys x y -> InterpretIn ys zs y z -> InterpretIn xs zs x z
 transInterpretIn =
   \shape xy yz -> InterpretIn \subls term ->
     helper shape subls \subls0 subls1 ->
       runInterpreter yz subls1 $ runInterpreter xy subls0 term
   where
     helper ::
-      SameShapeAs ys zs ->
+      SameShapeAs ys zs (Just '(y, z)) ->
       SubLS ls0 ls2 xs zs (Just '(x, z)) ->
       (forall ls1. SubLS ls0 ls1 xs ys (Just '(x, y)) -> SubLS ls1 ls2 ys zs (Just '(y, z)) -> b) ->
       b
     helper (SameShapeAsS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
     helper (SameShapeAsS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
-    helper shape'@(SameShapeAsS shape) subls@(SubLSExcept rest) k = helper' shape rest \subls0 subls1 -> k (undefined subls0) undefined
+    helper (SameShapeAsJust shape) (SubLSExcept rest) k = helper' shape rest \subls0 subls1 -> k (SubLSExcept subls0) (SubLSExcept subls1)
     helper' ::
-      SameShapeAs ys zs ->
+      SameShapeAs ys zs Nothing ->
       SubLS ls0 ls2 xs zs Nothing ->
       (forall ls1. SubLS ls0 ls1 xs ys Nothing -> SubLS ls1 ls2 ys zs Nothing -> b) ->
       b
@@ -115,15 +117,50 @@ transInterpretIn =
     helper' (SameShapeAsS shape) (SubLSSkip rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
     helper' (SameShapeAsS shape) (SubLSSwap rest) k = helper' shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
 
-transInterpret :: Interpret xs ys -> Interpret ys zs -> Interpret xs zs
-transInterpret = \(Interpret xys) (Interpret yzs) -> Interpret $ go xys yzs
-  where
-    go :: InterpretAllIn xs ys xs ys -> InterpretAllIn ys zs ys zs -> InterpretAllIn xs zs xs zs
-    go InterpretAllInN yzs = case yzs of
-      InterpretAllInN -> InterpretAllInN
-    go (InterpretAllInS xy xys) (InterpretAllInS yz yzs) = InterpretAllInS (transInterpretIn (SameShapeAsS $ extractShape yzs) xy yz) undefined
+data SameShapeWithSuffix :: [a] -> [a] -> [a] -> [a] -> Type where
+  SameShapeWithSuffixN :: SameShapeAs xs ys Nothing -> SameShapeWithSuffix xs ys xs ys
+  SameShapeWithSuffixS :: SameShapeWithSuffix xs ys (z : zs) (w : ws) -> SameShapeWithSuffix xs ys zs ws
 
-swapInterpretPermutation :: Permutation xs ys -> Interpret ys zs -> (forall ws. Interpret xs ws -> Permutation ws zs -> r) -> r
+{-
+sameShapeUnJust :: SameShapeAs xs ys m -> SameShapeAs xs ys Nothing
+sameShapeUnJust SameShapeAsN = SameShapeAsN
+sameShapeUnJust (SameShapeAsS x) = SameShapeAsS $ sameShapeUnJust x
+sameShapeUnJust (SameShapeAsJust x) = SameShapeAsS x
+-}
+
+data IndexTwo :: [a] -> [a] -> a -> a -> Type where
+  IndexTwoN :: IndexTwo (x : xs) (y : ys) x y
+  IndexTwoS :: IndexTwo xs ys x y -> IndexTwo (z : xs) (w : ys) x y
+
+sameShapeFromSuffix :: SameShapeWithSuffix xs ys (z : zs) (w : ws) -> SameShapeAs xs ys (Just '(z, w))
+sameShapeFromSuffix = go IndexTwoN where
+  go :: IndexTwo zs ws z w -> SameShapeWithSuffix xs ys zs ws -> SameShapeAs xs ys (Just '(z, w))
+  go idx (SameShapeWithSuffixN s) = rewrap idx s where
+    rewrap :: IndexTwo xs ys x y -> SameShapeAs xs ys Nothing -> SameShapeAs xs ys (Just '(x, y))
+    rewrap IndexTwoN (SameShapeAsS shape) = SameShapeAsJust shape
+    rewrap (IndexTwoS idx) (SameShapeAsS shape) = SameShapeAsS $ rewrap idx shape
+  go idx (SameShapeWithSuffixS s) = go (IndexTwoS idx) s
+
+transInterpret :: Interpret xs ys -> Interpret ys zs -> Interpret xs zs
+transInterpret = \(Interpret xys) (Interpret yzs) -> Interpret $ go (SameShapeWithSuffixN $ extractShape yzs) xys yzs
+  where
+    go ::
+      SameShapeWithSuffix ys zs ys' zs' ->
+      InterpretAllIn xs ys xs' ys' ->
+      InterpretAllIn ys zs ys' zs' ->
+      InterpretAllIn xs zs xs' zs'
+    go _ InterpretAllInN yzs = case yzs of
+      InterpretAllInN -> InterpretAllInN
+    go shape (InterpretAllInS xy xys) (InterpretAllInS yz yzs) =
+      InterpretAllInS
+        (transInterpretIn (sameShapeFromSuffix shape) xy yz)
+        $ go (SameShapeWithSuffixS shape) xys yzs
+
+swapInterpretPermutation ::
+  Permutation xs ys ->
+  Interpret ys zs ->
+  (forall ws. Interpret xs ws -> Permutation ws zs -> r) ->
+  r
 swapInterpretPermutation _ _ _ = undefined
 
 interpretTerm' :: Interpret ls ls' -> Term' l ls tag -> Term' l ls' tag
@@ -133,9 +170,6 @@ interpretTerm' intrs' (Term' node intrs perm) =
     intrs'
     \intrs'' perm' -> Term' node (transInterpret intrs intrs'') perm'
 
-interpret1 :: InterpretIn (l : ls) (l' : ls) l l' -> Interpret (l : ls) (l' : ls)
-interpret1 = undefined
-
 data InterpretSomeIn ls0 ls1 ls2 ls3 where
   InterpretSomeInN :: Catenation ls0' ls2 ls0 -> Catenation ls1' ls2 ls1 -> InterpretSomeIn ls0 ls1 ls2 ls2
   InterpretSomeInS :: InterpretIn ls0 ls1 l l' -> InterpretSomeIn ls0 ls1 ls2 ls3 -> InterpretSomeIn ls0 ls1 (l : ls2) (l' : ls3)
@@ -143,13 +177,41 @@ data InterpretSomeIn ls0 ls1 ls2 ls3 where
 interpretSome :: InterpretSomeIn ls ls' ls ls' -> Interpret ls ls'
 interpretSome = undefined
 
+interpretInOther :: InterpretIn xs ys x y -> InterpretIn zs ws x y
+interpretInOther = undefined
+
+interpretTwo :: InterpretIn '[x, y] '[x, z] y z -> Interpret '[x, y] '[x, z]
+interpretTwo gi@(InterpretIn g) = Interpret $ InterpretAllInS (InterpretIn f) $ InterpretAllInS (InterpretIn g) InterpretAllInN where
+  f :: SubLS ls0 ls1 '[x, y] '[x, z] (Just '(x, x)) -> Term' x ls0 tag -> Term' x ls1 tag
+  f (SubLSExcept SubLSBase) term = term
+  f (SubLSExcept (SubLSSkip SubLSBase)) term = term
+  f (SubLSExcept (SubLSSwap SubLSBase)) term = interpretTerm' (undefined $ interpretInOther gi) term
+
+
+data SamePrefix :: [a] -> [a] -> [a] -> [a] -> Type where
+  SamePrefixN :: SamePrefix xs ys xs ys
+  SamePrefixS :: SamePrefix xs ys zs ws -> SamePrefix (x : xs) (x : ys) zs ws
+
+extendInterpretAllIn ::
+  SamePrefix xs ys zs ws ->
+  InterpretAllIn xs ys zs ws ->
+  InterpretAllIn xs ys xs ys
+extendInterpretAllIn SamePrefixN intrs = intrs
+{-
+extendInterpretAllIn (SamePrefixS SamePrefixN) intrs = InterpretAllInS (InterpretIn intr) intrs where
+  intr :: SubLS ls0 ls1 (x : zs) (x : ws) (Just '(x, x)) -> Term' x ls0 tag -> Term' x ls1 tag
+  intr (SubLSExcept SubLSBase) (Term' node intrs perm) = Term' node intrs perm
+  intr (SubLSExcept (SubLSSkip SubLSBase)) (Term' node intrs perm) = Term' node intrs perm
+  intr (SubLSExcept (SubLSSwap SubLSBase)) t@(Term' node intrs perm) = _ -- Term' node _ _
+-}
+
 data Catenation xs ys zs where
   CatenationN :: Catenation '[] ys ys
   CatenationS :: Catenation xs ys zs -> Catenation (x : xs) ys (x : zs)
 
 data Contains subnodes ls where
-  ContainsN :: Contains '[] '[]
-  ContainsS :: Catenation ls ls' ls'' -> Term ls tag -> Contains subnodes ls' -> Contains (tag : subnodes) ls''
+  --ContainsN :: Contains '[] '[]
+  --ContainsS :: Catenation ls ls' ls'' -> Term ls tag -> Contains subnodes ls' -> Contains (tag : subnodes) ls''
 
 type SimpleLanguage = [Tag] -> Tag -> Type
 data InstSimpleLanguage :: SimpleLanguage -> Language
@@ -176,15 +238,17 @@ data instance L (EmbedTwo lx ly) ls tag where
 
 ---- examples
 
+{-
 type PType = Type
 
 data Expr :: PType -> Tag
 
 data BoolsTag :: SimpleLanguage where
-  Xor :: BoolsTag '[Expr Bool, Expr Bool] (Expr Bool)
+  And :: BoolsTag '[Expr Bool, Expr Bool] (Expr Bool)
   Not :: BoolsTag '[Expr Bool] (Expr Bool)
   BoolLit :: Bool -> BoolsTag '[] (Expr Bool)
 type Bools = InstSimpleLanguage BoolsTag
+-}
 
 class CCatenation xs ys zs | xs ys -> zs where
   ccatenation :: Catenation xs ys zs
@@ -203,12 +267,14 @@ data SList :: [a] -> Type where
   SNil :: SList '[]
   SCons :: SList xs -> SList (x : xs)
 
-catenationInv :: SList xs -> Catenation xs '[] xs
-catenationInv SNil = CatenationN
-catenationInv (SCons xs) = CatenationS (catenationInv xs)
-
 termToSList :: Term ls tag -> SList ls
-termToSList = undefined
+termToSList (Term (Term' _ _ perm) idx) = g idx $ f $ invPermutation perm where
+  f :: Permutation xs ys -> SList xs
+  f PermutationN = SNil
+  f (PermutationS _ rest) = SCons $ f rest
+  g :: ListEqMod1 xs ys x -> SList xs -> SList ys
+  g ListEqMod1N s = SCons s
+  g (ListEqMod1S x) (SCons s) = SCons $ g x s
 
 idPermutation :: SList xs -> Permutation xs xs
 idPermutation SNil = PermutationN
@@ -222,21 +288,18 @@ idInterpretation = Interpret . f
     f (SCons xs) = InterpretAllInS g $ f xs
     g :: InterpretIn ls ls l l
     g = InterpretIn \subls x -> case i subls of Refl -> x
-    h ::
-      SubLS ls0 ls1 ls ls except ->
-      Term' l ls0 tag ->
-      Term' l ls1 tag
-    h subls x = case i subls of Refl -> x
     i :: SubLS xs ys zs zs except -> xs :~: ys
     i SubLSBase = Refl
     i (SubLSSkip rest) = case i rest of Refl -> Refl
     i (SubLSSwap rest) = case i rest of Refl -> Refl
     i (SubLSExcept rest) = case i rest of Refl -> Refl
 
+{-
 pnot :: Term ls0 (Expr Bool) -> Term (Bools : ls0) (Expr Bool)
 pnot x = Term (Term' (SimpleLanguageNode (ContainsS (catenationInv slist) x ContainsN) Not) (idInterpretation slist) (idPermutation slist)) ListEqMod1N
   where
     slist = termToSList x
+-}
 
 data ElemOf :: [a] -> a -> Type where
   ElemOfN :: ElemOf (x : xs) x
@@ -306,11 +369,11 @@ multicontract' cnx cny MultiContractibleBase term =
   case reverseCatenationFunctional cnx cny of Refl -> term
 multicontract' cnx cny (MultiContractibleSkip rest) term =
   multicontract' (ReverseCatenationS cnx) (ReverseCatenationS cny) rest term
-multicontract' cnx cny (MultiContractibleContract c idx rest) term = finalterm
+multicontract' cnx _cny (MultiContractibleContract c idx rest) term = finalterm
   where
     shifted = bringTerm (util cnx ListEqMod1N) term
     contracted = elemOf_to_listEqMod1 idx \idx' -> contractThere (listEqMod1_to_elemOf $ util cnx (ListEqMod1S idx')) c shifted
-    finalterm = multicontract' (_ cnx) cny rest contracted
+    finalterm = multicontract' undefined undefined rest contracted
     util :: ReverseCatenation xs ys zs -> ListEqMod1 ys' ys x -> ListEqMod1 zs' zs x
     util = undefined
 
@@ -320,5 +383,5 @@ multicontract = multicontract' ReverseCatenationN ReverseCatenationN
 -- contractThere _ c $ multicontract' _ _ rest term
 -- multicontract' _ _ (MultiContractibleSkip rest) term = _
 
--- pxor' :: Term ls0 (Expr Bool) -> Term ls1 (Expr Bool) -> Term (Bools : Append ls0 ls1) (Expr Bool)
--- pxor' x y = Term (Term' (SimpleLanguageNode _ Xor) _ _) ListEqMod1N
+-- pand' :: Term ls0 (Expr Bool) -> Term ls1 (Expr Bool) -> Term (Bools : Append ls0 ls1) (Expr Bool)
+-- pand' x y = Term (Term' (SimpleLanguageNode _ And) _ _) ListEqMod1N
