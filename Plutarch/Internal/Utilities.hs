@@ -292,12 +292,69 @@ idPermutation :: SList xs -> Permutation xs xs
 idPermutation SNil = PermutationN
 idPermutation (SCons xs) = PermutationS ListEqMod1N (idPermutation xs)
 
+data IndexInto :: [a] -> Nat -> Type where
+  IndexIntoN :: IndexInto (x : xs) N
+  IndexIntoS :: IndexInto xs idx -> IndexInto (x : xs) (S idx)
+
+data SuffixOf :: [a] -> [a] -> Nat -> Type where
+  SuffixOfN :: SuffixOf xs xs N
+  SuffixOfS :: SuffixOf xs (y : ys) idx -> SuffixOf xs ys (S idx)
+
+data Add :: Nat -> Nat -> Nat -> Type where
+  AddN :: Add N n n
+  AddS :: Add n m o -> Add (S n) m (S o)
+
+data SNat :: Nat -> Type where
+  SN :: SNat N
+  SS :: SNat n -> SNat (S n)
+
+add_n_N_n :: SNat n -> Add n N n
+add_n_N_n SN = AddN
+add_n_N_n (SS n) = AddS $ add_n_N_n n
+
+addInjective :: Add n m o -> Add n m o' -> o :~: o'
+addInjective AddN AddN = Refl
+addInjective (AddS x) (AddS y) = case addInjective x y of
+  Refl -> Refl
+
+undoAddSFlipped :: Add n (S m) o -> (forall o'. o :~: S o' -> Add n m o' -> r) -> r
+undoAddSFlipped AddN k = k Refl AddN
+undoAddSFlipped (AddS add) k = undoAddSFlipped add \Refl add' -> k Refl (AddS add')
+
+addSFlipped' :: Add n m o -> Add n' m m' -> Add n' o o' -> Add n m' o'
+addSFlipped' AddN x y = case addInjective x y of Refl -> AddN
+addSFlipped' (AddS add) x y = undoAddSFlipped y \Refl y' -> AddS $ addSFlipped' add x y'
+
+addSFlipped :: Add n m o -> Add n (S m) (S o)
+addSFlipped a = addSFlipped' a (AddS AddN) (AddS AddN)
+
+suffixOf_to_IndexInto' :: IndexInto ys idx -> SuffixOf xs ys idx' -> Add idx' idx idx'' -> IndexInto xs idx''
+suffixOf_to_IndexInto' idx SuffixOfN AddN = idx
+suffixOf_to_IndexInto' idx (SuffixOfS suffix) (AddS add) = suffixOf_to_IndexInto' (IndexIntoS idx) suffix (addSFlipped add)
+
+-- Logically equal to `(-) 1`
+suffixOf_to_IndexInto :: SuffixOf xs ys (S idx) -> IndexInto xs idx
+suffixOf_to_IndexInto (SuffixOfS suffix) = suffixOf_to_IndexInto' IndexIntoN suffix (add_n_N_n $ suffixOf_to_SNat suffix)
+
+suffixOf_to_SNat :: SuffixOf xs ys idx -> SNat idx
+suffixOf_to_SNat SuffixOfN = SN
+suffixOf_to_SNat (SuffixOfS x) = SS (suffixOf_to_SNat x)
+
+indexInto_to_ListEqMod1Idx :: IndexInto xs idx -> (forall xs'. ListEqMod1Idx xs' xs idx -> r) -> r
+indexInto_to_ListEqMod1Idx IndexIntoN k = k ListEqMod1IdxN
+indexInto_to_ListEqMod1Idx (IndexIntoS idx) k = indexInto_to_ListEqMod1Idx idx (k . ListEqMod1IdxS)
+
+suffixOf_to_ListEqMod1Idx :: SuffixOf xs ys (S idx) -> (forall xs'. ListEqMod1Idx xs' xs idx -> r) -> r
+suffixOf_to_ListEqMod1Idx suffix k = indexInto_to_ListEqMod1Idx (suffixOf_to_IndexInto suffix) k
+
 idInterpretation :: SList xs -> Interpret xs xs
-idInterpretation = Interpret . f
+idInterpretation = Interpret . f SuffixOfN
   where
-    f :: SList ys -> InterpretAllIn xs xs ys ys idx
-    f SNil = InterpretAllInN
-    f (SCons xs) = InterpretAllInS undefined undefined g $ f xs
+    f :: SuffixOf xs ys idx -> SList ys -> InterpretAllIn xs xs ys ys idx
+    f _ SNil = InterpretAllInN
+    f suffix (SCons xs) =
+      suffixOf_to_ListEqMod1Idx (SuffixOfS suffix) \idx ->
+      InterpretAllInS idx idx g $ f (SuffixOfS suffix) xs
     g :: InterpretIn ls ls l l
     g = InterpretIn \subls x -> case i subls of Refl -> x
     i :: SubLS xs ys zs zs -> xs :~: ys

@@ -1,4 +1,5 @@
 module Plutarch.Core (
+  Nat (..),
   Term (..),
   runInterpreter,
   Interpret (..),
