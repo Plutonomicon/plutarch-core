@@ -131,7 +131,6 @@ data SameShapeWithSuffix :: [a] -> [a] -> [a] -> [a] -> Type where
   SameShapeWithSuffixN :: SameShapeAs xs ys -> SameShapeWithSuffix xs ys xs ys
   SameShapeWithSuffixS :: SameShapeWithSuffix xs ys (z : zs) (w : ws) -> SameShapeWithSuffix xs ys zs ws
 
-
 {-
 sameShapeUnJust :: SameShapeAs xs ys m -> SameShapeAs xs ys Nothing
 sameShapeUnJust SameShapeAsN = SameShapeAsN
@@ -168,9 +167,12 @@ transInterpret = \(Interpret xys) (Interpret yzs) -> Interpret $ go (SameShapeWi
     go _ InterpretAllInN InterpretAllInN = InterpretAllInN
     go shape (InterpretAllInS lidx lidx' xy xys) (InterpretAllInS ridx ridx' yz yzs) =
       case listEqMod1IdxInjective lidx' ridx of
-        Refl -> InterpretAllInS lidx ridx'
-          (transInterpretIn (removeFromSameShapeAs lidx' ridx' $ sameShapeFromSuffix shape) xy yz)
-          $ go (SameShapeWithSuffixS shape) xys yzs
+        Refl ->
+          InterpretAllInS
+            lidx
+            ridx'
+            (transInterpretIn (removeFromSameShapeAs lidx' ridx' $ sameShapeFromSuffix shape) xy yz)
+            $ go (SameShapeWithSuffixS shape) xys yzs
 
 swapInterpretPermutation ::
   Permutation xs ys ->
@@ -221,9 +223,10 @@ data Catenation xs ys zs where
   CatenationN :: Catenation '[] ys ys
   CatenationS :: Catenation xs ys zs -> Catenation (x : xs) ys (x : zs)
 
-data Contains subnodes ls where
-  --ContainsN :: Contains '[] '[]
-  --ContainsS :: Catenation ls ls' ls'' -> Term ls tag -> Contains subnodes ls' -> Contains (tag : subnodes) ls''
+data Contains subnodes ls
+
+-- ContainsN :: Contains '[] '[]
+-- ContainsS :: Catenation ls ls' ls'' -> Term ls tag -> Contains subnodes ls' -> Contains (tag : subnodes) ls''
 
 type SimpleLanguage = [Tag] -> Tag -> Type
 data InstSimpleLanguage :: SimpleLanguage -> Language
@@ -280,13 +283,14 @@ data SList :: [a] -> Type where
   SCons :: SList xs -> SList (x : xs)
 
 termToSList :: Term ls tag -> SList ls
-termToSList (Term (Term' _ _ perm) idx) = g idx $ f $ invPermutation perm where
-  f :: Permutation xs ys -> SList xs
-  f PermutationN = SNil
-  f (PermutationS _ rest) = SCons $ f rest
-  g :: ListEqMod1 xs ys x -> SList xs -> SList ys
-  g ListEqMod1N s = SCons s
-  g (ListEqMod1S x) (SCons s) = SCons $ g x s
+termToSList (Term (Term' _ _ perm) idx) = g idx $ f $ invPermutation perm
+  where
+    f :: Permutation xs ys -> SList xs
+    f PermutationN = SNil
+    f (PermutationS _ rest) = SCons $ f rest
+    g :: ListEqMod1 xs ys x -> SList xs -> SList ys
+    g ListEqMod1N s = SCons s
+    g (ListEqMod1S x) (SCons s) = SCons $ g x s
 
 idPermutation :: SList xs -> Permutation xs xs
 idPermutation SNil = PermutationN
@@ -354,7 +358,7 @@ idInterpretation = Interpret . f SuffixOfN
     f _ SNil = InterpretAllInN
     f suffix (SCons xs) =
       suffixOf_to_ListEqMod1Idx (SuffixOfS suffix) \idx ->
-      InterpretAllInS idx idx g $ f (SuffixOfS suffix) xs
+        InterpretAllInS idx idx g $ f (SuffixOfS suffix) xs
     g :: InterpretIn ls ls l l
     g = InterpretIn \subls x -> case i subls of Refl -> x
     i :: SubLS xs ys zs zs -> xs :~: ys
