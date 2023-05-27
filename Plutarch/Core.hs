@@ -1,6 +1,7 @@
 module Plutarch.Core (
   Nat (..),
   Term (..),
+  LengthOfTwo (..),
   runInterpreter,
   Interpret (..),
   Term' (..),
@@ -35,9 +36,10 @@ data ListEqMod1 xs ys x where
 
 data Nat = N | S Nat
 
-data ListEqMod1Idx xs ys idx where
-  ListEqMod1IdxN :: ListEqMod1Idx xs (x : xs) N
-  ListEqMod1IdxS :: ListEqMod1Idx xs ys idx -> ListEqMod1Idx (y : xs) (y : ys) (S idx)
+-- FIXME: Should be a data family
+data ListEqMod1Idx xs ys x idx where
+  ListEqMod1IdxN :: ListEqMod1Idx xs (x : xs) x N
+  ListEqMod1IdxS :: ListEqMod1Idx xs ys x idx -> ListEqMod1Idx (y : xs) (y : ys) x (S idx)
 
 {- | @Permutation xs ys@ tells us we can permute @xs@ into @ys@.
  The proof of that is a list of indices into @ys@, each one
@@ -75,24 +77,30 @@ runInterpreter ::
   Term' l' ls1 tag
 runInterpreter (InterpretIn f) = f
 
+data LengthOfTwo :: [a] -> [b] -> Nat -> Type where
+  LengthOfTwoN :: LengthOfTwo '[] '[] N
+  LengthOfTwoS :: LengthOfTwo xs ys len -> LengthOfTwo (x : xs) (y : ys) (S len)
+
 {- | @InterpretAllIn ls0 ls1 ls2 ls3@ contains functions to
  interpret terms which root nodes are in the languages of @ls2@ into
  root nodes which languages are of @ls3@, while mapping the inner languages
  from @ls0@ to @ls1@.
 -}
-type InterpretAllIn :: [Language] -> [Language] -> [Language] -> [Language] -> Nat -> Type
-data InterpretAllIn ls0 ls1 ls2 ls3 idx where
-  InterpretAllInN :: InterpretAllIn ls0 ls1 '[] '[] idx
+
+-- FIXME: Move the length statement to the top always by
+-- refactoring into two types, one recursive and one not.
+data InterpretAllIn :: [Language] -> [Language] -> Nat -> Type where
+  InterpretAllInN :: LengthOfTwo ls0 ls1 idx -> InterpretAllIn ls0 ls1 idx
   InterpretAllInS ::
-    ListEqMod1Idx ls0' ls0 idx ->
-    ListEqMod1Idx ls1' ls1 idx ->
+    ListEqMod1Idx ls0' ls0 l idx ->
+    ListEqMod1Idx ls1' ls1 l' idx ->
     InterpretIn ls0' ls1' l l' ->
-    InterpretAllIn ls0 ls1 ls2 ls3 (S idx) ->
-    InterpretAllIn ls0 ls1 (l : ls2) (l' : ls3) idx
+    InterpretAllIn ls0 ls1 (S idx) ->
+    InterpretAllIn ls0 ls1 idx
 
 -- | @Interpret ls ls'@ contains functions to interpret the languages @ls@ to @ls'@.
 type Interpret :: [Language] -> [Language] -> Type
-newtype Interpret ls ls' = Interpret (InterpretAllIn ls ls' ls ls' N)
+type Interpret ls ls' = InterpretAllIn ls ls' N
 
 -- | Like @Term@, but explicitly notes the language of the root node.
 type Term' :: Language -> [Language] -> Tag -> Type
