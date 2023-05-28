@@ -207,23 +207,75 @@ data InterpretIdxs :: [Language] -> [Language] -> [Nat] -> Type where
     InterpretIdxs ls0 ls1 idxs ->
     InterpretIdxs ls0 ls1 (idx : idxs)
 
-data Ascending :: Nat -> [Nat] -> Type where
-  AscendingN :: Ascending n '[]
-  AscendingS :: Ascending (S n) ns -> Ascending n (S n : ns)
+{-
+data
 
-data Undefined
+partialSortInterpretIdxs ::
+  InterpretIdxs xs ys idxs ->
+  (forall idxs'. InterpretIdxs xs ys idxs' -> r) ->
+  r
+-}
 
-makeUnIdxed :: Undefined -> InterpretIdxs ls0 ls0' idxs -> InterpretAllIn ls1 ls1' idx
-makeUnIdxed = undefined
+-- FIXME: make total
+partialMakeUnIdxed :: InterpretIdxs xs ys idxs -> Interpret xs ys
+partialMakeUnIdxed = go SN
+  where
+    cmpIdx ::
+      SNat idx ->
+      ListEqMod1Idx xs' xs x idx' ->
+      Maybe (idx :~: idx')
+    cmpIdx SN ListEqMod1IdxN = Just Refl
+    cmpIdx (SS idx) (ListEqMod1IdxS idx') =
+      (\Refl -> Refl) <$> cmpIdx idx idx'
+    cmpIdx SN (ListEqMod1IdxS _) = Nothing
+    cmpIdx (SS _) ListEqMod1IdxN = Nothing
+    cmpLengthOfTwo ::
+      SNat idx ->
+      LengthOfTwo xs ys len ->
+      Maybe (idx :~: len)
+    cmpLengthOfTwo SN LengthOfTwoN = Just Refl
+    cmpLengthOfTwo (SS idx) (LengthOfTwoS len) =
+      (\Refl -> Refl) <$> cmpLengthOfTwo idx len
+    cmpLengthOfTwo SN (LengthOfTwoS _) = Nothing
+    cmpLengthOfTwo (SS _) LengthOfTwoN = Nothing
+    getIdx ::
+      SNat idx ->
+      InterpretIdxs xs ys idxs ->
+      ( forall xs' ys' l l' idxs'.
+        Either
+          ( ListEqMod1Idx xs' xs l idx
+          , ListEqMod1Idx ys' ys l' idx
+          , -- , ListEqMod1 idxs' idxs idx
+            InterpretIn xs' ys' l l'
+          , InterpretIdxs xs ys idxs'
+          )
+          (LengthOfTwo xs ys idx) ->
+        r
+      ) ->
+      r
+    getIdx idx (InterpretIdxsN len) k =
+      case cmpLengthOfTwo idx len of
+        Just Refl -> k (Right len)
+        Nothing -> k (error "should be unreachable, FIXME: partialMakeUnIdxed is partial")
+    getIdx idx (InterpretIdxsS lidx ridx intr intrs) k =
+      case cmpIdx idx lidx of
+        Just Refl -> k (Left (lidx, ridx, intr, intrs))
+        Nothing -> getIdx idx intrs k
+    go :: SNat idx -> InterpretIdxs xs ys idxs -> InterpretAllIn xs ys idx
+    go idx intrs =
+      getIdx idx intrs \case
+        Left (lidx, ridx, intr, intrs') ->
+          InterpretAllInS lidx ridx intr $ go (SS idx) intrs'
+        Right len -> InterpretAllInN len
 
 makeIdxed ::
-  Undefined ->
   InterpretAllIn ls ls' idx ->
-  InterpretIdxs ls ls' idxs
-makeIdxed = undefined
-
--- transferPermutation :: LengthOfTwo xs zs len -> Permutation xs ys -> (forall ws. Permutation zs ws -> r) -> r
--- transferPermutation _ _ _ = undefined
+  (forall idxs. InterpretIdxs ls ls' idxs -> r) ->
+  r
+makeIdxed (InterpretAllInN len) k = k (InterpretIdxsN len)
+makeIdxed (InterpretAllInS idx idx' intr intrs) k =
+  makeIdxed intrs \intrs' ->
+    k (InterpretIdxsS idx idx' intr intrs')
 
 -- If we can interpret from ys to zs,
 -- but ys is a permutation of xs,
@@ -260,40 +312,92 @@ makeIdxed = undefined
 -- the tail. If the tail is empty, it is a no-op, otherwise,
 -- the tail must be reordered into an ascending order.
 
+insertSubLSSwap ::
+  ListEqMod1Idx xs xs' x idx ->
+  ListEqMod1Idx ys ys' y idx ->
+  SubLS zs ws xs ys ->
+  ( forall zs' ws' idx'.
+    ListEqMod1Idx zs zs' x idx' ->
+    ListEqMod1Idx ws ws' y idx' ->
+    SubLS zs' ws' xs' ys' ->
+    r
+  ) ->
+  r
+insertSubLSSwap ListEqMod1IdxN ListEqMod1IdxN subls k =
+  k ListEqMod1IdxN ListEqMod1IdxN (SubLSSwap subls)
+insertSubLSSwap (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (SubLSSwap subls) k =
+  insertSubLSSwap idx idx' subls \idx'' idx''' subls' ->
+    k (ListEqMod1IdxS idx'') (ListEqMod1IdxS idx''') (SubLSSwap subls')
+insertSubLSSwap (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (SubLSSkip subls) k =
+  insertSubLSSwap idx idx' subls \idx'' idx''' subls' ->
+    k idx'' idx''' (SubLSSkip subls')
+
+insertSubLSSkip ::
+  ListEqMod1Idx xs xs' x idx ->
+  ListEqMod1Idx ys ys' y idx ->
+  SubLS zs ws xs ys ->
+  SubLS zs ws xs' ys'
+insertSubLSSkip ListEqMod1IdxN ListEqMod1IdxN subls = SubLSSkip subls
+insertSubLSSkip (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (SubLSSwap subls) =
+  SubLSSwap $ insertSubLSSkip idx idx' subls
+insertSubLSSkip (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (SubLSSkip subls) =
+  SubLSSkip $ insertSubLSSkip idx idx' subls
+
 fja' ::
   SList ls0 ->
   Permutation2 xs ys zs ws ->
   SubLS ls0 ls1 xs zs ->
   ( forall ls0' ls1'.
     SubLS ls0' ls1' ys ws ->
-    Permutation ls1' ls1 ->
+    Permutation2 ls0 ls0' ls1 ls1' ->
     r
   ) ->
   r
-fja' ls0 perm SubLSBase k = case perm of
-  Permutation2N -> k SubLSBase (idPermutation ls0)
+fja' ls0 perm2 SubLSBase k = case perm2 of
+  Permutation2N -> k SubLSBase (idPermutation2 ls0)
+fja' (SCons ls0) (Permutation2S idx idx' perm2) (SubLSSwap subls) k =
+  fja' ls0 perm2 subls \subls' perm2' ->
+    insertSubLSSwap idx idx' subls' \idx'' idx''' subls'' ->
+      k subls'' (Permutation2S idx'' idx''' perm2')
+fja' ls0 (Permutation2S idx idx' perm2) (SubLSSkip subls) k =
+  fja' ls0 perm2 subls \subls' perm2' ->
+    let subls'' = insertSubLSSkip idx idx' subls'
+     in k subls'' perm2'
 
-fja ::
+insertPermutation2 ::
+  ListEqMod1Idx xs xs' x idx ->
+  ListEqMod1Idx zs zs' z idx ->
   Permutation2 xs ys zs ws ->
-  SubLS ls0 ls1 ys ws ->
-  Term' x ls0 tag ->
-  ( forall ls0' ls1'.
-    SubLS ls0' ls1' xs zs ->
-    Term' x ls0' tag ->
-    Permutation ls1' ls1 ->
-    r
-  ) ->
-  r
-fja _ _ _ _ = undefined
+  Permutation2 xs' (x : ys) zs' (z : ws)
+insertPermutation2 ListEqMod1IdxN ListEqMod1IdxN perm =
+  Permutation2S ListEqMod1IdxN ListEqMod1IdxN perm
+insertPermutation2
+  (ListEqMod1IdxS idx)
+  (ListEqMod1IdxS idx')
+  (Permutation2S idx'' idx''' perm2) =
+    Permutation2S (ListEqMod1IdxS idx'') (ListEqMod1IdxS idx''') $
+      insertPermutation2 idx idx' perm2
+
+invPermutation2 ::
+  Permutation2 xs ys zs ws ->
+  Permutation2 ys xs ws zs
+invPermutation2 Permutation2N = Permutation2N
+invPermutation2 (Permutation2S idx idx' perm2) =
+  insertPermutation2 idx idx' $ invPermutation2 perm2
 
 permuteInterpretIn ::
   Permutation2 xs ys zs ws ->
   InterpretIn xs zs x y ->
   InterpretIn ys ws x y
 permuteInterpretIn perm2 intr =
-  InterpretIn \subls term ->
-    fja perm2 subls term \subls' term' perm ->
-      permuteTerm' perm $ runInterpreter intr subls' term'
+  InterpretIn \subls term@(Term' _ _ termperm) ->
+    fja'
+      (permutationToSList $ invPermutation termperm)
+      (invPermutation2 perm2)
+      subls
+      \subls' perm2' ->
+        let (perm, perm') = permutation2_to_Permutation perm2'
+         in permuteTerm' (invPermutation perm') $ runInterpreter intr subls' (permuteTerm' perm term)
 
 data Permutation2 :: [a] -> [a] -> [b] -> [b] -> Type where
   Permutation2N :: Permutation2 '[] '[] '[] '[]
@@ -442,7 +546,8 @@ permuteInterpretIdxs ::
 permuteInterpretIdxs perm intrs k =
   extractLength_from_InterpretIdxs intrs \len ->
     permutation_to_Permutation2 len perm \perm2 ->
-      permuteInterpretIdxs' perm2 intrs \intrs' -> k intrs' (invPermutation $ snd $ permutation2_to_Permutation perm2)
+      permuteInterpretIdxs' perm2 intrs \intrs' ->
+        k intrs' (invPermutation $ snd $ permutation2_to_Permutation perm2)
 
 permuteInterpretation ::
   Permutation xs ys ->
@@ -450,10 +555,11 @@ permuteInterpretation ::
   (forall ws. Interpret ys ws -> Permutation ws zs -> r) ->
   r
 permuteInterpretation perm intrs k =
-  permuteInterpretIdxs
-    perm
-    (makeIdxed undefined intrs)
-    \intrs' perm' -> k (makeUnIdxed undefined intrs') perm'
+  makeIdxed intrs \intrs' ->
+    permuteInterpretIdxs
+      perm
+      intrs'
+      \intrs'' perm' -> k (partialMakeUnIdxed intrs'') perm'
 
 swapInterpretPermutation ::
   Permutation xs ys ->
@@ -486,7 +592,10 @@ eqListEqMod1Idx ::
   ListEqMod1Idx ls0 ls1 x idx ->
   ListEqMod1Idx ls0' ls1 y idx ->
   ('(ls0, x) :~: '(ls0', y))
-eqListEqMod1Idx _ _ = undefined
+eqListEqMod1Idx ListEqMod1IdxN ListEqMod1IdxN = Refl
+eqListEqMod1Idx (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') =
+  case eqListEqMod1Idx idx idx' of
+    Refl -> Refl
 
 data LTE :: Nat -> Nat -> Type where
   LTEN :: LTE x x
@@ -533,12 +642,19 @@ zero_LTEInv (SS x) = LTEInvS $ zero_LTEInv x
 zero_LTE :: SNat x -> LTE N x
 zero_LTE = lteInv_to_LTE . zero_LTEInv
 
+listEqMod1Idx_to_SNat ::
+  ListEqMod1Idx xs xs' x idx ->
+  SNat idx
+listEqMod1Idx_to_SNat ListEqMod1IdxN = SN
+listEqMod1Idx_to_SNat (ListEqMod1IdxS idx) =
+  SS $ listEqMod1Idx_to_SNat idx
+
 idxInterpret ::
   ListEqMod1Idx ls0' ls0 l idx ->
   Interpret ls0 ls1 ->
   (forall ls1' l'. ListEqMod1Idx ls1' ls1 l' idx -> InterpretIn ls0' ls1' l l' -> r) ->
   r
-idxInterpret idx intrs k = idxInterpret' (zero_LTE undefined) idx intrs k
+idxInterpret idx intrs k = idxInterpret' (zero_LTE (listEqMod1Idx_to_SNat idx)) idx intrs k
 
 idSubLS :: LengthOfTwo ls ls' len -> SubLS ls ls' ls ls'
 idSubLS LengthOfTwoN = SubLSBase
@@ -647,19 +763,25 @@ data SList :: [a] -> Type where
   SNil :: SList '[]
   SCons :: SList xs -> SList (x : xs)
 
+permutationToSList :: Permutation xs ys -> SList xs
+permutationToSList PermutationN = SNil
+permutationToSList (PermutationS _ perm) = SCons $ permutationToSList perm
+
+insertSList :: ListEqMod1 xs ys x -> SList xs -> SList ys
+insertSList ListEqMod1N s = SCons s
+insertSList (ListEqMod1S x) (SCons s) = SCons $ insertSList x s
+
 termToSList :: Term ls tag -> SList ls
-termToSList (Term (Term' _ _ perm) idx) = g idx $ f $ invPermutation perm
-  where
-    f :: Permutation xs ys -> SList xs
-    f PermutationN = SNil
-    f (PermutationS _ rest) = SCons $ f rest
-    g :: ListEqMod1 xs ys x -> SList xs -> SList ys
-    g ListEqMod1N s = SCons s
-    g (ListEqMod1S x) (SCons s) = SCons $ g x s
+termToSList (Term (Term' _ _ perm) idx) =
+  insertSList idx $ permutationToSList $ invPermutation perm
 
 idPermutation :: SList xs -> Permutation xs xs
 idPermutation SNil = PermutationN
 idPermutation (SCons xs) = PermutationS ListEqMod1N (idPermutation xs)
+
+idPermutation2 :: SList xs -> Permutation2 xs xs xs xs
+idPermutation2 SNil = Permutation2N
+idPermutation2 (SCons xs) = Permutation2S ListEqMod1IdxN ListEqMod1IdxN (idPermutation2 xs)
 
 data IndexInto :: [a] -> Nat -> Type where
   IndexIntoN :: IndexInto (x : xs) N
