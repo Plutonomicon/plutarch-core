@@ -1,6 +1,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.Internal.Utilities (
+  interpretOne,
   insertPermutation,
   invPermutation,
   cmpListEqMod1,
@@ -34,6 +35,7 @@ invPermutation :: Permutation xs ys -> Permutation ys xs
 invPermutation PermutationN = PermutationN
 invPermutation (PermutationS idx rest) = insertPermutation idx $ invPermutation rest
 
+-- Return the difference
 cmpListEqMod1 ::
   ListEqMod1 new' new x ->
   ListEqMod1 tail new y ->
@@ -50,26 +52,6 @@ cmpListEqMod1 (ListEqMod1S idx) ListEqMod1N k = k (Right (idx, ListEqMod1N))
 cmpListEqMod1 (ListEqMod1S idx) (ListEqMod1S idx') k = cmpListEqMod1 idx idx' \case
   Left (x, Refl) -> k (Left (x, Refl))
   Right (idx2, idx'2) -> k (Right (ListEqMod1S idx2, ListEqMod1S idx'2))
-
-{-
-cmpListEqMod1Idx ::
-  ListEqMod1Idx xs xs' x ->
-  ListEqMod1Idx xs' xs'' y ->
-  ( forall tail'.
-    Either
-      (x :~: y, new' :~: tail)
-      (ListEqMod1Idx tail' tail x, ListEqMod1Idx tail' new' y) ->
-    r
-  ) ->
-  r
-cmpListEqMod1Idx _ _ _ = undefined
-cmpListEqMod1Idx ListEqMod1IdxN ListEqMod1IdxN k = k (Left (Refl, Refl))
-cmpListEqMod1Idx ListEqMod1IdxN (ListEqMod1IdxS idx) k = k (Right (ListEqMod1IdxN, idx))
-cmpListEqMod1Idx (ListEqMod1IdxS idx) ListEqMod1IdxN k = k (Right (idx, ListEqMod1IdxN))
-cmpListEqMod1Idx (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') k = cmpListEqMod1Idx idx idx' \case
-  Left (x, Refl) -> k (Left (x, Refl))
-  Right (idx2, idx'2) -> k (Right (ListEqMod1IdxS idx2, ListEqMod1IdxS idx'2))
--}
 
 bringPermutation :: ListEqMod1 new' new x -> Permutation old new -> Permutation old (x : new')
 bringPermutation ListEqMod1N x = x
@@ -109,9 +91,9 @@ transPermutation (PermutationS idx rest) perm =
     perm
     \idx' perm' -> PermutationS idx' (transPermutation rest perm')
 
-interpret_to_LengthOfTwo :: InterpretAllIn xs ys idx -> (forall n. LengthOfTwo xs ys n -> r) -> r
-interpret_to_LengthOfTwo (InterpretAllInN l) k = k l
-interpret_to_LengthOfTwo (InterpretAllInS _ _ _ rest) k = interpret_to_LengthOfTwo rest k
+interpret_to_LengthOfTwo :: InterpretAsc xs ys idx -> (forall n. LengthOfTwo xs ys n -> r) -> r
+interpret_to_LengthOfTwo (InterpretAscN l) k = k l
+interpret_to_LengthOfTwo (InterpretAscS _ _ _ rest) k = interpret_to_LengthOfTwo rest k
 
 transInterpretIn ::
   LengthOfTwo ys zs len -> InterpretIn xs ys x y -> InterpretIn ys zs y z -> InterpretIn xs zs x z
@@ -128,16 +110,6 @@ transInterpretIn =
     helper (LengthOfTwoS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
     helper (LengthOfTwoS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
     helper LengthOfTwoN SubLSBase k = k SubLSBase SubLSBase
-
-{-
-data SameShapeWithSuffix :: [a] -> [a] -> [a] -> [a] -> Type where
-  SameShapeWithSuffixN :: LengthOfTwo xs ys n -> SameShapeWithSuffix xs ys xs ys
-  SameShapeWithSuffixS :: SameShapeWithSuffix xs ys (z : zs) (w : ws) -> SameShapeWithSuffix xs ys zs ws
-
-sameShapeFromSuffix :: SameShapeWithSuffix xs ys zs ws -> (forall len. LengthOfTwo xs ys len -> r) -> r
-sameShapeFromSuffix (SameShapeWithSuffixN shape) k = k shape
-sameShapeFromSuffix (SameShapeWithSuffixS shape) k = sameShapeFromSuffix shape k
--}
 
 removeFromLengthOfTwo ::
   ListEqMod1Idx xs' xs x idx ->
@@ -181,18 +153,18 @@ transInterpret :: Interpret xs ys -> Interpret ys zs -> Interpret xs zs
 transInterpret = go
   where
     go ::
-      InterpretAllIn xs ys idx ->
-      InterpretAllIn ys zs idx ->
-      InterpretAllIn xs zs idx
-    go (InterpretAllInN length) (InterpretAllInN length') = InterpretAllInN $ fst $ transLengthOfTwo length length'
-    go (InterpretAllInN length) yzs = interpret_to_LengthOfTwo yzs \length' -> InterpretAllInN $ fst $ transLengthOfTwo length length'
-    go xys (InterpretAllInN length) =
+      InterpretAsc xs ys idx ->
+      InterpretAsc ys zs idx ->
+      InterpretAsc xs zs idx
+    go (InterpretAscN length) (InterpretAscN length') = InterpretAscN $ fst $ transLengthOfTwo length length'
+    go (InterpretAscN length) yzs = interpret_to_LengthOfTwo yzs \length' -> InterpretAscN $ fst $ transLengthOfTwo length length'
+    go xys (InterpretAscN length) =
       interpret_to_LengthOfTwo xys \length' -> case transLengthOfTwo length' length of
-        (length, Refl) -> InterpretAllInN length
-    go (InterpretAllInS lidx lidx' xy xys) (InterpretAllInS ridx ridx' yz yzs) =
+        (length, Refl) -> InterpretAscN length
+    go (InterpretAscS lidx lidx' xy xys) (InterpretAscS ridx ridx' yz yzs) =
       case listEqMod1IdxInjective lidx' ridx of
         Refl ->
-          InterpretAllInS
+          InterpretAscS
             lidx
             ridx'
             (interpret_to_LengthOfTwo yzs \len' -> removeFromLengthOfTwo lidx' ridx' len' \shape -> transInterpretIn shape xy yz)
@@ -206,15 +178,6 @@ data InterpretIdxs :: [Language] -> [Language] -> [Nat] -> Type where
     InterpretIn ls0' ls1' l l' ->
     InterpretIdxs ls0 ls1 idxs ->
     InterpretIdxs ls0 ls1 (idx : idxs)
-
-{-
-data
-
-partialSortInterpretIdxs ::
-  InterpretIdxs xs ys idxs ->
-  (forall idxs'. InterpretIdxs xs ys idxs' -> r) ->
-  r
--}
 
 -- FIXME: make total
 partialMakeUnIdxed :: InterpretIdxs xs ys idxs -> Interpret xs ys
@@ -261,56 +224,21 @@ partialMakeUnIdxed = go SN
       case cmpIdx idx lidx of
         Just Refl -> k (Left (lidx, ridx, intr, intrs))
         Nothing -> getIdx idx intrs k
-    go :: SNat idx -> InterpretIdxs xs ys idxs -> InterpretAllIn xs ys idx
+    go :: SNat idx -> InterpretIdxs xs ys idxs -> InterpretAsc xs ys idx
     go idx intrs =
       getIdx idx intrs \case
         Left (lidx, ridx, intr, intrs') ->
-          InterpretAllInS lidx ridx intr $ go (SS idx) intrs'
-        Right len -> InterpretAllInN len
+          InterpretAscS lidx ridx intr $ go (SS idx) intrs'
+        Right len -> InterpretAscN len
 
 makeIdxed ::
-  InterpretAllIn ls ls' idx ->
+  InterpretAsc ls ls' idx ->
   (forall idxs. InterpretIdxs ls ls' idxs -> r) ->
   r
-makeIdxed (InterpretAllInN len) k = k (InterpretIdxsN len)
-makeIdxed (InterpretAllInS idx idx' intr intrs) k =
+makeIdxed (InterpretAscN len) k = k (InterpretIdxsN len)
+makeIdxed (InterpretAscS idx idx' intr intrs) k =
   makeIdxed intrs \intrs' ->
     k (InterpretIdxsS idx idx' intr intrs')
-
--- If we can interpret from ys to zs,
--- but ys is a permutation of xs,
--- then it follows that we can also interpret  from xs to zs.
--- An interpretation is a list of interpreters,
--- for each interpreter in the list, we must switch its
--- position in the list, in addition to permuting its input
--- and output since the interpreter expected the languages ys
--- while we are giving it xs, and the output must be ws,
--- which is a permutation of zs.
---
--- Implementation:
--- The permutation is a list of indices,
--- which can be visualised as bijective arrows between elements of
--- xs and ys.
--- We must follow each arrow, such that the interpreter at the end of
--- each arrow is put at the position noted by the beginning of the arrow.
--- We can understand this as looking up an index in the list of interpreters.
--- The interpreter has a shape that is incompatible, it is expecting a term
--- with languages ys, when in fact it receives xs, a permutation of ys.
---
--- If you squint enough, this function is similar to transPermutation.
---
--- We start with a InterpretAllIn, which we then turn into a
--- InterpretIdxs _ _ _, that contains the same information.
--- This form is much more amenable to permutation.
--- We do two steps of recursion, one within the other.
--- We permute the InterpretIdxs such that the type-level indices
--- are permuted.
--- The goal is then to reorganise the language list such that
--- we can turn it back into another InterpretAllIn.
--- We do this by splitting up the work:
--- Given a list of indices idx : idxs, we first handle
--- the tail. If the tail is empty, it is a no-op, otherwise,
--- the tail must be reordered into an ascending order.
 
 insertSubLSSwap ::
   ListEqMod1Idx xs xs' x idx ->
@@ -399,6 +327,17 @@ permuteInterpretIn perm2 intr =
         let (perm, perm') = permutation2_to_Permutation perm2'
          in permuteTerm' (invPermutation perm') $ runInterpreter intr subls' (permuteTerm' perm term)
 
+-- TODO: Remove
+-- Should be replaced with type-level permutations.
+-- You can't do a transitive relation with this either,
+-- since Permutation2 xs0 xs1 ys0 ys1 and
+--       Permutation2 ys0 ys1 zs0 zs1
+-- does not imply that there is a single
+-- permutation that carries xs0 to xs1 and
+-- zs0 to zs1. This is evident by the fact that
+-- ys0 might be made of only one element, meaning
+-- there are many ways of going from ys0 to ys1.
+-- If there were only one way, the above would hold.
 data Permutation2 :: [a] -> [a] -> [b] -> [b] -> Type where
   Permutation2N :: Permutation2 '[] '[] '[] '[]
   Permutation2S ::
@@ -561,6 +500,41 @@ permuteInterpretation perm intrs k =
       intrs'
       \intrs'' perm' -> k (partialMakeUnIdxed intrs'') perm'
 
+-- If we can interpret from ys to zs,
+-- but ys is a permutation of xs,
+-- then it follows that we can also interpret  from xs to zs.
+-- An interpretation is a list of interpreters,
+-- for each interpreter in the list, we must switch its
+-- position in the list, in addition to permuting its input
+-- and output since the interpreter expected the languages ys
+-- while we are giving it xs, and the output must be ws,
+-- which is a permutation of zs.
+--
+-- Implementation:
+-- The permutation is a list of indices,
+-- which can be visualised as bijective arrows between elements of
+-- xs and ys.
+-- We must follow each arrow, such that the interpreter at the end of
+-- each arrow is put at the position noted by the beginning of the arrow.
+-- We can understand this as looking up an index in the list of interpreters.
+-- The interpreter has a shape that is incompatible, it is expecting a term
+-- with languages ys, when in fact it receives xs, a permutation of ys.
+--
+-- If you squint enough, this function is similar to transPermutation.
+--
+-- We start with a InterpretAsc, which we then turn into a
+-- InterpretIdxs _ _ _, that contains the same information.
+-- This form is much more amenable to permutation.
+-- We do two steps of recursion, one within the other.
+-- We permute the InterpretIdxs such that the type-level indices
+-- are permuted.
+-- The goal is then to reorganise the language list such that
+-- we can turn it back into another InterpretAsc.
+-- We do this by splitting up the work:
+-- Given a list of indices idx : idxs, we first handle
+-- the tail. If the tail is empty, it is a no-op, otherwise,
+-- the tail must be reordered into an ascending order.
+
 swapInterpretPermutation ::
   Permutation xs ys ->
   Interpret ys zs ->
@@ -604,21 +578,21 @@ data LTE :: Nat -> Nat -> Type where
 idxInterpret' ::
   LTE idx' idx ->
   ListEqMod1Idx ls0' ls0 l idx ->
-  InterpretAllIn ls0 ls1 idx' ->
+  InterpretAsc ls0 ls1 idx' ->
   (forall ls1' l'. ListEqMod1Idx ls1' ls1 l' idx -> InterpretIn ls0' ls1' l l' -> r) ->
   r
 idxInterpret'
   LTEN
   idx
-  (InterpretAllInS idx' idx'' intr _)
+  (InterpretAscS idx' idx'' intr _)
   k = case eqListEqMod1Idx idx idx' of
     Refl -> k idx'' intr
 idxInterpret'
   (LTES lte)
   idx
-  (InterpretAllInS _ _ _ intrs)
+  (InterpretAscS _ _ _ intrs)
   k = idxInterpret' lte idx intrs k
-idxInterpret' lte idx (InterpretAllInN len) _ = absurd lte idx len
+idxInterpret' lte idx (InterpretAscN len) _ = absurd lte idx len
   where
     absurd :: LTE idx' idx -> ListEqMod1Idx xs xs' x idx -> LengthOfTwo xs' ys idx' -> a
     absurd _ _ _ = error "FIXME"
@@ -668,41 +642,119 @@ interpretTerm intrs (Term term idx) =
         removeFromLengthOfTwo idx' idx'' len \len' ->
           Term (runInterpreter intr (idSubLS len') term) (unListEqMod1Idx idx'')
 
-{-
-interpretInOther :: InterpretIn xs ys x y -> InterpretIn zs ws x y
-interpretInOther = undefined
+indexInto_over_LengthOfTwo ::
+  LengthOfTwo xs ys len ->
+  IndexInto xs idx ->
+  IndexInto ys idx
+indexInto_over_LengthOfTwo (LengthOfTwoS _) IndexIntoN = IndexIntoN
+indexInto_over_LengthOfTwo (LengthOfTwoS len) (IndexIntoS idx) =
+  IndexIntoS $ indexInto_over_LengthOfTwo len idx
+indexInto_over_LengthOfTwo LengthOfTwoN idx = case idx of {}
 
-extendInterpretOne :: Interpret '[x] '[y] -> Interpret (x : xs) (y : ys)
-extendInterpretOne = undefined
+incIndexInto ::
+  LengthOfTwo xs ys len ->
+  IndexInto xs idx ->
+  Either
+    (S idx :~: len)
+    (IndexInto xs (S idx))
+incIndexInto (LengthOfTwoS (LengthOfTwoS _)) IndexIntoN = Right (IndexIntoS IndexIntoN)
+incIndexInto (LengthOfTwoS len) (IndexIntoS idx) =
+  case incIndexInto len idx of
+    Left Refl -> Left Refl
+    Right idx -> Right $ IndexIntoS idx
+incIndexInto LengthOfTwoN idx = case idx of {}
+incIndexInto (LengthOfTwoS LengthOfTwoN) IndexIntoN = Left Refl
 
-interpretTwo :: forall x y z. InterpretIn '[x, y] '[x, z] y z -> Interpret '[x, y] '[x, z]
-interpretTwo gi@(InterpretIn g) = Interpret $ InterpretAllInS (InterpretIn f) $ InterpretAllInS (InterpretIn g) InterpretAllInN where
-  f :: SubLS ls0 ls1 '[x, y] '[x, z] (Just '(x, x)) -> Term' x ls0 tag -> Term' x ls1 tag
-  f (SubLSExcept (SubLSSkip SubLSBase)) term = term
-  f (SubLSExcept (SubLSSwap SubLSBase)) term = interpretTerm' (extendInterpretOne $ Interpret $ InterpretAllInS (interpretInOther gi) InterpretAllInN) term
+-- Given an InterpretIn xs xs x y,
+-- we can expand this into an Interpret (x : xs) (y : xs).
+-- For the case of the `x` language, trivially we use the
+-- given interpreter.
+-- For the other cases, we don't _do_ any real work:
+-- Given some x' which we preserve as x', we are given
+-- a node which might contain any of the languages in (x : xs)
+-- modulo x'.
+-- For the languages beside x, we simply preserve them,
+-- however, if x is present in the input term, we must translate
+-- this into an x'. We do this through the very function we are
+-- defining now, i.e. recursion.
+--
+-- We can expand this principle to more than a single pair of languages.
+-- Given some xs and ys, given for each x and y in xs and ys an
+-- InterpretIn (xs - x <> xs') (ys - y <> ys') x y,
+-- we can transform this into an
+-- Interpret (xs <> xs') (ys <> ys').
+-- The logic follows the same pattern,
+-- for the languages for which we have an interpreter, use it,
+-- for the others, use recursion to delay the interpretation.
 
-data SamePrefix :: [a] -> [a] -> [a] -> [a] -> Type where
-  SamePrefixN :: SamePrefix xs ys xs ys
-  SamePrefixS :: SamePrefix xs ys zs ws -> SamePrefix (x : xs) (x : ys) zs ws
+transSubLS ::
+  SubLS xs ys zs ws ->
+  SubLS zs ws as bs ->
+  SubLS xs ys as bs
+transSubLS SubLSBase SubLSBase = SubLSBase
+transSubLS (SubLSSwap subls) (SubLSSwap subls') = SubLSSwap $ transSubLS subls subls'
+transSubLS (SubLSSkip subls) (SubLSSwap subls') = SubLSSkip $ transSubLS subls subls'
+transSubLS subls (SubLSSkip subls') = SubLSSkip $ transSubLS subls subls'
+transSubLS subls SubLSBase = case eqSubLS subls of
+  Refl -> SubLSBase
 
-extendInterpretAllIn ::
-  SamePrefix xs ys zs ws ->
-  InterpretAllIn xs ys zs ws ->
-  InterpretAllIn xs ys xs ys
-extendInterpretAllIn SamePrefixN intrs = intrs
--}
-{-
-extendInterpretAllIn (SamePrefixS SamePrefixN) intrs = InterpretAllInS (InterpretIn intr) intrs where
-  intr :: SubLS ls0 ls1 (x : zs) (x : ws) (Just '(x, x)) -> Term' x ls0 tag -> Term' x ls1 tag
-  intr (SubLSExcept SubLSBase) (Term' node intrs perm) = Term' node intrs perm
-  intr (SubLSExcept (SubLSSkip SubLSBase)) (Term' node intrs perm) = Term' node intrs perm
-  intr (SubLSExcept (SubLSSwap SubLSBase)) t@(Term' node intrs perm) = _ -- Term' node _ _
--}
+sublsInterpretIn ::
+  SubLS zs ws xs ys ->
+  InterpretIn xs ys x y ->
+  InterpretIn zs ws x y
+sublsInterpretIn subls intr =
+  InterpretIn \subls' term -> runInterpreter intr (transSubLS subls' subls) term
+
+removeInterpretIn ::
+  ListEqMod1Idx xs' xs x' idx ->
+  ListEqMod1Idx ys' ys y' idx ->
+  InterpretIn xs ys x y ->
+  InterpretIn xs' ys' x y
+removeInterpretIn idx idx' intr =
+  InterpretIn \subls term -> runInterpreter intr (insertSubLSSkip idx idx' subls) term
+
+eqSubLS :: SubLS xs ys zs zs -> (xs :~: ys)
+eqSubLS SubLSBase = Refl
+eqSubLS (SubLSSwap subls) = case eqSubLS subls of Refl -> Refl
+eqSubLS (SubLSSkip subls) = case eqSubLS subls of Refl -> Refl
+
+interpretOne :: LengthOfTwo xs xs len -> InterpretIn xs xs x y -> Interpret (x : xs) (y : xs)
+interpretOne len@(LengthOfTwoS _) intr = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr (go intr len IndexIntoN)
+  where
+    go ::
+      InterpretIn xs xs x y ->
+      LengthOfTwo xs xs len ->
+      IndexInto xs idx ->
+      InterpretAsc (x : xs) (y : xs) (S idx)
+    go intr len idx =
+      removeListEqMod1Idx idx \lidx ->
+        InterpretAscS (ListEqMod1IdxS lidx) (ListEqMod1IdxS lidx) (redir intr lidx) $
+          case incIndexInto len idx of
+            Right idx' -> go intr len idx'
+            Left Refl -> InterpretAscN (LengthOfTwoS len)
+    redir ::
+      InterpretIn xs xs x y ->
+      ListEqMod1Idx xs' xs x' idx ->
+      InterpretIn (x : xs') (y : xs') x' x'
+    redir intr idx =
+      InterpretIn \subls term@(Term' _ _ perm) ->
+        case subls of
+          SubLSSwap subls' -> case eqSubLS subls' of
+            Refl -> permutationToLengthOfTwo (invPermutation perm) \(LengthOfTwoS len') ->
+              interpretTerm' (interpretOne len' $ sublsInterpretIn subls' $ removeInterpretIn idx idx intr) term
+          SubLSSkip subls' -> case eqSubLS subls' of Refl -> term
+interpretOne LengthOfTwoN intr =
+  InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr $
+    InterpretAscN (LengthOfTwoS LengthOfTwoN)
 
 data Catenation xs ys zs where
   CatenationN :: Catenation '[] ys ys
   CatenationS :: Catenation xs ys zs -> Catenation (x : xs) ys (x : zs)
 
+-- Simple languages simplify working with Plutarch.
+-- In most cases, you do not need any exotic power.
+-- A simple language has simple constructors that do not
+-- care about inner languages and catenates them all.
 type SimpleLanguage = [Tag] -> Tag -> Type
 data InstSimpleLanguage :: SimpleLanguage -> Language
 
@@ -775,6 +827,10 @@ termToSList :: Term ls tag -> SList ls
 termToSList (Term (Term' _ _ perm) idx) =
   insertSList idx $ permutationToSList $ invPermutation perm
 
+permutationToLengthOfTwo :: Permutation xs ys -> (forall len. LengthOfTwo xs xs len -> r) -> r
+permutationToLengthOfTwo PermutationN k = k LengthOfTwoN
+permutationToLengthOfTwo (PermutationS _ perm) k = permutationToLengthOfTwo perm (k . LengthOfTwoS)
+
 idPermutation :: SList xs -> Permutation xs xs
 idPermutation SNil = PermutationN
 idPermutation (SCons xs) = PermutationS ListEqMod1N (idPermutation xs)
@@ -831,27 +887,25 @@ suffixOf_to_SNat :: SuffixOf xs ys idx -> SNat idx
 suffixOf_to_SNat SuffixOfN = SN
 suffixOf_to_SNat (SuffixOfS x) = SS (suffixOf_to_SNat x)
 
-{-
-indexInto_to_ListEqMod1Idx_flipped :: IndexInto xs idx -> (forall xs' x. ListEqMod1Idx xs xs' x idx -> r) -> r
-indexInto_to_ListEqMod1Idx_flipped IndexIntoN k = k ListEqMod1IdxN
-indexInto_to_ListEqMod1Idx_flipped (IndexIntoS idx) k = indexInto_to_ListEqMod1Idx_flipped idx (k . ListEqMod1IdxS)
--}
+-- insertListEqMod1Idx :: IndexInto xs idx -> (forall xs' x. ListEqMod1Idx xs xs' x idx -> r) -> r
+-- insertListEqMod1Idx IndexIntoN k = k ListEqMod1IdxN
+-- insertListEqMod1Idx (IndexIntoS idx) k = insertListEqMod1Idx idx (k . ListEqMod1IdxS)
 
-indexInto_to_ListEqMod1Idx :: IndexInto xs idx -> (forall xs' x. ListEqMod1Idx xs' xs x idx -> r) -> r
-indexInto_to_ListEqMod1Idx IndexIntoN k = k ListEqMod1IdxN
-indexInto_to_ListEqMod1Idx (IndexIntoS idx) k = indexInto_to_ListEqMod1Idx idx (k . ListEqMod1IdxS)
+removeListEqMod1Idx :: IndexInto xs idx -> (forall xs' x. ListEqMod1Idx xs' xs x idx -> r) -> r
+removeListEqMod1Idx IndexIntoN k = k ListEqMod1IdxN
+removeListEqMod1Idx (IndexIntoS idx) k = removeListEqMod1Idx idx (k . ListEqMod1IdxS)
 
 suffixOf_to_ListEqMod1Idx :: SuffixOf xs ys (S idx) -> (forall xs' x. ListEqMod1Idx xs' xs x idx -> r) -> r
-suffixOf_to_ListEqMod1Idx suffix k = indexInto_to_ListEqMod1Idx (suffixOf_to_IndexInto suffix) k
+suffixOf_to_ListEqMod1Idx suffix k = removeListEqMod1Idx (suffixOf_to_IndexInto suffix) k
 
 idInterpretation :: SList xs -> Interpret xs xs
 idInterpretation = f SuffixOfN
   where
-    f :: SuffixOf xs ys idx -> SList ys -> InterpretAllIn xs xs idx
-    f _ SNil = InterpretAllInN undefined
+    f :: SuffixOf xs ys idx -> SList ys -> InterpretAsc xs xs idx
+    f _ SNil = InterpretAscN undefined
     f suffix (SCons xs) =
       suffixOf_to_ListEqMod1Idx (SuffixOfS suffix) \idx ->
-        InterpretAllInS idx idx g $ f (SuffixOfS suffix) xs
+        InterpretAscS idx idx g $ f (SuffixOfS suffix) xs
     g :: InterpretIn ls ls l l
     g = InterpretIn \subls x -> case i subls of Refl -> x
     i :: SubLS xs ys zs zs -> xs :~: ys

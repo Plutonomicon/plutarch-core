@@ -12,6 +12,7 @@ common c
     DataKinds
     FunctionalDependencies
     LambdaCase
+    NondecreasingIndentation
     TypeFamilies
 
   ghc-options:

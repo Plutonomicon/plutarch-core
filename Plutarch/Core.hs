@@ -3,9 +3,9 @@ module Plutarch.Core (
   Term (..),
   LengthOfTwo (..),
   runInterpreter,
-  Interpret (..),
+  Interpret,
   Term' (..),
-  InterpretAllIn (..),
+  InterpretAsc (..),
   InterpretIn (..),
   Permutation (..),
   ListEqMod1 (..),
@@ -50,8 +50,13 @@ data Permutation xs ys where
   PermutationN :: Permutation '[] '[]
   PermutationS :: ListEqMod1 ys ys' x -> Permutation xs ys -> Permutation (x : xs) ys'
 
--- @SubLS xs ys zs ws (Just '(x, y))@ shows that @xs@ and @ys@ share a common suffix,
--- with the prefix containing @zs@ in @xs@ and @ws@ in @ys@, except for @x@ and @y@.
+-- FIXME: Remove and replace with `Filter` and `Catenation` data types
+
+{- | @SubLS xs ys zs ws@ shows that @xs@ and @ys@ share a common suffix,
+ with the prefix containing @zs@ in @xs@ and @ws@ in @ys@.
+ It can be thought of as extending zs and ws to xs and ys by appending a suffix
+ to a filtered version of both.
+-}
 data SubLS :: [Language] -> [Language] -> [Language] -> [Language] -> Type where
   SubLSBase :: SubLS xs xs '[] '[]
   SubLSSwap :: SubLS xs ys zs ws -> SubLS (x : xs) (y : ys) (x : zs) (y : ws)
@@ -67,6 +72,15 @@ newtype InterpretIn ls ls' l l'
       ( forall ls0 ls1 tag.
         SubLS ls0 ls1 ls ls' ->
         Term' l ls0 tag ->
+        -- TODO: Possibly change this to `Term (l' : ls1) tag`.
+        -- This _shouldn't_ restrict the consumer in practice,
+        -- but it's not clear if it _benefits_ the producer in
+        -- practice either, after all,
+        -- you could only change the root node to only of those you
+        -- know, i.e. those in ls', but you can only choose them if
+        -- they are present in ls1, which isn't a given.
+        -- When would it be useful to _some times_ be able to choose
+        -- another root node language?
         Term' l' ls1 tag
       )
 
@@ -77,11 +91,12 @@ runInterpreter ::
   Term' l' ls1 tag
 runInterpreter (InterpretIn f) = f
 
+-- FIXME: Should be just LengthOf and should be erased
 data LengthOfTwo :: [a] -> [b] -> Nat -> Type where
   LengthOfTwoN :: LengthOfTwo '[] '[] N
   LengthOfTwoS :: LengthOfTwo xs ys len -> LengthOfTwo (x : xs) (y : ys) (S len)
 
-{- | @InterpretAllIn ls0 ls1 ls2 ls3@ contains functions to
+{- | @InterpretAsc ls0 ls1 ls2 ls3@ contains functions to
  interpret terms which root nodes are in the languages of @ls2@ into
  root nodes which languages are of @ls3@, while mapping the inner languages
  from @ls0@ to @ls1@.
@@ -89,18 +104,18 @@ data LengthOfTwo :: [a] -> [b] -> Nat -> Type where
 
 -- FIXME: Move the length statement to the top always by
 -- refactoring into two types, one recursive and one not.
-data InterpretAllIn :: [Language] -> [Language] -> Nat -> Type where
-  InterpretAllInN :: LengthOfTwo ls0 ls1 idx -> InterpretAllIn ls0 ls1 idx
-  InterpretAllInS ::
+data InterpretAsc :: [Language] -> [Language] -> Nat -> Type where
+  InterpretAscN :: LengthOfTwo ls0 ls1 idx -> InterpretAsc ls0 ls1 idx
+  InterpretAscS ::
     ListEqMod1Idx ls0' ls0 l idx ->
     ListEqMod1Idx ls1' ls1 l' idx ->
     InterpretIn ls0' ls1' l l' ->
-    InterpretAllIn ls0 ls1 (S idx) ->
-    InterpretAllIn ls0 ls1 idx
+    InterpretAsc ls0 ls1 (S idx) ->
+    InterpretAsc ls0 ls1 idx
 
 -- | @Interpret ls ls'@ contains functions to interpret the languages @ls@ to @ls'@.
 type Interpret :: [Language] -> [Language] -> Type
-type Interpret ls ls' = InterpretAllIn ls ls' N
+type Interpret ls ls' = InterpretAsc ls ls' N
 
 -- | Like @Term@, but explicitly notes the language of the root node.
 type Term' :: Language -> [Language] -> Tag -> Type
