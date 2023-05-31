@@ -104,6 +104,9 @@ data LengthOfTwo :: [a] -> [b] -> Nat -> Type where
 
 -- FIXME: Move the length statement to the top always by
 -- refactoring into two types, one recursive and one not.
+-- FIXME: Represent the context passed to individual interpreters
+-- in the type, such that functions that operate on interpreters
+-- do not throw the context away unintentionally.
 data InterpretAsc :: [Language] -> [Language] -> Nat -> Type where
   InterpretAscN :: LengthOfTwo ls0 ls1 idx -> InterpretAsc ls0 ls1 idx
   InterpretAscS ::

@@ -12,9 +12,7 @@ module Plutarch.Internal.Utilities (
   SimpleLanguage,
   InstSimpleLanguage,
   L (..),
-  translateSimpleLanguage,
   extractSimpleLanguage,
-  EmbedTwo,
   interpretTerm',
   interpretTerm,
   permuteTerm,
@@ -23,7 +21,7 @@ module Plutarch.Internal.Utilities (
 ) where
 
 import Data.Kind (Type)
-import Data.SOP (K, NP)
+import Data.SOP (NP ((:*), Nil))
 import Data.Type.Equality ((:~:) (Refl))
 import Plutarch.Core
 
@@ -747,6 +745,46 @@ interpretOne LengthOfTwoN intr =
   InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr $
     InterpretAscN (LengthOfTwoS LengthOfTwoN)
 
+-- FIXME: generalise
+-- Interpreters form something like a monoid
+interpretExpand :: Interpret xs ys -> Interpret (z : xs) (z : ys)
+interpretExpand = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN undefined . go where
+  addSubLS ::
+    SList xs ->
+    SubLS xs ys zs ws ->
+    (forall xs' ys'. SubLS xs' ys' zs ws ->
+      Permutation (x : xs) xs' ->
+      Permutation (x : ys) ys' ->
+      r
+    ) ->
+    r
+  addSubLS slist SubLSBase k =
+    let
+      perm = idPermutation (SCons slist)
+    in
+      k SubLSBase perm perm
+  addSubLS slist (SubLSSkip subls) k =
+    addSubLS slist subls \subls' perm perm' ->
+      k (SubLSSkip subls') perm perm'
+  addSubLS (SCons slist) (SubLSSwap subls) k =
+    addSubLS slist subls \subls' (PermutationS idx perm) (PermutationS idx' perm') ->
+      k
+        (SubLSSwap subls')
+        (PermutationS (ListEqMod1S idx) $ PermutationS ListEqMod1N perm)
+        (PermutationS (ListEqMod1S idx') $ PermutationS ListEqMod1N perm')
+  helper :: InterpretIn xs ys x y -> InterpretIn (z : xs) (z : ys) x y
+  helper intr = InterpretIn \case
+    SubLSSwap subls -> \term@(Term' _ _ perm) ->
+      case permutationToSList $ invPermutation perm of
+        SCons slist -> addSubLS slist subls \subls' perm perm' ->
+          permuteTerm' (invPermutation perm')
+            $ runInterpreter intr subls'
+            $ permuteTerm' perm term
+    SubLSSkip subls -> \term -> runInterpreter intr subls term
+  go :: InterpretAsc xs ys idx -> InterpretAsc (z : xs) (z : ys) (S idx)
+  go (InterpretAscN len) = InterpretAscN (LengthOfTwoS len)
+  go (InterpretAscS idx idx' intr rest) = InterpretAscS (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (helper intr) (go rest)
+
 data Catenation xs ys zs where
   CatenationN :: Catenation '[] ys ys
   CatenationS :: Catenation xs ys zs -> Catenation (x : xs) ys (x : zs)
@@ -762,16 +800,134 @@ data InstSimpleLanguage :: SimpleLanguage -> Language
 data instance L (InstSimpleLanguage l) ls tag where
   SimpleLanguageNode0 :: l '[] tag -> L (InstSimpleLanguage l) '[] tag
   SimpleLanguageNode1 :: l '[arg] tag -> Term ls arg -> L (InstSimpleLanguage l) ls tag
-  SimpleLanguageNode2 :: l '[arg, arg'] tag -> Term ls arg -> Term ls' arg' -> Catenation ls ls' ls'' -> L (InstSimpleLanguage l) ls'' tag
-  ContractSimpleLanguage :: Term (InstSimpleLanguage l : InstSimpleLanguage l : ls) tag -> L (InstSimpleLanguage l) ls tag
+  SimpleLanguageNode2 ::
+    l '[arg, arg'] tag ->
+    Term ls arg ->
+    Term ls' arg' ->
+    Catenation ls ls' ls'' ->
+    L (InstSimpleLanguage l) ls'' tag
+  ContractSimpleLanguage ::
+    Term (InstSimpleLanguage l : InstSimpleLanguage l : ls) tag ->
+    L (InstSimpleLanguage l) ls tag
   ExpandSimpleLanguage :: Term ls tag -> L (InstSimpleLanguage l) ls tag
 
-extractSimpleLanguage ::
-  (l subnodes tag -> NP (K a) subnodes -> a) ->
-  Term '[InstSimpleLanguage l] tag ->
-  a
-extractSimpleLanguage = undefined
+-- How do we extract the AST from the term?
+-- We have a root node of our language which we open up.
+-- Inside, we have subnodes of unknown languages, which
+-- we interpret into our known language using the embedded
+-- information.
+-- Now we have a node of our language along with subnodes of known languages.
+-- We perform a recursive step on each subnode and accumulate the results.
+-- Each subnode might have one or more known languages, hence we must support
+-- operating on multiples of our known languages.
 
+data Repeated :: a -> [a] -> Type where
+  RepeatedN :: Repeated x '[]
+  RepeatedS :: Repeated x xs -> Repeated x (x : xs)
+
+newtype SimpleFolder l r = SimpleFolder (forall args tag. l args tag -> NP r args -> r tag)
+
+runSimpleFolder ::
+  SimpleFolder l r ->
+  l args tag ->
+  NP r args ->
+  r tag
+runSimpleFolder (SimpleFolder f) node children = f node children
+
+-- You can imagine this function as taking an interpretation
+-- from xs to ys, and _splitting it up_, such that you
+-- have two separate interpretations, one from the lower half of
+-- xs to the lower half of ys, and the other from the upper half of xs
+-- to the upper half of ys.
+-- This works by marking every language that is discluded in one part with SubLSSkip.
+-- Thus, if you split two interpretations apart then join them again, the interpreters
+-- inherently lose context. What was there is no longer there.
+-- FIXME: Is there a way to fix the above?
+interpretSplit ::
+  Catenation xs ys zs ->
+  Interpret zs ws ->
+  (forall xs' ys'. Interpret xs xs' -> Interpret ys ys' -> Catenation xs' ys' ws -> r) ->
+  r
+interpretSplit cat intr k = undefined
+
+repeatedOverPermutation ::
+  Permutation xs ys ->
+  Repeated x xs ->
+  Repeated x ys
+repeatedOverPermutation PermutationN RepeatedN = RepeatedN
+repeatedOverPermutation (PermutationS idx perm) (RepeatedS rep) =
+  insertRepeated idx $ repeatedOverPermutation perm rep
+
+insertRepeated ::
+  ListEqMod1 xs xs' x ->
+  Repeated x xs ->
+  Repeated x xs'
+insertRepeated ListEqMod1N rep = RepeatedS rep
+insertRepeated (ListEqMod1S idx) (RepeatedS rep) = RepeatedS $ insertRepeated idx rep
+
+repeatedOverCatenation ::
+  Catenation xs ys zs ->
+  Repeated x zs ->
+  (Repeated x xs, Repeated x ys)
+repeatedOverCatenation CatenationN rep = (RepeatedN, rep)
+repeatedOverCatenation (CatenationS cat) (RepeatedS rep) =
+  case repeatedOverCatenation cat rep of
+    (x, y) -> (RepeatedS x, y)
+
+removeRepeated ::
+  ListEqMod1 xs' xs y ->
+  Repeated x xs ->
+  Repeated x xs'
+removeRepeated ListEqMod1N (RepeatedS rep) = rep
+removeRepeated (ListEqMod1S idx) (RepeatedS rep) = RepeatedS $ removeRepeated idx rep
+
+inRepeated ::
+  ListEqMod1 xs' xs y ->
+  Repeated x xs ->
+  (x :~: y)
+inRepeated ListEqMod1N (RepeatedS _) = Refl
+inRepeated (ListEqMod1S idx) (RepeatedS rep) = inRepeated idx rep
+
+extractSimpleLanguage ::
+  SimpleFolder l r ->
+  Term '[InstSimpleLanguage l] tag ->
+  r tag
+extractSimpleLanguage = go' (RepeatedS RepeatedN) where
+  go' ::
+    Repeated (InstSimpleLanguage l) ls ->
+    SimpleFolder l r ->
+    Term ls tag ->
+    r tag
+  go' rep folder (Term term idx) =
+    case inRepeated idx rep of
+      Refl -> go (removeRepeated idx rep) folder term
+  go ::
+    Repeated (InstSimpleLanguage l) ls ->
+    SimpleFolder l r ->
+    Term' (InstSimpleLanguage l) ls tag ->
+    r tag
+  go _ folder (Term' (SimpleLanguageNode0 node) _ _) = runSimpleFolder folder node Nil
+  go rep folder (Term' (SimpleLanguageNode1 node arg) intr perm) =
+    case go' rep folder (permuteTerm perm $ interpretTerm intr arg) of
+      arg' -> runSimpleFolder folder node (arg' :* Nil)
+  go rep folder (Term' (SimpleLanguageNode2 node argx argy cat) intr perm) =
+    interpretSplit cat intr \intrx intry catx ->
+        let
+          rep' = repeatedOverPermutation (invPermutation perm) rep
+          (repx, repy) = repeatedOverCatenation catx rep'
+          argx' = go' repx folder (interpretTerm intrx argx)
+          argy' = go' repy folder (interpretTerm intry argy)
+        in runSimpleFolder folder node (argx' :* argy' :* Nil)
+  go rep folder (Term' (ExpandSimpleLanguage term) intr perm) =
+    go' rep folder $ permuteTerm perm $ interpretTerm intr term
+  go rep folder (Term' (ContractSimpleLanguage term) intr perm) =
+    go' (RepeatedS $ RepeatedS rep) folder
+      $ permuteTerm (PermutationS ListEqMod1N
+      $ PermutationS ListEqMod1N perm)
+      $ interpretTerm (interpretExpand
+      $ interpretExpand intr) term
+
+{-
 translateSimpleLanguage ::
   (forall tag'. l '[] tag' -> (Term' l' '[] tag', a)) ->
   (forall ls' tag' arg. l '[arg] tag' -> Term ls' arg -> (Term' l' ls' tag', a)) ->
@@ -779,10 +935,7 @@ translateSimpleLanguage ::
   Term (InstSimpleLanguage l : ls) tag ->
   (Term (l' : ls) tag, Maybe a)
 translateSimpleLanguage _ _ _ _ = undefined
-
-data EmbedTwo lx ly :: Language
-data instance L (EmbedTwo lx ly) ls tag where
-  EmbedTwo :: Term (lx : ly : ls) tag -> L (EmbedTwo lx ly) ls tag
+-}
 
 ---- examples
 
@@ -838,6 +991,11 @@ idPermutation (SCons xs) = PermutationS ListEqMod1N (idPermutation xs)
 idPermutation2 :: SList xs -> Permutation2 xs xs xs xs
 idPermutation2 SNil = Permutation2N
 idPermutation2 (SCons xs) = Permutation2S ListEqMod1IdxN ListEqMod1IdxN (idPermutation2 xs)
+
+lengthOfTwo_to_SList :: LengthOfTwo xs ys len -> (SList xs, SList ys)
+lengthOfTwo_to_SList LengthOfTwoN = (SNil, SNil)
+lengthOfTwo_to_SList (LengthOfTwoS len) =
+  case lengthOfTwo_to_SList len of (x, y) -> (SCons x, SCons y)
 
 data IndexInto :: [a] -> Nat -> Type where
   IndexIntoN :: IndexInto (x : xs) N
