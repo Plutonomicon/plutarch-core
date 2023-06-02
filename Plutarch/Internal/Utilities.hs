@@ -703,6 +703,13 @@ sublsInterpretIn ::
 sublsInterpretIn subls intr =
   InterpretIn \subls' term -> runInterpreter intr (transSubLS subls' subls) term
 
+sublsInterpret ::
+  LengthOfTwo xs ys len ->
+  SubLS xs ys zs ws ->
+  Interpret zs ws ->
+  Interpret xs ys
+sublsInterpret len subls intrs = undefined
+
 removeInterpretIn ::
   ListEqMod1Idx xs' xs x' idx ->
   ListEqMod1Idx ys' ys y' idx ->
@@ -745,10 +752,26 @@ interpretOne LengthOfTwoN intr =
   InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr $
     InterpretAscN (LengthOfTwoS LengthOfTwoN)
 
+term'_to_length :: Term' l ls tag -> (forall len. LengthOf ls len -> r) -> r
+term'_to_length (Term' _ _ perm) k = permutationToLengthOfTwo (invPermutation perm) k
+
+length_subls ::
+  SubLS xs ys zs ws ->
+  LengthOf xs len ->
+  LengthOfTwo xs ys len
+length_subls SubLSBase len = len
+length_subls (SubLSSwap subls) (LengthOfTwoS len) = LengthOfTwoS $ length_subls subls len
+length_subls (SubLSSkip subls) len = length_subls subls len
+
 -- FIXME: generalise
 -- Interpreters form something like a monoid
 interpretExpand :: Interpret xs ys -> Interpret (z : xs) (z : ys)
-interpretExpand = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN undefined . go where
+interpretExpand intrs = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (intr intrs) $ go intrs where
+  intr :: Interpret xs ys -> InterpretIn xs ys z z
+  intr intrs =
+    InterpretIn \subls term ->
+      term'_to_length term \len ->
+        interpretTerm' (sublsInterpret (length_subls subls len) subls intrs) term
   addSubLS ::
     SList xs ->
     SubLS xs ys zs ws ->
@@ -834,6 +857,40 @@ runSimpleFolder ::
   r tag
 runSimpleFolder (SimpleFolder f) node children = f node children
 
+data InterpretDesc :: [Language] -> [Language] -> Nat -> Type where
+  InterpretDescN :: LengthOfTwo ls0 ls1 len -> InterpretDesc ls0 ls1 N
+  InterpretDescS ::
+    ListEqMod1Idx ls0' ls0 l idx ->
+    ListEqMod1Idx ls1' ls1 l' idx ->
+    InterpretIn ls0' ls1' l l' ->
+    InterpretDesc ls0 ls1 idx ->
+    InterpretDesc ls0 ls1 (S idx)
+
+data Drop :: Nat -> [a] -> [a] -> Type where
+  DropN :: Drop N xs xs
+  DropS :: Drop n xs ys -> Drop (S n) (x : xs) ys
+
+data Take :: Nat -> [a] -> [a] -> Type where
+  TakeN :: Take N xs '[]
+  TakeS :: Take n xs ys -> Take (S n) (x : xs) (x : ys)
+
+data TakeInv :: Nat -> [a] -> [a] -> Type where
+  TakeInvN :: LengthOf xs len -> TakeInv len xs xs
+  TakeInvS :: TakeInv (S n) xs ys -> ListEqMod1Idx zs ys x n -> TakeInv n xs zs
+
+type LengthOf xs len = LengthOfTwo xs xs len
+
+data LTE' :: Nat -> Nat -> Type where
+  LTE'N :: LTE' N y
+  LTE'S :: LTE' x y -> LTE' (S x) (S y)
+
+combineLengthOfTwo ::
+  LengthOfTwo xs ys len ->
+  LengthOfTwo zs ws len ->
+  LengthOfTwo xs zs len
+combineLengthOfTwo LengthOfTwoN LengthOfTwoN = LengthOfTwoN
+combineLengthOfTwo (LengthOfTwoS len) (LengthOfTwoS len') = LengthOfTwoS $ combineLengthOfTwo len len'
+
 -- You can imagine this function as taking an interpretation
 -- from xs to ys, and _splitting it up_, such that you
 -- have two separate interpretations, one from the lower half of
@@ -848,7 +905,103 @@ interpretSplit ::
   Interpret zs ws ->
   (forall xs' ys'. Interpret xs xs' -> Interpret ys ys' -> Catenation xs' ys' ws -> r) ->
   r
-interpretSplit cat intr k = undefined
+interpretSplit cat intr k =
+  catenation_to_length cat \len ->
+    let snat = length_to_snat len in
+      interpret_to_LengthOfTwo intr \len' ->
+        let lte = prove_LTE cat len len' in
+        case go len' snat (add_n_N_n snat) lte (InterpretDescN len') intr of
+          (desc, asc) -> prove_split (length_to_snat len) len' lte \x y z ->
+            case (cutDesc (prove_Take cat len) x desc, cutAsc (prove_Drop cat len) y asc) of
+              (lower, upper) -> k lower upper z
+  where
+  prove_split ::
+    SNat n ->
+    LengthOfTwo zs ws len ->
+    LTE' n len ->
+    (forall xs ys. Take n ws xs -> Drop n ws ys -> Catenation xs ys ws -> r) ->
+    r
+  prove_split SN _ LTE'N k = k TakeN DropN CatenationN
+  prove_split (SS SN) (LengthOfTwoS _) (LTE'S LTE'N) k = k (TakeS TakeN) (DropS DropN) (CatenationS CatenationN)
+  prove_split (SS n) (LengthOfTwoS len) (LTE'S lte) k =
+    prove_split n len lte \take drop cat -> k (TakeS take) (DropS drop) (CatenationS cat)
+  prove_split (SS _) LengthOfTwoN lte _ = case lte of
+  prove_Take ::
+    Catenation xs ys zs ->
+    LengthOf xs len ->
+    Take len zs xs
+  prove_Take CatenationN LengthOfTwoN = TakeN
+  prove_Take (CatenationS cat) (LengthOfTwoS len) = TakeS $ prove_Take cat len
+  prove_Drop ::
+    Catenation xs ys zs ->
+    LengthOf xs len ->
+    Drop len zs ys
+  prove_Drop CatenationN LengthOfTwoN = DropN
+  prove_Drop (CatenationS cat) (LengthOfTwoS len) = DropS $ prove_Drop cat len
+  prove_LTE ::
+    Catenation xs ys zs ->
+    LengthOf xs len ->
+    LengthOfTwo zs zs' len' ->
+    LTE' len len'
+  prove_LTE CatenationN LengthOfTwoN _ = LTE'N
+  prove_LTE (CatenationS cat) (LengthOfTwoS len) (LengthOfTwoS len') =
+    LTE'S $ prove_LTE cat len len'
+  length_to_snat ::
+    LengthOfTwo xs ys len ->
+    SNat len
+  length_to_snat LengthOfTwoN = SN
+  length_to_snat (LengthOfTwoS len) = SS $ length_to_snat len
+  catenation_to_length ::
+    Catenation xs ys zs ->
+    (forall len. LengthOf xs len -> r) ->
+    r
+  catenation_to_length CatenationN k = k LengthOfTwoN
+  catenation_to_length (CatenationS cat) k =
+    catenation_to_length cat (k . LengthOfTwoS)
+  cutAscSingle ::
+    InterpretAsc (x : xs) (y : ys) (S idx) ->
+    InterpretAsc xs ys idx
+  cutAscSingle (InterpretAscN (LengthOfTwoS len)) = InterpretAscN len
+  cutAscSingle (InterpretAscS (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') intr intrs) =
+    InterpretAscS idx idx' (removeInterpretIn ListEqMod1IdxN ListEqMod1IdxN intr) $ cutAscSingle intrs
+  cutAsc ::
+    Drop idx xs xs' ->
+    Drop idx ys ys' ->
+    InterpretAsc xs ys idx ->
+    Interpret xs' ys'
+  cutAsc DropN DropN intrs = intrs
+  cutAsc (DropS dx) (DropS dy) intrs =
+    cutAsc dx dy (cutAscSingle intrs)
+  -- cutDescSingle (InterpretDescN (LengthOfTwoS len)) = InterpretDescN len
+  --cutDescSingle (InterpretDescS (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') intr intrs) =
+  --  InterpretDescS idx idx' (removeInterpretIn ListEqMod1IdxN ListEqMod1IdxN intr) $ cutDescSingle intrs
+  {-
+  cutDesc' ::
+    TakeInv idx xs xs' ->
+    TakeInv idx ys ys' ->
+    InterpretDesc xs ys idx ->
+    Interpret xs' ys'
+  cutDesc' (TakeInvN len) (TakeInvN len') intrs = _ intrs
+  -}
+  cutDesc ::
+    Take idx xs xs' ->
+    Take idx ys ys' ->
+    InterpretDesc xs ys idx ->
+    Interpret xs' ys'
+  cutDesc TakeN TakeN (InterpretDescN len) = InterpretAscN LengthOfTwoN
+  -- cutDesc (TakeS tx) (TakeS ty) intrs =
+  go ::
+    LengthOfTwo xs ys len ->
+    SNat count ->
+    Add count idx idx' ->
+    LTE' idx' len ->
+    InterpretDesc xs ys idx ->
+    InterpretAsc xs ys idx ->
+    (InterpretDesc xs ys idx', InterpretAsc xs ys idx')
+  go _ SN AddN _ desc asc = (desc, asc)
+  go len (SS count) (AddS add) lte desc (InterpretAscS idx idx' intr asc) =
+    go len count (addSFlipped add) lte (InterpretDescS idx idx' intr desc) asc
+  go _ (SS _) (AddS _) _ _ (InterpretAscN _) = error "FIXME: prove impossible"
 
 repeatedOverPermutation ::
   Permutation xs ys ->
@@ -926,16 +1079,6 @@ extractSimpleLanguage = go' (RepeatedS RepeatedN) where
       $ PermutationS ListEqMod1N perm)
       $ interpretTerm (interpretExpand
       $ interpretExpand intr) term
-
-{-
-translateSimpleLanguage ::
-  (forall tag'. l '[] tag' -> (Term' l' '[] tag', a)) ->
-  (forall ls' tag' arg. l '[arg] tag' -> Term ls' arg -> (Term' l' ls' tag', a)) ->
-  (forall ls' ls'' ls''' tag' arg arg'. l '[arg, arg'] tag' -> Term ls' arg -> Term ls'' arg' -> Catenation ls' ls'' ls''' -> (Term' l' ls''' tag', a)) ->
-  Term (InstSimpleLanguage l : ls) tag ->
-  (Term (l' : ls) tag, Maybe a)
-translateSimpleLanguage _ _ _ _ = undefined
--}
 
 ---- examples
 
@@ -1059,8 +1202,13 @@ suffixOf_to_ListEqMod1Idx suffix k = removeListEqMod1Idx (suffixOf_to_IndexInto 
 idInterpretation :: SList xs -> Interpret xs xs
 idInterpretation = f SuffixOfN
   where
+    extractLength :: LengthOf ys len -> Add len len' len'' -> SuffixOf xs ys len' -> LengthOf xs len''
+    extractLength (LengthOfTwoS len) (AddS add) SuffixOfN = LengthOfTwoS $ extractLength len add SuffixOfN
+    extractLength len add (SuffixOfS suffix) =
+      undoAddSFlipped add \Refl add' ->
+        extractLength (LengthOfTwoS len) (AddS add') suffix
     f :: SuffixOf xs ys idx -> SList ys -> InterpretAsc xs xs idx
-    f _ SNil = InterpretAscN undefined
+    f suffix SNil = InterpretAscN (extractLength LengthOfTwoN AddN suffix)
     f suffix (SCons xs) =
       suffixOf_to_ListEqMod1Idx (SuffixOfS suffix) \idx ->
         InterpretAscS idx idx g $ f (SuffixOfS suffix) xs
@@ -1124,6 +1272,9 @@ contractThere idx c term = elemOf_to_listEqMod1 idx \idx' -> unbringTerm idx' $ 
 data ReverseCatenation :: [a] -> [a] -> [a] -> Type where
   ReverseCatenationN :: ReverseCatenation '[] ys ys
   ReverseCatenationS :: ReverseCatenation xs (x : ys) zs -> ReverseCatenation (x : xs) ys zs
+
+type Reverse :: [a] -> [a] -> Type
+type Reverse xs ys = ReverseCatenation xs '[] ys
 
 {-
 catenationToNilIsInput :: Catenation xs '[] ys -> xs :~: ys
