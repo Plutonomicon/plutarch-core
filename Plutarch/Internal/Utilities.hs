@@ -39,27 +39,66 @@ cmpListEqMod1 ::
   ListEqMod1 tail new y ->
   ( forall tail'.
     Either
-      (x :~: y, new' :~: tail)
+      ('(x, new') :~: '(y, tail))
       (ListEqMod1 tail' tail x, ListEqMod1 tail' new' y) ->
     r
   ) ->
   r
-cmpListEqMod1 ListEqMod1N ListEqMod1N k = k (Left (Refl, Refl))
+cmpListEqMod1 ListEqMod1N ListEqMod1N k = k (Left Refl)
 cmpListEqMod1 ListEqMod1N (ListEqMod1S idx) k = k (Right (ListEqMod1N, idx))
 cmpListEqMod1 (ListEqMod1S idx) ListEqMod1N k = k (Right (idx, ListEqMod1N))
 cmpListEqMod1 (ListEqMod1S idx) (ListEqMod1S idx') k = cmpListEqMod1 idx idx' \case
-  Left (x, Refl) -> k (Left (x, Refl))
-  Right (idx2, idx'2) -> k (Right (ListEqMod1S idx2, ListEqMod1S idx'2))
+  Left Refl -> k (Left Refl)
+
+ {-
+cmpListEqMod1Idx ::
+  ListEqMod1Idx new' new x idx ->
+  ListEqMod1Idx tail new y idx' ->
+  ( forall tail' idx'' idx'''.
+    Either
+      ('(x, new', idx) :~: '(y, tail, idx'))
+      (Either
+        -- idx < idx'
+        (S idx''' :~: idx', ListEqMod1Idx tail' tail x idx, ListEqMod1Idx tail' new' y idx''')
+        --- idx > idx'
+        (S idx'' :~: idx, ListEqMod1Idx tail' tail x idx'', ListEqMod1Idx tail' new' y idx)
+      ) ->
+    r
+  ) ->
+  r
+cmpListEqMod1Idx _ _ _ = undefined
+  {-
+cmpListEqMod1Idx ListEqMod1IdxN ListEqMod1IdxN k = k (Left Refl)
+cmpListEqMod1Idx ListEqMod1IdxN (ListEqMod1IdxS idx) k = k (Right (ListEqMod1IdxN, idx))
+cmpListEqMod1Idx (ListEqMod1IdxS idx) ListEqMod1IdxN k = k (Right (idx, ListEqMod1IdxN))
+cmpListEqMod1Idx (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') k = cmpListEqMod1Idx idx idx' \case
+  Left Refl -> k (Left Refl)
+  Right (idx2, idx'2) -> k (Right (ListEqMod1IdxS idx2, ListEqMod1IdxS idx'2))
+-} Right (idx2, idx'2) -> k (Right (ListEqMod1S idx2, ListEqMod1S idx'2))
+  -}
 
 bringPermutation :: ListEqMod1 new' new x -> Permutation old new -> Permutation old (x : new')
 bringPermutation ListEqMod1N x = x
 bringPermutation idx (PermutationS idx' tail) =
   cmpListEqMod1 idx idx' \case
-    Left (Refl, Refl) -> PermutationS ListEqMod1N tail
+    Left Refl -> PermutationS ListEqMod1N tail
     Right (idx2, idx'2) ->
       PermutationS (ListEqMod1S idx'2) $
         bringPermutation idx2 $
           tail
+
+listEqMod1_to_Permutation ::
+  SList xs' ->
+  ListEqMod1 xs' xs x ->
+  Permutation (x : xs') xs
+listEqMod1_to_Permutation slist idx = PermutationS idx (idPermutation slist)
+
+unbringPermutation :: ListEqMod1 new' new x -> Permutation old (x : new') -> Permutation old new
+unbringPermutation idx perm =
+  transPermutation perm
+    $ listEqMod1_to_Permutation
+      (case permutationToSList (invPermutation perm) of SCons slist -> slist)
+      idx
 
 transListEqMod1 ::
   ListEqMod1 xs ys x ->
@@ -119,9 +158,9 @@ removeFromLengthOfTwo ListEqMod1IdxN ListEqMod1IdxN (LengthOfTwoS s) k = k s
 removeFromLengthOfTwo (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (LengthOfTwoS s) k =
   removeFromLengthOfTwo idx idx' s (k . LengthOfTwoS)
 
-listEqMod1IdxInjective :: ListEqMod1Idx xs' xs x idx -> ListEqMod1Idx ys' xs y idx -> '(xs', x) :~: '(ys', y)
-listEqMod1IdxInjective ListEqMod1IdxN ListEqMod1IdxN = Refl
-listEqMod1IdxInjective (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') = case listEqMod1IdxInjective idx idx' of
+listEqMod1IdxFunctional :: ListEqMod1Idx xs' xs x idx -> ListEqMod1Idx ys' xs y idx -> '(xs', x) :~: '(ys', y)
+listEqMod1IdxFunctional ListEqMod1IdxN ListEqMod1IdxN = Refl
+listEqMod1IdxFunctional (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') = case listEqMod1IdxFunctional idx idx' of
   Refl -> Refl
 
 transLengthOfTwo :: LengthOfTwo xs ys n -> LengthOfTwo ys zs n' -> (LengthOfTwo xs zs n, n :~: n')
@@ -160,7 +199,7 @@ transInterpret = go
       interpret_to_LengthOfTwo xys \length' -> case transLengthOfTwo length' length of
         (length, Refl) -> InterpretAscN length
     go (InterpretAscS lidx lidx' xy xys) (InterpretAscS ridx ridx' yz yzs) =
-      case listEqMod1IdxInjective lidx' ridx of
+      case listEqMod1IdxFunctional lidx' ridx of
         Refl ->
           InterpretAscS
             lidx
@@ -703,6 +742,30 @@ sublsInterpretIn ::
 sublsInterpretIn subls intr =
   InterpretIn \subls' term -> runInterpreter intr (transSubLS subls' subls) term
 
+data Filter :: [a] -> [a] -> Type where
+  FilterN :: Filter '[] '[]
+  FilterInc :: Filter xs ys -> Filter (x : xs) (y : ys)
+  FilterExc :: Filter xs ys -> Filter xs (y : ys)
+
+{-
+data Filter :: [Bool] -> [a] -> [a] -> Type where
+  FilterN :: Filter '[] '[] '[]
+  FilterInc :: Filter bs xs ys -> Filter (True : bs) (x : xs) (y : ys)
+  FilterExc :: Filter bs xs ys -> Filter (False : bs) xs (y : ys)
+-}
+
+data Zip :: [a] -> [b] -> [(a, b)] -> Type where
+  ZipN :: Zip '[] '[] '[]
+  ZipS :: Zip xs ys xys -> Zip (x : xs) (y : ys) ('(x, y) : xys)
+
+filterInterpret ::
+  Zip xs ys xys ->
+  Zip zs ws zws ->
+  Filter xys zws ->
+  Interpret xs ys ->
+  Interpret zs ws
+filterInterpret = undefined
+
 sublsInterpret ::
   LengthOfTwo xs ys len ->
   SubLS xs ys zs ws ->
@@ -884,6 +947,12 @@ data LTE' :: Nat -> Nat -> Type where
   LTE'N :: LTE' N y
   LTE'S :: LTE' x y -> LTE' (S x) (S y)
 
+length_to_snat ::
+  LengthOfTwo xs ys len ->
+  SNat len
+length_to_snat LengthOfTwoN = SN
+length_to_snat (LengthOfTwoS len) = SS $ length_to_snat len
+
 combineLengthOfTwo ::
   LengthOfTwo xs ys len ->
   LengthOfTwo zs ws len ->
@@ -946,11 +1015,6 @@ interpretSplit cat intr k =
   prove_LTE CatenationN LengthOfTwoN _ = LTE'N
   prove_LTE (CatenationS cat) (LengthOfTwoS len) (LengthOfTwoS len') =
     LTE'S $ prove_LTE cat len len'
-  length_to_snat ::
-    LengthOfTwo xs ys len ->
-    SNat len
-  length_to_snat LengthOfTwoN = SN
-  length_to_snat (LengthOfTwoS len) = SS $ length_to_snat len
   catenation_to_length ::
     Catenation xs ys zs ->
     (forall len. LengthOf xs len -> r) ->
@@ -1080,20 +1144,6 @@ extractSimpleLanguage = go' (RepeatedS RepeatedN) where
       $ interpretTerm (interpretExpand
       $ interpretExpand intr) term
 
----- examples
-
-{-
-type PType = Type
-
-data Expr :: PType -> Tag
-
-data BoolsTag :: SimpleLanguage where
-  And :: BoolsTag '[Expr Bool, Expr Bool] (Expr Bool)
-  Not :: BoolsTag '[Expr Bool] (Expr Bool)
-  BoolLit :: Bool -> BoolsTag '[] (Expr Bool)
-type Bools = InstSimpleLanguage BoolsTag
--}
-
 class CCatenation xs ys zs | xs ys -> zs where
   ccatenation :: Catenation xs ys zs
 
@@ -1160,9 +1210,9 @@ add_n_N_n :: SNat n -> Add n N n
 add_n_N_n SN = AddN
 add_n_N_n (SS n) = AddS $ add_n_N_n n
 
-addInjective :: Add n m o -> Add n m o' -> o :~: o'
-addInjective AddN AddN = Refl
-addInjective (AddS x) (AddS y) = case addInjective x y of
+addFunctional :: Add n m o -> Add n m o' -> o :~: o'
+addFunctional AddN AddN = Refl
+addFunctional (AddS x) (AddS y) = case addFunctional x y of
   Refl -> Refl
 
 undoAddSFlipped :: Add n (S m) o -> (forall o'. o :~: S o' -> Add n m o' -> r) -> r
@@ -1170,7 +1220,7 @@ undoAddSFlipped AddN k = k Refl AddN
 undoAddSFlipped (AddS add) k = undoAddSFlipped add \Refl add' -> k Refl (AddS add')
 
 addSFlipped' :: Add n m o -> Add n' m m' -> Add n' o o' -> Add n m' o'
-addSFlipped' AddN x y = case addInjective x y of Refl -> AddN
+addSFlipped' AddN x y = case addFunctional x y of Refl -> AddN
 addSFlipped' (AddS add) x y = undoAddSFlipped y \Refl y' -> AddS $ addSFlipped' add x y'
 
 addSFlipped :: Add n m o -> Add n (S m) (S o)
@@ -1236,6 +1286,10 @@ newtype Contractible :: Language -> Type where
 runContractible :: Contractible l -> Term (l : l : ls) tag -> L l ls tag
 runContractible (Contractible f) = f
 
+runContractible' :: Contractible l -> Term (l : l : ls) tag -> Term (l : ls) tag
+runContractible' c term = flip Term ListEqMod1N $ Term' (runContractible c term) (idInterpretation slist) (idPermutation slist) where
+  SCons (SCons slist) = termToSList term
+
 data MultiContractible :: [Language] -> [Language] -> Type where
   MultiContractibleBase :: MultiContractible '[] '[]
   MultiContractibleContract :: Contractible l -> ElemOf ls l -> MultiContractible ls ls' -> MultiContractible (l : ls) ls'
@@ -1249,11 +1303,24 @@ contract c term = Term (Term' node intrs perm) ListEqMod1N
     perm = idPermutation slist
     SCons (SCons slist) = termToSList term
 
+bringTerm' :: ListEqMod1 ls' ls l' -> Term' l ls tag -> Term' l (l' : ls') tag
+bringTerm' idx (Term' node intrs perm) = Term' node intrs (bringPermutation idx perm)
+
 bringTerm :: ListEqMod1 ls' ls l -> Term ls tag -> Term (l : ls') tag
-bringTerm = undefined
+bringTerm idx (Term term idx') =
+  cmpListEqMod1 idx idx' \case
+    Left Refl -> Term term ListEqMod1N
+    Right (idx'', idx''') -> Term (bringTerm' idx'' term) (ListEqMod1S idx''')
+
+unbringTerm' :: ListEqMod1 ls' ls l' -> Term' l (l' : ls') tag -> Term' l ls tag
+unbringTerm' idx (Term' node intrs perm) = Term' node intrs (unbringPermutation idx perm)
 
 unbringTerm :: ListEqMod1 ls' ls l -> Term (l : ls') tag -> Term ls tag
-unbringTerm = undefined
+unbringTerm idx term =
+  flip permuteTerm term
+    $ listEqMod1_to_Permutation
+      (case termToSList term of SCons slist -> slist)
+      idx
 
 contractThere' :: ListEqMod1 ls' ls l -> Contractible l -> Term (l : ls) tag -> Term (l : ls') tag
 contractThere' idx c term = contract c $ bringTerm (ListEqMod1S idx) term
@@ -1262,9 +1329,16 @@ elemOf_to_listEqMod1 :: ElemOf xs x -> (forall xs'. ListEqMod1 xs' xs x -> r) ->
 elemOf_to_listEqMod1 ElemOfN k = k ListEqMod1N
 elemOf_to_listEqMod1 (ElemOfS rest) k = elemOf_to_listEqMod1 rest (k . ListEqMod1S)
 
+elemOf_to_listEqMod1Idx :: ElemOf xs x -> (forall xs' idx. ListEqMod1Idx xs' xs x idx -> r) -> r
+elemOf_to_listEqMod1Idx ElemOfN k = k ListEqMod1IdxN
+elemOf_to_listEqMod1Idx (ElemOfS rest) k = elemOf_to_listEqMod1Idx rest (k . ListEqMod1IdxS)
+
 listEqMod1_to_elemOf :: ListEqMod1 xs' xs x -> ElemOf xs x
 listEqMod1_to_elemOf ListEqMod1N = ElemOfN
 listEqMod1_to_elemOf (ListEqMod1S x) = ElemOfS $ listEqMod1_to_elemOf x
+
+listEqMod1Idx_to_elemOf :: ListEqMod1Idx xs' xs x idx -> ElemOf xs x
+listEqMod1Idx_to_elemOf = listEqMod1_to_elemOf . unListEqMod1Idx
 
 contractThere :: ElemOf ls l -> Contractible l -> Term (l : ls) tag -> Term ls tag
 contractThere idx c term = elemOf_to_listEqMod1 idx \idx' -> unbringTerm idx' $ contractThere' idx' c term
@@ -1287,6 +1361,18 @@ reverseCatenationFunctional ReverseCatenationN ReverseCatenationN = Refl
 reverseCatenationFunctional (ReverseCatenationS ys) (ReverseCatenationS zs) =
   case reverseCatenationFunctional ys zs of Refl -> Refl
 
+reverseCatenation_to_length ::
+  ReverseCatenation xs ys zs ->
+  (forall len. LengthOf xs len -> r) ->
+  r
+reverseCatenation_to_length ReverseCatenationN k = k LengthOfTwoN
+reverseCatenation_to_length (ReverseCatenationS cat) k =
+  reverseCatenation_to_length cat (k . LengthOfTwoS)
+
+snat_to_Add :: SNat x -> (forall z. Add x y z -> r) -> r
+snat_to_Add SN k = k AddN
+snat_to_Add (SS x) k = snat_to_Add x (k . AddS)
+
 multicontract' ::
   ReverseCatenation prefix ls0 ls0' ->
   ReverseCatenation prefix ls1 ls1' ->
@@ -1297,19 +1383,85 @@ multicontract' cnx cny MultiContractibleBase term =
   case reverseCatenationFunctional cnx cny of Refl -> term
 multicontract' cnx cny (MultiContractibleSkip rest) term =
   multicontract' (ReverseCatenationS cnx) (ReverseCatenationS cny) rest term
-multicontract' cnx _cny (MultiContractibleContract c idx rest) term = finalterm
+multicontract' cnx cny (MultiContractibleContract c elmof rest) term =
+  reverseCatenation_to_length cnx \len ->
+    elemOf_to_listEqMod1Idx elmof \idx ->
+      let snat = length_to_snat len in
+      snat_to_Add snat \add ->
+        util cnx len add (ListEqMod1IdxS idx) \idx' ->
+          util cnx len (add_n_N_n snat) ListEqMod1IdxN \idx'' ->
+            createPerms idx' idx'' \perm perm' ->
+              multicontract' (removeRevCat len (add_n_N_n snat) ListEqMod1IdxN idx'' cnx) cny rest
+                $ permuteTerm perm' $ runContractible' c $ permuteTerm (invPermutation perm) term
+          {-
+          cmpListEqMod1Idx idx' idx'' \case
+            Left Refl -> error "FIXME: prove impossible"
+            Right (idx''', idx'''') ->
+              let
+                intermediate = contractThere (listEqMod1Idx_to_elemOf idx'''') c (bringTerm idx' term)
+              in
+              multicontract' (_ cnx) cny rest intermediate
+              -}
   where
-    shifted = bringTerm (util cnx ListEqMod1N) term
-    contracted = elemOf_to_listEqMod1 idx \idx' -> contractThere (listEqMod1_to_elemOf $ util cnx (ListEqMod1S idx')) c shifted
-    finalterm = multicontract' undefined undefined rest contracted
-    util :: ReverseCatenation xs ys zs -> ListEqMod1 ys' ys x -> ListEqMod1 zs' zs x
-    util = undefined
+    createPerms ::
+      ListEqMod1Idx yz xs x idx ->
+      ListEqMod1Idx zs xs x idx' ->
+      (forall ws.
+        Permutation (x : x : ws) xs ->
+        Permutation (x : ws) zs ->
+        r
+      ) ->
+      r
+    createPerms _ _ _ = undefined
+    removeRevCat ::
+      LengthOf xs len ->
+      Add len idx idx' ->
+      ListEqMod1Idx ys' ys y idx ->
+      ListEqMod1Idx zs' zs y idx' ->
+      ReverseCatenation xs ys zs ->
+      ReverseCatenation xs ys' zs'
+    removeRevCat LengthOfTwoN AddN idx idx' ReverseCatenationN =
+      case listEqMod1IdxFunctional idx idx' of Refl -> ReverseCatenationN
+    removeRevCat (LengthOfTwoS len) (AddS add) idx idx' (ReverseCatenationS cat) =
+      ReverseCatenationS $ removeRevCat len (addSFlipped add) (ListEqMod1IdxS idx) idx' cat
+    util ::
+      ReverseCatenation xs ys zs ->
+      LengthOf xs len ->
+      Add len idx idx' ->
+      ListEqMod1Idx ys' ys x idx ->
+      (forall zs'. ListEqMod1Idx zs' zs x idx' -> r) ->
+      r
+    util ReverseCatenationN LengthOfTwoN AddN idx k = k idx
+    util (ReverseCatenationS cat) (LengthOfTwoS len) (AddS add) idx k =
+      util cat len (addSFlipped add) (ListEqMod1IdxS idx) k
 
 multicontract :: MultiContractible ls ls' -> Term ls tag -> Term ls' tag
 multicontract = multicontract' ReverseCatenationN ReverseCatenationN
+
+
 
 -- contractThere _ c $ multicontract' _ _ rest term
 -- multicontract' _ _ (MultiContractibleSkip rest) term = _
 
 -- pand' :: Term ls0 (Expr Bool) -> Term ls1 (Expr Bool) -> Term (Bools : Append ls0 ls1) (Expr Bool)
 -- pand' x y = Term (Term' (SimpleLanguageNode _ And) _ _) ListEqMod1N
+
+---- examples
+
+newtype PTypeF = PTypeF (PType -> Type)
+type PType = PTypeF -> Type
+-- data PPType f
+
+data Uni = Free | Lin
+
+data Expr :: Uni -> PType -> Tag
+data PBool f = PFalse | PTrue
+
+newtype PHsW a = PHsW (PHs a)
+type PHs a = a ('PTypeF PHsW)
+
+data Bools' :: SimpleLanguage where
+  And :: Bools' '[Expr w PBool, Expr w PBool] (Expr w PBool)
+  Not :: Bools' '[Expr w PBool] (Expr w PBool)
+  BoolLit :: PHs PBool -> Bools' '[] (Expr w PBool)
+type Bools = InstSimpleLanguage Bools'
