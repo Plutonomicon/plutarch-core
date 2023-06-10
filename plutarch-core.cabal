@@ -33,3 +33,4 @@ library
   exposed-modules:
     Plutarch.Core
     Plutarch.Internal.Utilities
+    Plutarch.Example

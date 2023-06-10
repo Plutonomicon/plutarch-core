@@ -1,6 +1,11 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Plutarch.Internal.Utilities (
+  bringTerm,
+  ElemOf(..),
+  idInterpretation,
+  idPermutation,
+  Contractible,
   interpretOne,
   insertPermutation,
   invPermutation,
@@ -18,6 +23,7 @@ module Plutarch.Internal.Utilities (
   permuteTerm,
   permuteTerm',
   multicontract,
+  Catenation(..),
 ) where
 
 import Data.Kind (Type)
@@ -1445,23 +1451,3 @@ multicontract = multicontract' ReverseCatenationN ReverseCatenationN
 
 -- pand' :: Term ls0 (Expr Bool) -> Term ls1 (Expr Bool) -> Term (Bools : Append ls0 ls1) (Expr Bool)
 -- pand' x y = Term (Term' (SimpleLanguageNode _ And) _ _) ListEqMod1N
-
----- examples
-
-newtype PTypeF = PTypeF (PType -> Type)
-type PType = PTypeF -> Type
--- data PPType f
-
-data Uni = Free | Lin
-
-data Expr :: Uni -> PType -> Tag
-data PBool f = PFalse | PTrue
-
-newtype PHsW a = PHsW (PHs a)
-type PHs a = a ('PTypeF PHsW)
-
-data Bools' :: SimpleLanguage where
-  And :: Bools' '[Expr w PBool, Expr w PBool] (Expr w PBool)
-  Not :: Bools' '[Expr w PBool] (Expr w PBool)
-  BoolLit :: PHs PBool -> Bools' '[] (Expr w PBool)
-type Bools = InstSimpleLanguage Bools'
