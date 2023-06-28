@@ -70,17 +70,22 @@ involved, but to ensure that we always have type information, the concept of typ
 must be made explicit. In general, to interpret a term of type `a`, we must also have the type
 information for type `a`.
 
-## Supporting custom data types
+## Supporting custom (proper Haskell-level) data types
 
-Toy eDSLs in Haskell often forgo data type support entirely. Indeed, you need nothing more than
-support for products and sums, but this is hardly ergonomic.
-Optimally we would want to support arbitrary data types, including matching and constructing them.
-The trick used in Plutarch is to use a pattern reminiscent of HKDs of the following form:
-`type PType = (PType -> Type) -> Type`
-It is weirdly recursive (and indeed the definition as-is is illegal Haskell), but it turns
-out to be surprisingly useful. Rather than doing `data Pair a b = MkPair a b`, you do
-`data PPair a b f = MkPair (f a) (f b)`. `f` can be instantiated such that functions
-like `pcon` and `pmatch` can exist.
+The goal is to be able to define data types the same way
+you do it in Haskell.
+
+This is still in-progress and is harder in the new design.
+The old design was using a HKD-like construction,
+but this is no longer possible since each subterm would
+have a different type, meaning that you can not use the same
+(functor-y) application for each subterm.
+Seemingly a solution is to associate an index with each application,
+but this seems horribly complex.
+
+Possible solutions are using TH-magic to define the data types,
+or having a magic SOP-like type and using newtypes over it,
+with optics to operate over it.
 
 ## Ergonomic syntax
 
@@ -226,5 +231,3 @@ some language, then it will not transform it either.
 How do we recover the simple functionality of folding over a contractible language?
 Contractibility itself represents a node, hence the interpreter will in that case
 recurse without delegating the recursion elsewhere.
-
-Altogether, this should give us all the power we need.
