@@ -55,33 +55,32 @@ cmpListEqMod1 ListEqMod1N (ListEqMod1S idx) k = k (Right (ListEqMod1N, idx))
 cmpListEqMod1 (ListEqMod1S idx) ListEqMod1N k = k (Right (idx, ListEqMod1N))
 cmpListEqMod1 (ListEqMod1S idx) (ListEqMod1S idx') k = cmpListEqMod1 idx idx' \case
   Left Refl -> k (Left Refl)
+  Right (idx2, idx'2) -> k (Right (ListEqMod1S idx2, ListEqMod1S idx'2))
 
- {-
 cmpListEqMod1Idx ::
-  ListEqMod1Idx new' new x idx ->
-  ListEqMod1Idx tail new y idx' ->
-  ( forall tail' idx'' idx'''.
+  ListEqMod1Idx ys xs x idx ->
+  ListEqMod1Idx zs xs y idx' ->
+  ( forall ws idx''.
     Either
-      ('(x, new', idx) :~: '(y, tail, idx'))
+      -- idx = idx'
+      ('(x, ys, idx) :~: '(y, zs, idx'))
       (Either
         -- idx < idx'
-        (S idx''' :~: idx', ListEqMod1Idx tail' tail x idx, ListEqMod1Idx tail' new' y idx''')
+        (S idx'' :~: idx', ListEqMod1Idx ws zs x idx, ListEqMod1Idx ws ys y idx'')
         --- idx > idx'
-        (S idx'' :~: idx, ListEqMod1Idx tail' tail x idx'', ListEqMod1Idx tail' new' y idx)
+        (S idx'' :~: idx, ListEqMod1Idx ws zs x idx'', ListEqMod1Idx ws ys y idx')
       ) ->
     r
   ) ->
   r
 cmpListEqMod1Idx _ _ _ = undefined
-  {-
 cmpListEqMod1Idx ListEqMod1IdxN ListEqMod1IdxN k = k (Left Refl)
-cmpListEqMod1Idx ListEqMod1IdxN (ListEqMod1IdxS idx) k = k (Right (ListEqMod1IdxN, idx))
-cmpListEqMod1Idx (ListEqMod1IdxS idx) ListEqMod1IdxN k = k (Right (idx, ListEqMod1IdxN))
+cmpListEqMod1Idx ListEqMod1IdxN (ListEqMod1IdxS idx) k = k (Right $ Left (Refl, ListEqMod1IdxN, idx))
+cmpListEqMod1Idx (ListEqMod1IdxS idx) ListEqMod1IdxN k = k (Right $ Right (Refl, idx, ListEqMod1IdxN))
 cmpListEqMod1Idx (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') k = cmpListEqMod1Idx idx idx' \case
   Left Refl -> k (Left Refl)
-  Right (idx2, idx'2) -> k (Right (ListEqMod1IdxS idx2, ListEqMod1IdxS idx'2))
--} Right (idx2, idx'2) -> k (Right (ListEqMod1S idx2, ListEqMod1S idx'2))
-  -}
+  Right (Left (Refl, idx0, idx'0)) -> k (Right $ Left (Refl, ListEqMod1IdxS idx0, ListEqMod1IdxS idx'0))
+  Right (Right (Refl, idx0, idx'0)) -> k (Right $ Right (Refl, ListEqMod1IdxS idx0, ListEqMod1IdxS idx'0))
 
 bringPermutation :: ListEqMod1 new' new x -> Permutation old new -> Permutation old (x : new')
 bringPermutation ListEqMod1N x = x
@@ -1175,6 +1174,10 @@ insertSList :: ListEqMod1 xs ys x -> SList xs -> SList ys
 insertSList ListEqMod1N s = SCons s
 insertSList (ListEqMod1S x) (SCons s) = SCons $ insertSList x s
 
+removeSList :: ListEqMod1 xs ys x -> SList ys -> SList xs
+removeSList ListEqMod1N (SCons s) = s
+removeSList (ListEqMod1S x) (SCons s) = SCons $ removeSList x s
+
 termToSList :: Term ls tag -> SList ls
 termToSList (Term (Term' _ _ perm) idx) =
   insertSList idx $ permutationToSList $ invPermutation perm
@@ -1263,6 +1266,7 @@ idInterpretation = f SuffixOfN
     extractLength len add (SuffixOfS suffix) =
       undoAddSFlipped add \Refl add' ->
         extractLength (LengthOfTwoS len) (AddS add') suffix
+    extractLength LengthOfTwoN AddN SuffixOfN = LengthOfTwoN
     f :: SuffixOf xs ys idx -> SList ys -> InterpretAsc xs xs idx
     f suffix SNil = InterpretAscN (extractLength LengthOfTwoN AddN suffix)
     f suffix (SCons xs) =
@@ -1396,21 +1400,14 @@ multicontract' cnx cny (MultiContractibleContract c elmof rest) term =
       snat_to_Add snat \add ->
         util cnx len add (ListEqMod1IdxS idx) \idx' ->
           util cnx len (add_n_N_n snat) ListEqMod1IdxN \idx'' ->
-            createPerms idx' idx'' \perm perm' ->
+            createPerms (termToSList term) add idx' idx'' \perm perm' ->
               multicontract' (removeRevCat len (add_n_N_n snat) ListEqMod1IdxN idx'' cnx) cny rest
                 $ permuteTerm perm' $ runContractible' c $ permuteTerm (invPermutation perm) term
-          {-
-          cmpListEqMod1Idx idx' idx'' \case
-            Left Refl -> error "FIXME: prove impossible"
-            Right (idx''', idx'''') ->
-              let
-                intermediate = contractThere (listEqMod1Idx_to_elemOf idx'''') c (bringTerm idx' term)
-              in
-              multicontract' (_ cnx) cny rest intermediate
-              -}
   where
     createPerms ::
-      ListEqMod1Idx yz xs x idx ->
+      SList xs ->
+      Add idx' (S diff) idx ->
+      ListEqMod1Idx ys xs x idx ->
       ListEqMod1Idx zs xs x idx' ->
       (forall ws.
         Permutation (x : x : ws) xs ->
@@ -1418,7 +1415,19 @@ multicontract' cnx cny (MultiContractibleContract c elmof rest) term =
         r
       ) ->
       r
-    createPerms _ _ _ = undefined
+    createPerms slist add idx idx' k =
+      cmpListEqMod1Idx idx idx' \case
+        Left eq -> error "prove absurd" eq add
+        Right (Left (eq, idx'', idx''')) -> error "prove absurd" eq idx'' idx''' add
+        Right (Right (Refl, idx'', idx''')) ->
+          let
+            uidx = unListEqMod1Idx idx''
+            perm =
+              listEqMod1_to_Permutation
+                (removeSList uidx $ removeSList (unListEqMod1Idx idx') $ slist)
+                uidx
+          in
+            k (PermutationS (unListEqMod1Idx idx') perm) perm
     removeRevCat ::
       LengthOf xs len ->
       Add len idx idx' ->
