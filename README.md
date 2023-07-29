@@ -41,6 +41,8 @@ through hashing, avoiding redoing work through sharing thunks, supporting normal
 through Generics and a recursive HKD-like construction, each of which might be of
 independent interest too.
 
+[Video about implementation](https://www.youtube.com/watch?v=qxunWDq6fao)
+
 ### Contact, support, further information
 
 We have a channel in the following Discord (unfortunately, but we're using GH anyway...)
