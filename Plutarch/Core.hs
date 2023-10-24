@@ -50,8 +50,6 @@ data Permutation xs ys where
   PermutationN :: Permutation '[] '[]
   PermutationS :: ListEqMod1 ys ys' x -> Permutation xs ys -> Permutation (x : xs) ys'
 
--- FIXME: Remove and replace with `Filter` and `Catenation` data types
-
 {- | @SubLS xs ys zs ws@ shows that @xs@ and @ys@ share a common suffix,
  with the prefix containing @zs@ in @xs@ and @ws@ in @ys@.
  It can be thought of as extending zs and ws to xs and ys by appending a suffix
@@ -64,7 +62,7 @@ data SubLS :: [Language] -> [Language] -> [Language] -> [Language] -> Type where
 
 {- | Interpret a term of root language l to
  a term of root language l'. The inner languages
- are mappped from ls to ls'.
+ are mapped from ls to ls'.
 -}
 type InterpretIn :: [Language] -> [Language] -> Language -> Language -> Type
 newtype InterpretIn ls ls' l l'
@@ -102,11 +100,6 @@ data LengthOfTwo :: [a] -> [b] -> Nat -> Type where
  from @ls0@ to @ls1@.
 -}
 
--- FIXME: Move the length statement to the top always by
--- refactoring into two types, one recursive and one not.
--- FIXME: Represent the context passed to individual interpreters
--- in the type, such that functions that operate on interpreters
--- do not throw the context away unintentionally.
 data InterpretAsc :: [Language] -> [Language] -> Nat -> Type where
   InterpretAscN :: LengthOfTwo ls0 ls1 idx -> InterpretAsc ls0 ls1 idx
   InterpretAscS ::
@@ -123,6 +116,7 @@ type Interpret ls ls' = InterpretAsc ls ls' N
 -- | Like @Term@, but explicitly notes the language of the root node.
 type Term' :: Language -> [Language] -> Tag -> Type
 data Term' l ls tag where
+  -- TODO: Add {union/intersection}/{sum/product} languages?
   Term' :: L l ls0 tag -> Interpret ls0 ls1 -> Permutation ls1 ls2 -> Term' l ls2 tag
 
 {- | @Term ls tag@ represents a term in the languages of @ls@,

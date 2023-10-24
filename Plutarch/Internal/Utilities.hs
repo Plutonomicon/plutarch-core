@@ -27,7 +27,6 @@ module Plutarch.Internal.Utilities (
 ) where
 
 import Data.Kind (Type)
-import Data.SOP (NP ((:*), Nil))
 import Data.Type.Equality ((:~:) (Refl))
 import Plutarch.Core
 
@@ -73,7 +72,6 @@ cmpListEqMod1Idx ::
     r
   ) ->
   r
-cmpListEqMod1Idx _ _ _ = undefined
 cmpListEqMod1Idx ListEqMod1IdxN ListEqMod1IdxN k = k (Left Refl)
 cmpListEqMod1Idx ListEqMod1IdxN (ListEqMod1IdxS idx) k = k (Right $ Left (Refl, ListEqMod1IdxN, idx))
 cmpListEqMod1Idx (ListEqMod1IdxS idx) ListEqMod1IdxN k = k (Right $ Right (Refl, idx, ListEqMod1IdxN))
@@ -741,42 +739,52 @@ transSubLS subls SubLSBase = case eqSubLS subls of
   Refl -> SubLSBase
 
 sublsInterpretIn ::
-  SubLS zs ws xs ys ->
-  InterpretIn xs ys x y ->
-  InterpretIn zs ws x y
+  SubLS xs ys zs ws ->
+  InterpretIn zs ws x y ->
+  InterpretIn xs ys x y
 sublsInterpretIn subls intr =
   InterpretIn \subls' term -> runInterpreter intr (transSubLS subls' subls) term
 
+{-
 data Filter :: [a] -> [a] -> Type where
   FilterN :: Filter '[] '[]
   FilterInc :: Filter xs ys -> Filter (x : xs) (y : ys)
   FilterExc :: Filter xs ys -> Filter xs (y : ys)
 
-{-
 data Filter :: [Bool] -> [a] -> [a] -> Type where
   FilterN :: Filter '[] '[] '[]
   FilterInc :: Filter bs xs ys -> Filter (True : bs) (x : xs) (y : ys)
   FilterExc :: Filter bs xs ys -> Filter (False : bs) xs (y : ys)
--}
 
 data Zip :: [a] -> [b] -> [(a, b)] -> Type where
   ZipN :: Zip '[] '[] '[]
   ZipS :: Zip xs ys xys -> Zip (x : xs) (y : ys) ('(x, y) : xys)
+-}
+
+data Filter :: [a] -> [a] -> [a] -> [a] -> Type where
+  FilterN :: Filter '[] '[] '[] '[]
+  FilterInc :: Filter xs ys zs ws -> Filter (z : xs) (w : ys) (z : zs) (w : ws)
+  FilterExc :: Filter xs ys zs ws -> Filter xs ys (z : zs) (w : ws)
 
 filterInterpret ::
-  Zip xs ys xys ->
-  Zip zs ws zws ->
-  Filter xys zws ->
-  Interpret xs ys ->
-  Interpret zs ws
-filterInterpret = undefined
+  Filter xs ys zs ws ->
+  Interpret zs ws ->
+  Interpret xs ys
+filterInterpret FilterN intrs = intrs
+filterInterpret (FilterInc FilterN) intrs = intrs
+filterInterpret (FilterExc FilterN) _ = InterpretAscN LengthOfTwoN
+filterInterpret (FilterInc (FilterExc FilterN)) (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr' (InterpretAscN len))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSkip SubLSBase) intr') (InterpretAscN (LengthOfTwoS LengthOfTwoN))
+filterInterpret (FilterExc (FilterInc FilterN)) (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr' (InterpretAscN len))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSkip SubLSBase) intr) (InterpretAscN (LengthOfTwoS LengthOfTwoN))
+filterInterpret (FilterExc (FilterExc FilterN)) (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr' (InterpretAscN len))) = InterpretAscN LengthOfTwoN
+filterInterpret (FilterInc (FilterInc (FilterExc FilterN))) (InterpretAscS (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) intr (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr' (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr'' (InterpretAscN len)))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSwap $ SubLSSkip SubLSBase) intr'') $ InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) (sublsInterpretIn (SubLSSwap $ SubLSSkip SubLSBase) intr') (InterpretAscN (LengthOfTwoS $ LengthOfTwoS LengthOfTwoN))
+filterInterpret (FilterExc (FilterInc (FilterInc FilterN))) (InterpretAscS (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) intr (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr' (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr'' (InterpretAscN len)))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSkip $ SubLSSwap SubLSBase) intr') $ InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) (sublsInterpretIn (SubLSSkip $ SubLSSwap SubLSBase) intr) (InterpretAscN (LengthOfTwoS $ LengthOfTwoS LengthOfTwoN))
 
 sublsInterpret ::
   LengthOfTwo xs ys len ->
   SubLS xs ys zs ws ->
   Interpret zs ws ->
   Interpret xs ys
-sublsInterpret len subls intrs = undefined
+sublsInterpret len SubLSBase intrs = undefined
 
 removeInterpretIn ::
   ListEqMod1Idx xs' xs x' idx ->
@@ -915,6 +923,12 @@ data instance L (InstSimpleLanguage l) ls tag where
 data Repeated :: a -> [a] -> Type where
   RepeatedN :: Repeated x '[]
   RepeatedS :: Repeated x xs -> Repeated x (x : xs)
+
+data NP f xs where
+  Nil :: NP f '[]
+  (:*) :: f x -> NP f xs -> NP f (x : xs)
+
+infixr 5 :*
 
 newtype SimpleFolder l r = SimpleFolder (forall args tag. l args tag -> NP r args -> r tag)
 
