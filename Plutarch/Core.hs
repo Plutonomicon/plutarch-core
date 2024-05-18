@@ -1,7 +1,7 @@
 module Plutarch.Core (
   Nat (..),
   Term (..),
-  LengthOfTwo (..),
+  LenTwo (..),
   runInterpreter,
   Interpret,
   Term' (..),
@@ -90,9 +90,9 @@ runInterpreter ::
 runInterpreter (InterpretIn f) = f
 
 -- FIXME: Should be just LengthOf and should be erased
-data LengthOfTwo :: [a] -> [b] -> Nat -> Type where
-  LengthOfTwoN :: LengthOfTwo '[] '[] N
-  LengthOfTwoS :: LengthOfTwo xs ys len -> LengthOfTwo (x : xs) (y : ys) (S len)
+data LenTwo :: [a] -> [b] -> Nat -> Type where
+  LenN :: LenTwo '[] '[] N
+  LenS :: LenTwo xs ys len -> LenTwo (x : xs) (y : ys) (S len)
 
 {- | @InterpretAsc ls0 ls1 ls2 ls3@ contains functions to
  interpret terms which root nodes are in the languages of @ls2@ into
@@ -101,7 +101,7 @@ data LengthOfTwo :: [a] -> [b] -> Nat -> Type where
 -}
 
 data InterpretAsc :: [Language] -> [Language] -> Nat -> Type where
-  InterpretAscN :: LengthOfTwo ls0 ls1 idx -> InterpretAsc ls0 ls1 idx
+  InterpretAscN :: LenTwo ls0 ls1 idx -> InterpretAsc ls0 ls1 idx
   InterpretAscS ::
     ListEqMod1Idx ls0' ls0 l idx ->
     ListEqMod1Idx ls1' ls1 l' idx ->

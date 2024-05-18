@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-unused-matches -Wno-unused-top-binds #-}
 
 module Plutarch.Internal.Utilities (
   bringTerm,
@@ -23,7 +24,7 @@ module Plutarch.Internal.Utilities (
   permuteTerm,
   permuteTerm',
   multicontract,
-  Catenation(..),
+  Cat(..),
 ) where
 
 import Data.Kind (Type)
@@ -131,63 +132,63 @@ transPermutation (PermutationS idx rest) perm =
     perm
     \idx' perm' -> PermutationS idx' (transPermutation rest perm')
 
-interpret_to_LengthOfTwo :: InterpretAsc xs ys idx -> (forall n. LengthOfTwo xs ys n -> r) -> r
-interpret_to_LengthOfTwo (InterpretAscN l) k = k l
-interpret_to_LengthOfTwo (InterpretAscS _ _ _ rest) k = interpret_to_LengthOfTwo rest k
+interpret_to_LenTwo :: InterpretAsc xs ys idx -> (forall n. LenTwo xs ys n -> r) -> r
+interpret_to_LenTwo (InterpretAscN l) k = k l
+interpret_to_LenTwo (InterpretAscS _ _ _ rest) k = interpret_to_LenTwo rest k
 
 transInterpretIn ::
-  LengthOfTwo ys zs len -> InterpretIn xs ys x y -> InterpretIn ys zs y z -> InterpretIn xs zs x z
+  LenTwo ys zs len -> InterpretIn xs ys x y -> InterpretIn ys zs y z -> InterpretIn xs zs x z
 transInterpretIn =
   \shape xy yz -> InterpretIn \subls term ->
     helper shape subls \subls0 subls1 ->
       runInterpreter yz subls1 $ runInterpreter xy subls0 term
   where
     helper ::
-      LengthOfTwo ys zs len ->
+      LenTwo ys zs len ->
       SubLS ls0 ls2 xs zs ->
       (forall ls1. SubLS ls0 ls1 xs ys -> SubLS ls1 ls2 ys zs -> b) ->
       b
-    helper (LengthOfTwoS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
-    helper (LengthOfTwoS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
-    helper LengthOfTwoN SubLSBase k = k SubLSBase SubLSBase
+    helper (LenS shape) (SubLSSkip rest) k = helper shape rest \subls0 subls1 -> k (SubLSSkip subls0) (SubLSSkip subls1)
+    helper (LenS shape) (SubLSSwap rest) k = helper shape rest \subls0 subls1 -> k (SubLSSwap subls0) (SubLSSwap subls1)
+    helper LenN SubLSBase k = k SubLSBase SubLSBase
 
-removeFromLengthOfTwo ::
+removeFromLenTwo ::
   ListEqMod1Idx xs' xs x idx ->
   ListEqMod1Idx ys' ys y idx ->
-  LengthOfTwo xs ys len ->
-  (forall len'. LengthOfTwo xs' ys' len' -> r) ->
+  LenTwo xs ys len ->
+  (forall len'. LenTwo xs' ys' len' -> r) ->
   r
-removeFromLengthOfTwo ListEqMod1IdxN ListEqMod1IdxN (LengthOfTwoS s) k = k s
-removeFromLengthOfTwo (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (LengthOfTwoS s) k =
-  removeFromLengthOfTwo idx idx' s (k . LengthOfTwoS)
+removeFromLenTwo ListEqMod1IdxN ListEqMod1IdxN (LenS s) k = k s
+removeFromLenTwo (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (LenS s) k =
+  removeFromLenTwo idx idx' s (k . LenS)
 
 listEqMod1IdxFunctional :: ListEqMod1Idx xs' xs x idx -> ListEqMod1Idx ys' xs y idx -> '(xs', x) :~: '(ys', y)
 listEqMod1IdxFunctional ListEqMod1IdxN ListEqMod1IdxN = Refl
 listEqMod1IdxFunctional (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') = case listEqMod1IdxFunctional idx idx' of
   Refl -> Refl
 
-transLengthOfTwo :: LengthOfTwo xs ys n -> LengthOfTwo ys zs n' -> (LengthOfTwo xs zs n, n :~: n')
-transLengthOfTwo LengthOfTwoN LengthOfTwoN = (LengthOfTwoN, Refl)
-transLengthOfTwo (LengthOfTwoS l) (LengthOfTwoS l') =
-  case transLengthOfTwo l l' of (length, Refl) -> (LengthOfTwoS length, Refl)
+transLenTwo :: LenTwo xs ys n -> LenTwo ys zs n' -> (LenTwo xs zs n, n :~: n')
+transLenTwo LenN LenN = (LenN, Refl)
+transLenTwo (LenS l) (LenS l') =
+  case transLenTwo l l' of (length, Refl) -> (LenS length, Refl)
 
-lengthOfTwo_add_ListEqMod1 :: ListEqMod1 ys ys' y -> LengthOfTwo xs ys len -> LengthOfTwo (x : xs) ys' (S len)
-lengthOfTwo_add_ListEqMod1 ListEqMod1N l = LengthOfTwoS l
-lengthOfTwo_add_ListEqMod1 (ListEqMod1S idx) (LengthOfTwoS l) = LengthOfTwoS $ lengthOfTwo_add_ListEqMod1 idx l
+lengthOfTwo_add_ListEqMod1 :: ListEqMod1 ys ys' y -> LenTwo xs ys len -> LenTwo (x : xs) ys' (S len)
+lengthOfTwo_add_ListEqMod1 ListEqMod1N l = LenS l
+lengthOfTwo_add_ListEqMod1 (ListEqMod1S idx) (LenS l) = LenS $ lengthOfTwo_add_ListEqMod1 idx l
 
 lengthOfTwo_add_ListEqMod1_both ::
   ListEqMod1 xs xs' x ->
   ListEqMod1 ys ys' y ->
-  LengthOfTwo xs ys len ->
-  LengthOfTwo xs' ys' (S len)
+  LenTwo xs ys len ->
+  LenTwo xs' ys' (S len)
 lengthOfTwo_add_ListEqMod1_both idx idx' len =
-  case flipLengthOfTwo $ lengthOfTwo_add_ListEqMod1 idx' len of
-    LengthOfTwoS len' -> flipLengthOfTwo $ lengthOfTwo_add_ListEqMod1 idx len'
+  case flipLenTwo $ lengthOfTwo_add_ListEqMod1 idx' len of
+    LenS len' -> flipLenTwo $ lengthOfTwo_add_ListEqMod1 idx len'
 
-permutation_to_LengthOfTwo :: Permutation xs ys -> (forall len. LengthOfTwo xs ys len -> r) -> r
-permutation_to_LengthOfTwo PermutationN k = k LengthOfTwoN
-permutation_to_LengthOfTwo (PermutationS idx perm) k =
-  permutation_to_LengthOfTwo perm \len -> k (lengthOfTwo_add_ListEqMod1 idx len)
+permutation_to_LenTwo :: Permutation xs ys -> (forall len. LenTwo xs ys len -> r) -> r
+permutation_to_LenTwo PermutationN k = k LenN
+permutation_to_LenTwo (PermutationS idx perm) k =
+  permutation_to_LenTwo perm \len -> k (lengthOfTwo_add_ListEqMod1 idx len)
 
 transInterpret :: Interpret xs ys -> Interpret ys zs -> Interpret xs zs
 transInterpret = go
@@ -196,10 +197,10 @@ transInterpret = go
       InterpretAsc xs ys idx ->
       InterpretAsc ys zs idx ->
       InterpretAsc xs zs idx
-    go (InterpretAscN length) (InterpretAscN length') = InterpretAscN $ fst $ transLengthOfTwo length length'
-    go (InterpretAscN length) yzs = interpret_to_LengthOfTwo yzs \length' -> InterpretAscN $ fst $ transLengthOfTwo length length'
+    go (InterpretAscN length) (InterpretAscN length') = InterpretAscN $ fst $ transLenTwo length length'
+    go (InterpretAscN length) yzs = interpret_to_LenTwo yzs \length' -> InterpretAscN $ fst $ transLenTwo length length'
     go xys (InterpretAscN length) =
-      interpret_to_LengthOfTwo xys \length' -> case transLengthOfTwo length' length of
+      interpret_to_LenTwo xys \length' -> case transLenTwo length' length of
         (length, Refl) -> InterpretAscN length
     go (InterpretAscS lidx lidx' xy xys) (InterpretAscS ridx ridx' yz yzs) =
       case listEqMod1IdxFunctional lidx' ridx of
@@ -207,11 +208,11 @@ transInterpret = go
           InterpretAscS
             lidx
             ridx'
-            (interpret_to_LengthOfTwo yzs \len' -> removeFromLengthOfTwo lidx' ridx' len' \shape -> transInterpretIn shape xy yz)
+            (interpret_to_LenTwo yzs \len' -> removeFromLenTwo lidx' ridx' len' \shape -> transInterpretIn shape xy yz)
             $ go xys yzs
 
 data InterpretIdxs :: [Language] -> [Language] -> [Nat] -> Type where
-  InterpretIdxsN :: LengthOfTwo ls0 ls1 len -> InterpretIdxs ls0 ls1 '[]
+  InterpretIdxsN :: LenTwo ls0 ls1 len -> InterpretIdxs ls0 ls1 '[]
   InterpretIdxsS ::
     ListEqMod1Idx ls0' ls0 l idx ->
     ListEqMod1Idx ls1' ls1 l' idx ->
@@ -232,15 +233,15 @@ partialMakeUnIdxed = go SN
       (\Refl -> Refl) <$> cmpIdx idx idx'
     cmpIdx SN (ListEqMod1IdxS _) = Nothing
     cmpIdx (SS _) ListEqMod1IdxN = Nothing
-    cmpLengthOfTwo ::
+    cmpLenTwo ::
       SNat idx ->
-      LengthOfTwo xs ys len ->
+      LenTwo xs ys len ->
       Maybe (idx :~: len)
-    cmpLengthOfTwo SN LengthOfTwoN = Just Refl
-    cmpLengthOfTwo (SS idx) (LengthOfTwoS len) =
-      (\Refl -> Refl) <$> cmpLengthOfTwo idx len
-    cmpLengthOfTwo SN (LengthOfTwoS _) = Nothing
-    cmpLengthOfTwo (SS _) LengthOfTwoN = Nothing
+    cmpLenTwo SN LenN = Just Refl
+    cmpLenTwo (SS idx) (LenS len) =
+      (\Refl -> Refl) <$> cmpLenTwo idx len
+    cmpLenTwo SN (LenS _) = Nothing
+    cmpLenTwo (SS _) LenN = Nothing
     getIdx ::
       SNat idx ->
       InterpretIdxs xs ys idxs ->
@@ -252,12 +253,12 @@ partialMakeUnIdxed = go SN
             InterpretIn xs' ys' l l'
           , InterpretIdxs xs ys idxs'
           )
-          (LengthOfTwo xs ys idx) ->
+          (LenTwo xs ys idx) ->
         r
       ) ->
       r
     getIdx idx (InterpretIdxsN len) k =
-      case cmpLengthOfTwo idx len of
+      case cmpLenTwo idx len of
         Just Refl -> k (Right len)
         Nothing -> k (error "should be unreachable, FIXME: partialMakeUnIdxed is partial")
     getIdx idx (InterpretIdxsS lidx ridx intr intrs) k =
@@ -394,26 +395,26 @@ unListEqMod1Idx :: ListEqMod1Idx xs xs' x idx -> ListEqMod1 xs xs' x
 unListEqMod1Idx ListEqMod1IdxN = ListEqMod1N
 unListEqMod1Idx (ListEqMod1IdxS idx) = ListEqMod1S $ unListEqMod1Idx idx
 
-flipLengthOfTwo :: LengthOfTwo xs ys len -> LengthOfTwo ys xs len
-flipLengthOfTwo LengthOfTwoN = LengthOfTwoN
-flipLengthOfTwo (LengthOfTwoS len) = LengthOfTwoS $ flipLengthOfTwo len
+flipLenTwo :: LenTwo xs ys len -> LenTwo ys xs len
+flipLenTwo LenN = LenN
+flipLenTwo (LenS len) = LenS $ flipLenTwo len
 
 transferListEqMod1Idx ::
-  LengthOfTwo xs ys len ->
+  LenTwo xs ys len ->
   ListEqMod1Idx xs xs' x idx ->
   (forall ys'. ListEqMod1Idx ys ys' y idx -> r) ->
   r
 transferListEqMod1Idx _ ListEqMod1IdxN k = k ListEqMod1IdxN
-transferListEqMod1Idx (LengthOfTwoS len) (ListEqMod1IdxS idx) k =
+transferListEqMod1Idx (LenS len) (ListEqMod1IdxS idx) k =
   transferListEqMod1Idx len idx (k . ListEqMod1IdxS)
 
 permutation_to_Permutation2' ::
-  LengthOfTwo xs zs len ->
+  LenTwo xs zs len ->
   Permutation xs ys ->
-  (forall ws. Permutation2 xs ys zs ws -> LengthOfTwo ys ws len -> r) ->
+  (forall ws. Permutation2 xs ys zs ws -> LenTwo ys ws len -> r) ->
   r
-permutation_to_Permutation2' LengthOfTwoN PermutationN k = k Permutation2N LengthOfTwoN
-permutation_to_Permutation2' (LengthOfTwoS len) (PermutationS idx perm) k =
+permutation_to_Permutation2' LenN PermutationN k = k Permutation2N LenN
+permutation_to_Permutation2' (LenS len) (PermutationS idx perm) k =
   permutation_to_Permutation2' len perm \perm' len' ->
     mkListEqMod1Idx idx \idx' ->
       transferListEqMod1Idx len' idx' \idx'' ->
@@ -422,7 +423,7 @@ permutation_to_Permutation2' (LengthOfTwoS len) (PermutationS idx perm) k =
           (lengthOfTwo_add_ListEqMod1_both (unListEqMod1Idx idx') (unListEqMod1Idx idx'') len')
 
 permutation_to_Permutation2 ::
-  LengthOfTwo xs zs len ->
+  LenTwo xs zs len ->
   Permutation xs ys ->
   (forall ws. Permutation2 xs ys zs ws -> r) ->
   r
@@ -503,17 +504,17 @@ permuteInterpretIdxs' ::
   r
 permuteInterpretIdxs' perm2 (InterpretIdxsN l) k =
   let (perm, perm') = permutation2_to_Permutation perm2
-   in permutation_to_LengthOfTwo (invPermutation perm) \l' ->
-        permutation_to_LengthOfTwo perm' \l'' ->
+   in permutation_to_LenTwo (invPermutation perm) \l' ->
+        permutation_to_LenTwo perm' \l'' ->
           k
-            (InterpretIdxsN $ fst $ transLengthOfTwo (fst $ transLengthOfTwo l' l) l'')
+            (InterpretIdxsN $ fst $ transLenTwo (fst $ transLenTwo l' l) l'')
 permuteInterpretIdxs' perm2 (InterpretIdxsS idx0 idx1 intr intrs) k =
   permuteInterpretIdxs' perm2 intrs \intrs' ->
     remove_from_Permutation2 idx0 idx1 perm2 \perm2' idx2 idx3 ->
       let intr' = permuteInterpretIn perm2' intr
        in k (InterpretIdxsS idx2 idx3 intr' intrs')
 
-extractLength_from_InterpretIdxs :: InterpretIdxs xs ys idxs -> (forall len. LengthOfTwo xs ys len -> r) -> r
+extractLength_from_InterpretIdxs :: InterpretIdxs xs ys idxs -> (forall len. LenTwo xs ys len -> r) -> r
 extractLength_from_InterpretIdxs (InterpretIdxsN len) k = k len
 extractLength_from_InterpretIdxs (InterpretIdxsS _ _ _ intrs) k = extractLength_from_InterpretIdxs intrs k
 
@@ -634,7 +635,7 @@ idxInterpret'
   k = idxInterpret' lte idx intrs k
 idxInterpret' lte idx (InterpretAscN len) _ = absurd lte idx len
   where
-    absurd :: LTE idx' idx -> ListEqMod1Idx xs xs' x idx -> LengthOfTwo xs' ys idx' -> a
+    absurd :: LTE idx' idx -> ListEqMod1Idx xs xs' x idx -> LenTwo xs' ys idx' -> a
     absurd _ _ _ = error "FIXME"
 
 data LTEInv :: Nat -> Nat -> Type where
@@ -670,40 +671,40 @@ idxInterpret ::
   r
 idxInterpret idx intrs k = idxInterpret' (zero_LTE (listEqMod1Idx_to_SNat idx)) idx intrs k
 
-idSubLS :: LengthOfTwo ls ls' len -> SubLS ls ls' ls ls'
-idSubLS LengthOfTwoN = SubLSBase
-idSubLS (LengthOfTwoS len) = SubLSSwap $ idSubLS len
+idSubLS :: LenTwo ls ls' len -> SubLS ls ls' ls ls'
+idSubLS LenN = SubLSBase
+idSubLS (LenS len) = SubLSSwap $ idSubLS len
 
 interpretTerm :: Interpret ls ls' -> Term ls tag -> Term ls' tag
 interpretTerm intrs (Term term idx) =
   mkListEqMod1Idx idx \idx' ->
     idxInterpret idx' intrs \idx'' intr ->
-      interpret_to_LengthOfTwo intrs \len ->
-        removeFromLengthOfTwo idx' idx'' len \len' ->
+      interpret_to_LenTwo intrs \len ->
+        removeFromLenTwo idx' idx'' len \len' ->
           Term (runInterpreter intr (idSubLS len') term) (unListEqMod1Idx idx'')
 
-indexInto_over_LengthOfTwo ::
-  LengthOfTwo xs ys len ->
+indexInto_over_LenTwo ::
+  LenTwo xs ys len ->
   IndexInto xs idx ->
   IndexInto ys idx
-indexInto_over_LengthOfTwo (LengthOfTwoS _) IndexIntoN = IndexIntoN
-indexInto_over_LengthOfTwo (LengthOfTwoS len) (IndexIntoS idx) =
-  IndexIntoS $ indexInto_over_LengthOfTwo len idx
-indexInto_over_LengthOfTwo LengthOfTwoN idx = case idx of {}
+indexInto_over_LenTwo (LenS _) IndexIntoN = IndexIntoN
+indexInto_over_LenTwo (LenS len) (IndexIntoS idx) =
+  IndexIntoS $ indexInto_over_LenTwo len idx
+indexInto_over_LenTwo LenN idx = case idx of {}
 
 incIndexInto ::
-  LengthOfTwo xs ys len ->
+  LenTwo xs ys len ->
   IndexInto xs idx ->
   Either
     (S idx :~: len)
     (IndexInto xs (S idx))
-incIndexInto (LengthOfTwoS (LengthOfTwoS _)) IndexIntoN = Right (IndexIntoS IndexIntoN)
-incIndexInto (LengthOfTwoS len) (IndexIntoS idx) =
+incIndexInto (LenS (LenS _)) IndexIntoN = Right (IndexIntoS IndexIntoN)
+incIndexInto (LenS len) (IndexIntoS idx) =
   case incIndexInto len idx of
     Left Refl -> Left Refl
     Right idx -> Right $ IndexIntoS idx
-incIndexInto LengthOfTwoN idx = case idx of {}
-incIndexInto (LengthOfTwoS LengthOfTwoN) IndexIntoN = Left Refl
+incIndexInto LenN idx = case idx of {}
+incIndexInto (LenS LenN) IndexIntoN = Left Refl
 
 -- Given an InterpretIn xs xs x y,
 -- we can expand this into an Interpret (x : xs) (y : xs).
@@ -766,21 +767,146 @@ data Filter :: [a] -> [a] -> [a] -> [a] -> Type where
   FilterInc :: Filter xs ys zs ws -> Filter (z : xs) (w : ys) (z : zs) (w : ws)
   FilterExc :: Filter xs ys zs ws -> Filter xs ys (z : zs) (w : ws)
 
+data InterpretInLR lxs rxs lys rys x y where
+  InterpretInLR :: RevCat lxs rxs xs -> RevCat lys rys ys -> InterpretIn xs ys x y -> InterpretInLR lxs rxs lys rys x y
+
+data Interpreters :: [Language] -> [Language] -> [Language] -> [Language] -> Type where
+  InterpretersN :: Interpreters lxs lys '[] '[]
+  InterpretersS ::
+    InterpretInLR lxs rxs lys rys l l' ->
+    Interpreters (l : lxs) (l' : lys) rxs rys ->
+    Interpreters lxs lys (l : rxs) (l' : rys)
+
+type Interpreters' = Interpreters '[] '[]
+
+filterInterpretInLR ::
+  Filter lxs' lys' lxs lys ->
+  Filter rxs' rys' rxs rys ->
+  InterpretInLR lxs rxs lys rys x y ->
+  InterpretInLR lxs' rxs' lys' rys' x y
+filterInterpretInLR _ _ _ = undefined
+
+filterInterpret'' ::
+  Filter left_src' left_tgt' left_src left_tgt ->
+  Filter right_src' right_tgt' right_src right_tgt ->
+  Interpreters left_src left_tgt right_src right_tgt ->
+  Interpreters left_src' left_tgt' right_src' right_tgt'
+filterInterpret'' _ FilterN InterpretersN = InterpretersN
+filterInterpret'' lf (FilterInc rf) (InterpretersS intr intrs) =
+  InterpretersS (filterInterpretInLR lf rf intr) $ filterInterpret'' (FilterInc lf) rf intrs
+filterInterpret'' lf (FilterExc rf) (InterpretersS _ intrs) =
+  filterInterpret'' (FilterExc lf) rf intrs
+
+data SplitAt xs n lxs rxs where
+  SplitAtN :: SplitAt xs N '[] xs
+  SplitAtS :: SplitAt xs n lxs (x : rxs) -> SplitAt xs (S n) (x : lxs) rxs
+
+data Return_splitAtS xs' xs n x lxs rxs where
+  Return_splitAtS :: SplitAt xs (S n) (x : lxs) rxs -> RevCat lxs rxs xs' -> Return_splitAtS xs' xs n x lxs (x : rxs)
+
+splitAtS ::
+  SplitAt xs n lxs rxs ->
+  ListEqMod1Idx xs' xs x n ->
+  Return_splitAtS xs' xs n x lxs rxs
+splitAtS SplitAtN ListEqMod1IdxN = Return_splitAtS (SplitAtS SplitAtN) RevCatN
+splitAtS (SplitAtS sp) idx'@(ListEqMod1IdxS idx) =
+  case splitAtS sp (undefined idx idx' sp) of
+    Return_splitAtS sp' cat -> undefined
+
+--length_ICat ::
+--  LenTwo xs ys n ->
+--  ICat n prefix xs xs' ->
+
+icat_len ::
+  ICat len xs '[] xs' ->
+  Len xs' len
+icat_len ICatN = LenN
+icat_len (ICatS icat) = LenS $ icat_len icat
+
+data Return_icat_swap n prefix x xs xs' where
+  Return_icat_swap :: ICat (S n) prefix' xs xs' -> Return_icat_swap n prefix x xs xs'
+
+icat_swap ::
+  ICat n prefix (x : xs) xs' ->
+  Return_icat_swap n prefix x xs xs'
+icat_swap = undefined
+
+length_SplitAt' ::
+  LenTwo xs ys n ->
+  SplitAt xs' m lxs rxs ->
+  ICat o prefix xs xs' ->
+  Len rxs o
+length_SplitAt' LenN SplitAtN icat = icat_len icat
+length_SplitAt' (LenS len) (SplitAtS sp) icat = case icat_swap icat of Return_icat_swap icat' -> case length_SplitAt' len sp icat' of LenS len -> len
+
+length_SplitAt ::
+  LenTwo xs ys n ->
+  SplitAt xs n lxs rxs ->
+  (rxs :~: '[])
+length_SplitAt len sp = case length_SplitAt' len sp ICatN of LenN -> Refl
+
+conv_InterpretAsc_Interpreters' ::
+  InterpretAsc xs ys n ->
+  SplitAt xs n lxs rxs ->
+  SplitAt ys n lys rys ->
+  Interpreters lxs lys rxs rys
+conv_InterpretAsc_Interpreters' (InterpretAscN len) lsp rsp =
+  case length_SplitAt len lsp of
+    Refl -> case length_SplitAt (flipLenTwo len) rsp of
+      Refl -> InterpretersN
+conv_InterpretAsc_Interpreters' (InterpretAscS idx idx' intr intrs) lsp rsp =
+  case splitAtS lsp idx of
+    Return_splitAtS lsp' lcat ->
+      case splitAtS rsp idx' of
+        Return_splitAtS rsp' rcat -> InterpretersS (InterpretInLR lcat rcat intr) $
+            conv_InterpretAsc_Interpreters' intrs lsp' rsp'
+
+splitAt_Length' ::
+  SplitAt xs ln lxs rxs ->
+  SplitAt ys ln lys rys ->
+  LenTwo rxs rys rn ->
+  Add rn ln n ->
+  LenTwo xs ys n
+splitAt_Length' SplitAtN SplitAtN len add =
+  case add_n_N_m add of Refl -> len
+splitAt_Length' (SplitAtS lsp) (SplitAtS rsp) len add = splitAt_Length' lsp rsp (LenS len) (addS_swap add)
+
+splitAt_Length ::
+  SplitAt xs n lxs '[] ->
+  SplitAt ys n lys '[] ->
+  LenTwo xs ys n
+splitAt_Length lsp rsp = splitAt_Length' lsp rsp LenN AddN
+
+splitAt_to_idx ::
+  SplitAt xs n lxs (x : rxs) ->
+  RevCat lxs rxs xs' ->
+  ListEqMod1Idx xs' xs x n
+splitAt_to_idx = undefined
+
+conv_InterpretAsc_Interpreters_back ::
+  Interpreters lxs lys rxs rys ->
+  SplitAt xs n lxs rxs ->
+  SplitAt ys n lys rys ->
+  InterpretAsc xs ys n
+conv_InterpretAsc_Interpreters_back InterpretersN lsp rsp = InterpretAscN (splitAt_Length lsp rsp)
+conv_InterpretAsc_Interpreters_back (InterpretersS (InterpretInLR lcat rcat intr) intrs) lsp rsp =
+  case splitAt_to_idx lsp lcat
+  of idx -> case splitAt_to_idx rsp rcat of idx' -> InterpretAscS idx idx' intr $ conv_InterpretAsc_Interpreters_back intrs (SplitAtS lsp) (SplitAtS rsp)
+
+conv_InterpretAsc_Interpreters ::
+  Interpret xs ys ->
+  Interpreters' xs ys
+conv_InterpretAsc_Interpreters intrs = conv_InterpretAsc_Interpreters' intrs SplitAtN SplitAtN
+
 filterInterpret ::
   Filter xs ys zs ws ->
   Interpret zs ws ->
   Interpret xs ys
-filterInterpret FilterN intrs = intrs
-filterInterpret (FilterInc FilterN) intrs = intrs
-filterInterpret (FilterExc FilterN) _ = InterpretAscN LengthOfTwoN
-filterInterpret (FilterInc (FilterExc FilterN)) (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr' (InterpretAscN len))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSkip SubLSBase) intr') (InterpretAscN (LengthOfTwoS LengthOfTwoN))
-filterInterpret (FilterExc (FilterInc FilterN)) (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr' (InterpretAscN len))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSkip SubLSBase) intr) (InterpretAscN (LengthOfTwoS LengthOfTwoN))
-filterInterpret (FilterExc (FilterExc FilterN)) (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr' (InterpretAscN len))) = InterpretAscN LengthOfTwoN
-filterInterpret (FilterInc (FilterInc (FilterExc FilterN))) (InterpretAscS (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) intr (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr' (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr'' (InterpretAscN len)))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSwap $ SubLSSkip SubLSBase) intr'') $ InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) (sublsInterpretIn (SubLSSwap $ SubLSSkip SubLSBase) intr') (InterpretAscN (LengthOfTwoS $ LengthOfTwoS LengthOfTwoN))
-filterInterpret (FilterExc (FilterInc (FilterInc FilterN))) (InterpretAscS (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) (ListEqMod1IdxS (ListEqMod1IdxS ListEqMod1IdxN)) intr (InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) intr' (InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr'' (InterpretAscN len)))) = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (sublsInterpretIn (SubLSSkip $ SubLSSwap SubLSBase) intr') $ InterpretAscS (ListEqMod1IdxS ListEqMod1IdxN) (ListEqMod1IdxS ListEqMod1IdxN) (sublsInterpretIn (SubLSSkip $ SubLSSwap SubLSBase) intr) (InterpretAscN (LengthOfTwoS $ LengthOfTwoS LengthOfTwoN))
-
+filterInterpret fl intrs =
+  conv_InterpretAsc_Interpreters_back (filterInterpret'' FilterN fl $ conv_InterpretAsc_Interpreters intrs) SplitAtN SplitAtN
+ 
 sublsInterpret ::
-  LengthOfTwo xs ys len ->
+  LenTwo xs ys len ->
   SubLS xs ys zs ws ->
   Interpret zs ws ->
   Interpret xs ys
@@ -799,12 +925,12 @@ eqSubLS SubLSBase = Refl
 eqSubLS (SubLSSwap subls) = case eqSubLS subls of Refl -> Refl
 eqSubLS (SubLSSkip subls) = case eqSubLS subls of Refl -> Refl
 
-interpretOne :: LengthOfTwo xs xs len -> InterpretIn xs xs x y -> Interpret (x : xs) (y : xs)
-interpretOne len@(LengthOfTwoS _) intr = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr (go intr len IndexIntoN)
+interpretOne :: LenTwo xs xs len -> InterpretIn xs xs x y -> Interpret (x : xs) (y : xs)
+interpretOne len@(LenS _) intr = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr (go intr len IndexIntoN)
   where
     go ::
       InterpretIn xs xs x y ->
-      LengthOfTwo xs xs len ->
+      LenTwo xs xs len ->
       IndexInto xs idx ->
       InterpretAsc (x : xs) (y : xs) (S idx)
     go intr len idx =
@@ -812,7 +938,7 @@ interpretOne len@(LengthOfTwoS _) intr = InterpretAscS ListEqMod1IdxN ListEqMod1
         InterpretAscS (ListEqMod1IdxS lidx) (ListEqMod1IdxS lidx) (redir intr lidx) $
           case incIndexInto len idx of
             Right idx' -> go intr len idx'
-            Left Refl -> InterpretAscN (LengthOfTwoS len)
+            Left Refl -> InterpretAscN (LenS len)
     redir ::
       InterpretIn xs xs x y ->
       ListEqMod1Idx xs' xs x' idx ->
@@ -821,22 +947,22 @@ interpretOne len@(LengthOfTwoS _) intr = InterpretAscS ListEqMod1IdxN ListEqMod1
       InterpretIn \subls term@(Term' _ _ perm) ->
         case subls of
           SubLSSwap subls' -> case eqSubLS subls' of
-            Refl -> permutationToLengthOfTwo (invPermutation perm) \(LengthOfTwoS len') ->
+            Refl -> permutationToLenTwo (invPermutation perm) \(LenS len') ->
               interpretTerm' (interpretOne len' $ sublsInterpretIn subls' $ removeInterpretIn idx idx intr) term
           SubLSSkip subls' -> case eqSubLS subls' of Refl -> term
-interpretOne LengthOfTwoN intr =
+interpretOne LenN intr =
   InterpretAscS ListEqMod1IdxN ListEqMod1IdxN intr $
-    InterpretAscN (LengthOfTwoS LengthOfTwoN)
+    InterpretAscN (LenS LenN)
 
-term'_to_length :: Term' l ls tag -> (forall len. LengthOf ls len -> r) -> r
-term'_to_length (Term' _ _ perm) k = permutationToLengthOfTwo (invPermutation perm) k
+term'_to_length :: Term' l ls tag -> (forall len. Len ls len -> r) -> r
+term'_to_length (Term' _ _ perm) k = permutationToLenTwo (invPermutation perm) k
 
 length_subls ::
   SubLS xs ys zs ws ->
-  LengthOf xs len ->
-  LengthOfTwo xs ys len
+  Len xs len ->
+  LenTwo xs ys len
 length_subls SubLSBase len = len
-length_subls (SubLSSwap subls) (LengthOfTwoS len) = LengthOfTwoS $ length_subls subls len
+length_subls (SubLSSwap subls) (LenS len) = LenS $ length_subls subls len
 length_subls (SubLSSkip subls) len = length_subls subls len
 
 -- FIXME: generalise
@@ -881,12 +1007,16 @@ interpretExpand intrs = InterpretAscS ListEqMod1IdxN ListEqMod1IdxN (intr intrs)
             $ permuteTerm' perm term
     SubLSSkip subls -> \term -> runInterpreter intr subls term
   go :: InterpretAsc xs ys idx -> InterpretAsc (z : xs) (z : ys) (S idx)
-  go (InterpretAscN len) = InterpretAscN (LengthOfTwoS len)
+  go (InterpretAscN len) = InterpretAscN (LenS len)
   go (InterpretAscS idx idx' intr rest) = InterpretAscS (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') (helper intr) (go rest)
 
-data Catenation xs ys zs where
-  CatenationN :: Catenation '[] ys ys
-  CatenationS :: Catenation xs ys zs -> Catenation (x : xs) ys (x : zs)
+data Cat xs ys zs where
+  CatN :: Cat '[] ys ys
+  CatS :: Cat xs ys zs -> Cat (x : xs) ys (x : zs)
+
+data ICat n xs ys zs where
+  ICatN :: ICat N '[] ys ys
+  ICatS :: ICat n xs ys zs -> ICat (S n) (x : xs) ys (x : zs)
 
 -- Simple languages simplify working with Plutarch.
 -- In most cases, you do not need any exotic power.
@@ -903,7 +1033,7 @@ data instance L (InstSimpleLanguage l) ls tag where
     l '[arg, arg'] tag ->
     Term ls arg ->
     Term ls' arg' ->
-    Catenation ls ls' ls'' ->
+    Cat ls ls' ls'' ->
     L (InstSimpleLanguage l) ls'' tag
   ContractSimpleLanguage ::
     Term (InstSimpleLanguage l : InstSimpleLanguage l : ls) tag ->
@@ -940,7 +1070,7 @@ runSimpleFolder ::
 runSimpleFolder (SimpleFolder f) node children = f node children
 
 data InterpretDesc :: [Language] -> [Language] -> Nat -> Type where
-  InterpretDescN :: LengthOfTwo ls0 ls1 len -> InterpretDesc ls0 ls1 N
+  InterpretDescN :: LenTwo ls0 ls1 len -> InterpretDesc ls0 ls1 N
   InterpretDescS ::
     ListEqMod1Idx ls0' ls0 l idx ->
     ListEqMod1Idx ls1' ls1 l' idx ->
@@ -957,27 +1087,27 @@ data Take :: Nat -> [a] -> [a] -> Type where
   TakeS :: Take n xs ys -> Take (S n) (x : xs) (x : ys)
 
 data TakeInv :: Nat -> [a] -> [a] -> Type where
-  TakeInvN :: LengthOf xs len -> TakeInv len xs xs
+  TakeInvN :: Len xs len -> TakeInv len xs xs
   TakeInvS :: TakeInv (S n) xs ys -> ListEqMod1Idx zs ys x n -> TakeInv n xs zs
 
-type LengthOf xs len = LengthOfTwo xs xs len
+type Len xs len = LenTwo xs xs len
 
 data LTE' :: Nat -> Nat -> Type where
   LTE'N :: LTE' N y
   LTE'S :: LTE' x y -> LTE' (S x) (S y)
 
 length_to_snat ::
-  LengthOfTwo xs ys len ->
+  LenTwo xs ys len ->
   SNat len
-length_to_snat LengthOfTwoN = SN
-length_to_snat (LengthOfTwoS len) = SS $ length_to_snat len
+length_to_snat LenN = SN
+length_to_snat (LenS len) = SS $ length_to_snat len
 
-combineLengthOfTwo ::
-  LengthOfTwo xs ys len ->
-  LengthOfTwo zs ws len ->
-  LengthOfTwo xs zs len
-combineLengthOfTwo LengthOfTwoN LengthOfTwoN = LengthOfTwoN
-combineLengthOfTwo (LengthOfTwoS len) (LengthOfTwoS len') = LengthOfTwoS $ combineLengthOfTwo len len'
+combineLenTwo ::
+  LenTwo xs ys len ->
+  LenTwo zs ws len ->
+  LenTwo xs zs len
+combineLenTwo LenN LenN = LenN
+combineLenTwo (LenS len) (LenS len') = LenS $ combineLenTwo len len'
 
 -- You can imagine this function as taking an interpretation
 -- from xs to ys, and _splitting it up_, such that you
@@ -989,14 +1119,14 @@ combineLengthOfTwo (LengthOfTwoS len) (LengthOfTwoS len') = LengthOfTwoS $ combi
 -- inherently lose context. What was there is no longer there.
 -- FIXME: Is there a way to fix the above?
 interpretSplit ::
-  Catenation xs ys zs ->
+  Cat xs ys zs ->
   Interpret zs ws ->
-  (forall xs' ys'. Interpret xs xs' -> Interpret ys ys' -> Catenation xs' ys' ws -> r) ->
+  (forall xs' ys'. Interpret xs xs' -> Interpret ys ys' -> Cat xs' ys' ws -> r) ->
   r
 interpretSplit cat intr k =
   catenation_to_length cat \len ->
     let snat = length_to_snat len in
-      interpret_to_LengthOfTwo intr \len' ->
+      interpret_to_LenTwo intr \len' ->
         let lte = prove_LTE cat len len' in
         case go len' snat (add_n_N_n snat) lte (InterpretDescN len') intr of
           (desc, asc) -> prove_split (length_to_snat len) len' lte \x y z ->
@@ -1005,46 +1135,46 @@ interpretSplit cat intr k =
   where
   prove_split ::
     SNat n ->
-    LengthOfTwo zs ws len ->
+    LenTwo zs ws len ->
     LTE' n len ->
-    (forall xs ys. Take n ws xs -> Drop n ws ys -> Catenation xs ys ws -> r) ->
+    (forall xs ys. Take n ws xs -> Drop n ws ys -> Cat xs ys ws -> r) ->
     r
-  prove_split SN _ LTE'N k = k TakeN DropN CatenationN
-  prove_split (SS SN) (LengthOfTwoS _) (LTE'S LTE'N) k = k (TakeS TakeN) (DropS DropN) (CatenationS CatenationN)
-  prove_split (SS n) (LengthOfTwoS len) (LTE'S lte) k =
-    prove_split n len lte \take drop cat -> k (TakeS take) (DropS drop) (CatenationS cat)
-  prove_split (SS _) LengthOfTwoN lte _ = case lte of
+  prove_split SN _ LTE'N k = k TakeN DropN CatN
+  prove_split (SS SN) (LenS _) (LTE'S LTE'N) k = k (TakeS TakeN) (DropS DropN) (CatS CatN)
+  prove_split (SS n) (LenS len) (LTE'S lte) k =
+    prove_split n len lte \take drop cat -> k (TakeS take) (DropS drop) (CatS cat)
+  prove_split (SS _) LenN lte _ = case lte of
   prove_Take ::
-    Catenation xs ys zs ->
-    LengthOf xs len ->
+    Cat xs ys zs ->
+    Len xs len ->
     Take len zs xs
-  prove_Take CatenationN LengthOfTwoN = TakeN
-  prove_Take (CatenationS cat) (LengthOfTwoS len) = TakeS $ prove_Take cat len
+  prove_Take CatN LenN = TakeN
+  prove_Take (CatS cat) (LenS len) = TakeS $ prove_Take cat len
   prove_Drop ::
-    Catenation xs ys zs ->
-    LengthOf xs len ->
+    Cat xs ys zs ->
+    Len xs len ->
     Drop len zs ys
-  prove_Drop CatenationN LengthOfTwoN = DropN
-  prove_Drop (CatenationS cat) (LengthOfTwoS len) = DropS $ prove_Drop cat len
+  prove_Drop CatN LenN = DropN
+  prove_Drop (CatS cat) (LenS len) = DropS $ prove_Drop cat len
   prove_LTE ::
-    Catenation xs ys zs ->
-    LengthOf xs len ->
-    LengthOfTwo zs zs' len' ->
+    Cat xs ys zs ->
+    Len xs len ->
+    LenTwo zs zs' len' ->
     LTE' len len'
-  prove_LTE CatenationN LengthOfTwoN _ = LTE'N
-  prove_LTE (CatenationS cat) (LengthOfTwoS len) (LengthOfTwoS len') =
+  prove_LTE CatN LenN _ = LTE'N
+  prove_LTE (CatS cat) (LenS len) (LenS len') =
     LTE'S $ prove_LTE cat len len'
   catenation_to_length ::
-    Catenation xs ys zs ->
-    (forall len. LengthOf xs len -> r) ->
+    Cat xs ys zs ->
+    (forall len. Len xs len -> r) ->
     r
-  catenation_to_length CatenationN k = k LengthOfTwoN
-  catenation_to_length (CatenationS cat) k =
-    catenation_to_length cat (k . LengthOfTwoS)
+  catenation_to_length CatN k = k LenN
+  catenation_to_length (CatS cat) k =
+    catenation_to_length cat (k . LenS)
   cutAscSingle ::
     InterpretAsc (x : xs) (y : ys) (S idx) ->
     InterpretAsc xs ys idx
-  cutAscSingle (InterpretAscN (LengthOfTwoS len)) = InterpretAscN len
+  cutAscSingle (InterpretAscN (LenS len)) = InterpretAscN len
   cutAscSingle (InterpretAscS (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') intr intrs) =
     InterpretAscS idx idx' (removeInterpretIn ListEqMod1IdxN ListEqMod1IdxN intr) $ cutAscSingle intrs
   cutAsc ::
@@ -1055,7 +1185,7 @@ interpretSplit cat intr k =
   cutAsc DropN DropN intrs = intrs
   cutAsc (DropS dx) (DropS dy) intrs =
     cutAsc dx dy (cutAscSingle intrs)
-  -- cutDescSingle (InterpretDescN (LengthOfTwoS len)) = InterpretDescN len
+  -- cutDescSingle (InterpretDescN (LenS len)) = InterpretDescN len
   --cutDescSingle (InterpretDescS (ListEqMod1IdxS idx) (ListEqMod1IdxS idx') intr intrs) =
   --  InterpretDescS idx idx' (removeInterpretIn ListEqMod1IdxN ListEqMod1IdxN intr) $ cutDescSingle intrs
   {-
@@ -1071,10 +1201,10 @@ interpretSplit cat intr k =
     Take idx ys ys' ->
     InterpretDesc xs ys idx ->
     Interpret xs' ys'
-  cutDesc TakeN TakeN (InterpretDescN len) = InterpretAscN LengthOfTwoN
+  cutDesc TakeN TakeN (InterpretDescN len) = InterpretAscN LenN
   -- cutDesc (TakeS tx) (TakeS ty) intrs =
   go ::
-    LengthOfTwo xs ys len ->
+    LenTwo xs ys len ->
     SNat count ->
     Add count idx idx' ->
     LTE' idx' len ->
@@ -1101,13 +1231,13 @@ insertRepeated ::
 insertRepeated ListEqMod1N rep = RepeatedS rep
 insertRepeated (ListEqMod1S idx) (RepeatedS rep) = RepeatedS $ insertRepeated idx rep
 
-repeatedOverCatenation ::
-  Catenation xs ys zs ->
+repeatedOverCat ::
+  Cat xs ys zs ->
   Repeated x zs ->
   (Repeated x xs, Repeated x ys)
-repeatedOverCatenation CatenationN rep = (RepeatedN, rep)
-repeatedOverCatenation (CatenationS cat) (RepeatedS rep) =
-  case repeatedOverCatenation cat rep of
+repeatedOverCat CatN rep = (RepeatedN, rep)
+repeatedOverCat (CatS cat) (RepeatedS rep) =
+  case repeatedOverCat cat rep of
     (x, y) -> (RepeatedS x, y)
 
 removeRepeated ::
@@ -1150,7 +1280,7 @@ extractSimpleLanguage = go' (RepeatedS RepeatedN) where
     interpretSplit cat intr \intrx intry catx ->
         let
           rep' = repeatedOverPermutation (invPermutation perm) rep
-          (repx, repy) = repeatedOverCatenation catx rep'
+          (repx, repy) = repeatedOverCat catx rep'
           argx' = go' repx folder (interpretTerm intrx argx)
           argy' = go' repy folder (interpretTerm intry argy)
         in runSimpleFolder folder node (argx' :* argy' :* Nil)
@@ -1163,14 +1293,14 @@ extractSimpleLanguage = go' (RepeatedS RepeatedN) where
       $ interpretTerm (interpretExpand
       $ interpretExpand intr) term
 
-class CCatenation xs ys zs | xs ys -> zs where
-  ccatenation :: Catenation xs ys zs
+class CCat xs ys zs | xs ys -> zs where
+  ccatenation :: Cat xs ys zs
 
-instance CCatenation '[] ys ys where
-  ccatenation = CatenationN
+instance CCat '[] ys ys where
+  ccatenation = CatN
 
-instance CCatenation xs ys zs => CCatenation (x : xs) ys (x : zs) where
-  ccatenation = CatenationS ccatenation
+instance CCat xs ys zs => CCat (x : xs) ys (x : zs) where
+  ccatenation = CatS ccatenation
 
 type family Append (xs :: [a]) (ys :: [a]) :: [a] where
   Append '[] ys = ys
@@ -1196,9 +1326,9 @@ termToSList :: Term ls tag -> SList ls
 termToSList (Term (Term' _ _ perm) idx) =
   insertSList idx $ permutationToSList $ invPermutation perm
 
-permutationToLengthOfTwo :: Permutation xs ys -> (forall len. LengthOfTwo xs xs len -> r) -> r
-permutationToLengthOfTwo PermutationN k = k LengthOfTwoN
-permutationToLengthOfTwo (PermutationS _ perm) k = permutationToLengthOfTwo perm (k . LengthOfTwoS)
+permutationToLenTwo :: Permutation xs ys -> (forall len. LenTwo xs xs len -> r) -> r
+permutationToLenTwo PermutationN k = k LenN
+permutationToLenTwo (PermutationS _ perm) k = permutationToLenTwo perm (k . LenS)
 
 idPermutation :: SList xs -> Permutation xs xs
 idPermutation SNil = PermutationN
@@ -1208,9 +1338,9 @@ idPermutation2 :: SList xs -> Permutation2 xs xs xs xs
 idPermutation2 SNil = Permutation2N
 idPermutation2 (SCons xs) = Permutation2S ListEqMod1IdxN ListEqMod1IdxN (idPermutation2 xs)
 
-lengthOfTwo_to_SList :: LengthOfTwo xs ys len -> (SList xs, SList ys)
-lengthOfTwo_to_SList LengthOfTwoN = (SNil, SNil)
-lengthOfTwo_to_SList (LengthOfTwoS len) =
+lengthOfTwo_to_SList :: LenTwo xs ys len -> (SList xs, SList ys)
+lengthOfTwo_to_SList LenN = (SNil, SNil)
+lengthOfTwo_to_SList (LenS len) =
   case lengthOfTwo_to_SList len of (x, y) -> (SCons x, SCons y)
 
 data IndexInto :: [a] -> Nat -> Type where
@@ -1238,6 +1368,10 @@ addFunctional AddN AddN = Refl
 addFunctional (AddS x) (AddS y) = case addFunctional x y of
   Refl -> Refl
 
+add_n_N_m :: Add n N m -> n :~: m
+add_n_N_m AddN = Refl
+add_n_N_m (AddS add) = case add_n_N_m add of Refl -> Refl
+
 undoAddSFlipped :: Add n (S m) o -> (forall o'. o :~: S o' -> Add n m o' -> r) -> r
 undoAddSFlipped AddN k = k Refl AddN
 undoAddSFlipped (AddS add) k = undoAddSFlipped add \Refl add' -> k Refl (AddS add')
@@ -1248,6 +1382,10 @@ addSFlipped' (AddS add) x y = undoAddSFlipped y \Refl y' -> AddS $ addSFlipped' 
 
 addSFlipped :: Add n m o -> Add n (S m) (S o)
 addSFlipped a = addSFlipped' a (AddS AddN) (AddS AddN)
+
+addS_swap :: Add n (S m) o -> Add (S n) m o
+addS_swap AddN = AddS AddN
+addS_swap (AddS add) = AddS $ addS_swap add
 
 suffixOf_to_IndexInto' :: IndexInto ys idx -> SuffixOf xs ys idx' -> Add idx' idx idx'' -> IndexInto xs idx''
 suffixOf_to_IndexInto' idx SuffixOfN AddN = idx
@@ -1275,14 +1413,14 @@ suffixOf_to_ListEqMod1Idx suffix k = removeListEqMod1Idx (suffixOf_to_IndexInto 
 idInterpretation :: SList xs -> Interpret xs xs
 idInterpretation = f SuffixOfN
   where
-    extractLength :: LengthOf ys len -> Add len len' len'' -> SuffixOf xs ys len' -> LengthOf xs len''
-    extractLength (LengthOfTwoS len) (AddS add) SuffixOfN = LengthOfTwoS $ extractLength len add SuffixOfN
+    extractLength :: Len ys len -> Add len len' len'' -> SuffixOf xs ys len' -> Len xs len''
+    extractLength (LenS len) (AddS add) SuffixOfN = LenS $ extractLength len add SuffixOfN
     extractLength len add (SuffixOfS suffix) =
       undoAddSFlipped add \Refl add' ->
-        extractLength (LengthOfTwoS len) (AddS add') suffix
-    extractLength LengthOfTwoN AddN SuffixOfN = LengthOfTwoN
+        extractLength (LenS len) (AddS add') suffix
+    extractLength LenN AddN SuffixOfN = LenN
     f :: SuffixOf xs ys idx -> SList ys -> InterpretAsc xs xs idx
-    f suffix SNil = InterpretAscN (extractLength LengthOfTwoN AddN suffix)
+    f suffix SNil = InterpretAscN (extractLength LenN AddN suffix)
     f suffix (SCons xs) =
       suffixOf_to_ListEqMod1Idx (SuffixOfS suffix) \idx ->
         InterpretAscS idx idx g $ f (SuffixOfS suffix) xs
@@ -1367,48 +1505,48 @@ listEqMod1Idx_to_elemOf = listEqMod1_to_elemOf . unListEqMod1Idx
 contractThere :: ElemOf ls l -> Contractible l -> Term (l : ls) tag -> Term ls tag
 contractThere idx c term = elemOf_to_listEqMod1 idx \idx' -> unbringTerm idx' $ contractThere' idx' c term
 
-data ReverseCatenation :: [a] -> [a] -> [a] -> Type where
-  ReverseCatenationN :: ReverseCatenation '[] ys ys
-  ReverseCatenationS :: ReverseCatenation xs (x : ys) zs -> ReverseCatenation (x : xs) ys zs
+data RevCat :: [a] -> [a] -> [a] -> Type where
+  RevCatN :: RevCat '[] ys ys
+  RevCatS :: RevCat xs (x : ys) zs -> RevCat (x : xs) ys zs
 
 type Reverse :: [a] -> [a] -> Type
-type Reverse xs ys = ReverseCatenation xs '[] ys
+type Reverse xs ys = RevCat xs '[] ys
 
 {-
-catenationToNilIsInput :: Catenation xs '[] ys -> xs :~: ys
-catenationToNilIsInput CatenationN = Refl
-catenationToNilIsInput (CatenationS rest) = case catenationToNilIsInput rest of Refl -> Refl
+catenationToNilIsInput :: Cat xs '[] ys -> xs :~: ys
+catenationToNilIsInput CatN = Refl
+catenationToNilIsInput (CatS rest) = case catenationToNilIsInput rest of Refl -> Refl
 -}
 
-reverseCatenationFunctional :: ReverseCatenation xs suffix ys -> ReverseCatenation xs suffix zs -> ys :~: zs
-reverseCatenationFunctional ReverseCatenationN ReverseCatenationN = Refl
-reverseCatenationFunctional (ReverseCatenationS ys) (ReverseCatenationS zs) =
-  case reverseCatenationFunctional ys zs of Refl -> Refl
+reverseCatFunctional :: RevCat xs suffix ys -> RevCat xs suffix zs -> ys :~: zs
+reverseCatFunctional RevCatN RevCatN = Refl
+reverseCatFunctional (RevCatS ys) (RevCatS zs) =
+  case reverseCatFunctional ys zs of Refl -> Refl
 
-reverseCatenation_to_length ::
-  ReverseCatenation xs ys zs ->
-  (forall len. LengthOf xs len -> r) ->
+reverseCat_to_length ::
+  RevCat xs ys zs ->
+  (forall len. Len xs len -> r) ->
   r
-reverseCatenation_to_length ReverseCatenationN k = k LengthOfTwoN
-reverseCatenation_to_length (ReverseCatenationS cat) k =
-  reverseCatenation_to_length cat (k . LengthOfTwoS)
+reverseCat_to_length RevCatN k = k LenN
+reverseCat_to_length (RevCatS cat) k =
+  reverseCat_to_length cat (k . LenS)
 
 snat_to_Add :: SNat x -> (forall z. Add x y z -> r) -> r
 snat_to_Add SN k = k AddN
 snat_to_Add (SS x) k = snat_to_Add x (k . AddS)
 
 multicontract' ::
-  ReverseCatenation prefix ls0 ls0' ->
-  ReverseCatenation prefix ls1 ls1' ->
+  RevCat prefix ls0 ls0' ->
+  RevCat prefix ls1 ls1' ->
   MultiContractible ls0 ls1 ->
   Term ls0' tag ->
   Term ls1' tag
 multicontract' cnx cny MultiContractibleBase term =
-  case reverseCatenationFunctional cnx cny of Refl -> term
+  case reverseCatFunctional cnx cny of Refl -> term
 multicontract' cnx cny (MultiContractibleSkip rest) term =
-  multicontract' (ReverseCatenationS cnx) (ReverseCatenationS cny) rest term
+  multicontract' (RevCatS cnx) (RevCatS cny) rest term
 multicontract' cnx cny (MultiContractibleContract c elmof rest) term =
-  reverseCatenation_to_length cnx \len ->
+  reverseCat_to_length cnx \len ->
     elemOf_to_listEqMod1Idx elmof \idx ->
       let snat = length_to_snat len in
       snat_to_Add snat \add ->
@@ -1443,29 +1581,29 @@ multicontract' cnx cny (MultiContractibleContract c elmof rest) term =
           in
             k (PermutationS (unListEqMod1Idx idx') perm) perm
     removeRevCat ::
-      LengthOf xs len ->
+      Len xs len ->
       Add len idx idx' ->
       ListEqMod1Idx ys' ys y idx ->
       ListEqMod1Idx zs' zs y idx' ->
-      ReverseCatenation xs ys zs ->
-      ReverseCatenation xs ys' zs'
-    removeRevCat LengthOfTwoN AddN idx idx' ReverseCatenationN =
-      case listEqMod1IdxFunctional idx idx' of Refl -> ReverseCatenationN
-    removeRevCat (LengthOfTwoS len) (AddS add) idx idx' (ReverseCatenationS cat) =
-      ReverseCatenationS $ removeRevCat len (addSFlipped add) (ListEqMod1IdxS idx) idx' cat
+      RevCat xs ys zs ->
+      RevCat xs ys' zs'
+    removeRevCat LenN AddN idx idx' RevCatN =
+      case listEqMod1IdxFunctional idx idx' of Refl -> RevCatN
+    removeRevCat (LenS len) (AddS add) idx idx' (RevCatS cat) =
+      RevCatS $ removeRevCat len (addSFlipped add) (ListEqMod1IdxS idx) idx' cat
     util ::
-      ReverseCatenation xs ys zs ->
-      LengthOf xs len ->
+      RevCat xs ys zs ->
+      Len xs len ->
       Add len idx idx' ->
       ListEqMod1Idx ys' ys x idx ->
       (forall zs'. ListEqMod1Idx zs' zs x idx' -> r) ->
       r
-    util ReverseCatenationN LengthOfTwoN AddN idx k = k idx
-    util (ReverseCatenationS cat) (LengthOfTwoS len) (AddS add) idx k =
+    util RevCatN LenN AddN idx k = k idx
+    util (RevCatS cat) (LenS len) (AddS add) idx k =
       util cat len (addSFlipped add) (ListEqMod1IdxS idx) k
 
 multicontract :: MultiContractible ls ls' -> Term ls tag -> Term ls' tag
-multicontract = multicontract' ReverseCatenationN ReverseCatenationN
+multicontract = multicontract' RevCatN RevCatN
 
 
 

@@ -73,7 +73,7 @@ data instance L If ls tag where
     Term ls0 (Expr lv0 PBool) ->
     Term ls1 (Expr lv1 a) ->
     Term ls1 (Expr lv1 a) ->
-    Catenation ls0 ls1 ls2 ->
+    Cat ls0 ls1 ls2 ->
     L If ls2 (Expr (lv0 + lv1) a)
 
 data PFun :: Uni -> PType -> PType -> PType where
@@ -86,7 +86,7 @@ infixr 0 #->.
 -- Reverse order but irrelevant
 data CatAll' :: [a] -> [[a]] -> [a] -> Type where
   CatAll'N :: CatAll' xs '[] xs
-  CatAll'S :: Catenation ys xs xs' -> CatAll' xs' yss zs -> CatAll' xs (ys : yss) zs
+  CatAll'S :: Cat ys xs xs' -> CatAll' xs' yss zs -> CatAll' xs (ys : yss) zs
 
 type CatAll = CatAll' '[]
 
@@ -127,7 +127,7 @@ data instance L (LCDB free_vars lin_vars) ls tag where
   -- We must consume the linear variables in both.
   ContractLCDB ::
     Term (LCDB free_vars lin_vars0 : LCDB free_vars lin_vars1 : ls) tag ->
-    Catenation lin_vars0 lin_vars1 lin_vars2 ->
+    Cat lin_vars0 lin_vars1 lin_vars2 ->
     L (LCDB free_vars lin_vars2) ls tag
   -- Given a context of any free variables,
   -- we can select any of them.
@@ -142,7 +142,7 @@ data instance L (LCDB free_vars lin_vars) ls tag where
   -- variable of type a, we can turn it into a linear lambda.
   ExpandVarFree ::
     Term (LCDB free_vars0 lin_vars : ls) tag ->
-    Catenation free_vars1 free_vars0 free_vars2 ->
+    Cat free_vars1 free_vars0 free_vars2 ->
     L (LCDB free_vars2 lin_vars) ls tag
   LamDBLin ::
     Term (LCDB free_vars (a : lin_vars) : ls) (Expr (S lv) b) ->
@@ -207,7 +207,7 @@ intr_HOAS_to_DB = InterpretIn \subls (Term' node intrs perm) ->
     ExpandLCHOAS term -> undefined $ Term' (ExpandLCDB term) intrs perm
     LamHOASFree term ->
       let
-        term' = term (flip Term ListEqMod1N $ Term' (VarFree ElemOfN) (InterpretAscN LengthOfTwoN) PermutationN) undefined
+        term' = term (flip Term ListEqMod1N $ Term' (VarFree ElemOfN) (InterpretAscN LenN) PermutationN) undefined
       in
       undefined $ Term' (LamFree term') (idInterpretation undefined) (idPermutation undefined)
     ContractLCHOAS term ->

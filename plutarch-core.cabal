@@ -14,6 +14,9 @@ common c
     LambdaCase
     NondecreasingIndentation
     TypeFamilies
+    MagicHash
+    UnliftedDatatypes
+    UnliftedNewtypes
 
   ghc-options:
     -Weverything -Wno-unused-do-bind -Wno-missing-kind-signatures
@@ -26,7 +29,6 @@ common c
 
   build-depends:
     , base      >=4.15
-    , sop-core  ^>=0.5
 
 library
   import:          c
