@@ -1,228 +1,170 @@
-{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeFamilyDependencies, UndecidableInstances #-}
 
 module Plutarch.Example where
 
-import Data.Functor.Compose (Compose)
+import Unsafe.Coerce (unsafeCoerce)
 import Plutarch.Core
-import Plutarch.Internal.Utilities
-import Data.Kind (Type)
-import qualified GHC.TypeLits as TL
+import Data.Proxy (Proxy (Proxy))
+import Data.Kind (Type, Constraint)
 
-newtype PTypeF = PTypeF (PType -> Type)
-type PType = PTypeF -> Type
--- data PPType f
+type PType = Type
+data Expr (a :: PType)
+data LC
+data Var (a :: PType)
+data instance L (Expr a) ls where
+data instance L (Var a) ls where
+  Var :: L (Var a) '[Expr a]
+  VarCollapse :: Term (Var a : Var a : ls) -> L (Var a) ls
+data instance L LC ls where
+  Lam :: Term (Var a : Expr b : ls) -> L LC (Expr (a #-> b) : ls)
+  LamConst :: Term (Expr b : ls) -> L LC (Expr (a #-> b) : ls)
+  LamCollapse :: Term (LC : LC : ls) -> L LC ls
+data App
+data instance L App lc where
+  App :: Term (Expr (a #-> b) : ls) -> Term (Expr a : ls) -> L App (Expr b : ls)
 
-data Uni = Free | Lin
+data PList :: PType -> PType
 
-type NumLinVars = Nat
-
--- An expression in the context S.
--- This is necessary because of linearity.
--- TODO: Figure out better solution
-data Expr :: NumLinVars -> PType -> Tag
-
--- Contains information about the type.
--- This is necessary in nodes that don't mention all
--- input type variables in the output type, e.g. function application.
--- Assume you apply undefined to flip const and want to compile to the STLC,
--- an undefined of what?
-data TypeInfo :: PType -> Tag
-
-data PBool p = PFalse | PTrue
-data PUnit p = PUnit
-data PPair a b f = PPair (f ## a) (f ## b)
-data PEither a b f = PLeft (f ## a) | PRight (f ## b)
-
-infixr 0 ##
-type family (##) (f :: PTypeF) (a :: PType) = (r :: Type) | r -> f a where
-  ('PTypeF PHsW) ## a = PHs a
-  ('PTypeF (PInstW ls tagger)) ## a = Term ls (tagger a)
-  ('PTypeF f) ## a = f a
-
-data PHsW a
-type PHs a = a ('PTypeF PHsW)
-
--- Morally equivalent to `Compose (Term ls) tagger`
-data PInstW ls tagger a
-type PInst ls tagger a = a ('PTypeF (PInstW ls tagger))
-
-type family (+) (x :: Nat) (y :: Nat) :: Nat where
-  N + y = y
-  (S x) + y = S (x + y)
-
-data Bools' :: SimpleLanguage where
-  And :: Bools' '[Expr lv0 PBool, Expr lv1 PBool] (Expr (lv0 + lv1) PBool)
-  Not :: Bools' '[Expr lv0 PBool] (Expr lv0 PBool)
-  BoolLit :: PHs PBool -> Bools' '[] (Expr N PBool)
-  BoolTypeInfo :: Bools' '[] (TypeInfo PBool)
-type Bools = InstSimpleLanguage Bools'
-
-data PInt p
-
-data Ints' :: SimpleLanguage where
-  Mult :: Ints' '[Expr lv0 PInt, Expr lv1 PInt] (Expr (lv0 + lv1) PInt)
-  Negate :: Ints' '[Expr lv0 PInt] (Expr lv0 PInt)
-  IntLit :: PHs PInt -> Ints' '[] (Expr N PInt)
-  IntTypeInfo :: Ints' '[] (TypeInfo PInt)
-type Ints = InstSimpleLanguage Ints'
-
--- Something like this
-data If :: Language where
-data instance L If ls tag where
-  If ::
-    Term ls0 (Expr lv0 PBool) ->
-    Term ls1 (Expr lv1 a) ->
-    Term ls1 (Expr lv1 a) ->
-    Cat ls0 ls1 ls2 ->
-    L If ls2 (Expr (lv0 + lv1) a)
-
-data PFun :: Uni -> PType -> PType -> PType where
-
-type (#->) = PFun Free
-type (#->.) = PFun Lin
 infixr 0 #->
-infixr 0 #->.
+data (#->) (a :: PType) (b :: PType)
 
--- Reverse order but irrelevant
-data CatAll' :: [a] -> [[a]] -> [a] -> Type where
-  CatAll'N :: CatAll' xs '[] xs
-  CatAll'S :: Cat ys xs xs' -> CatAll' xs' yss zs -> CatAll' xs (ys : yss) zs
+class Interpretible (l :: Language) where
+  interpret :: Proxy l -> ()
 
-type CatAll = CatAll' '[]
-
-data LCBase :: Language where
-data instance L LCBase ls tag where
-  ExpandLCBase ::
-    Term ls tag ->
-    L LCBase ls tag
-  ContractLCBase ::
-    Term (LCBase : LCBase : ls) tag ->
-    L LCBase ls tag
-  -- Given a (free) function we can apply to it an expression
-  -- that does not consume any linear variables.
-  AppFree ::
-    Term ls0 (TypeInfo a) ->
-    Term ls1 (Expr lv0 (PFun w a b)) ->
-    Term ls2 (Expr N a) ->
-    CatAll '[ls0, ls1, ls2] ls3 ->
-    L LCBase ls3 (Expr lv0 b)
-  -- Given a linear function, we can apply to it any expression.
-  AppLin ::
-    Term ls0 (TypeInfo a) ->
-    Term ls1 (Expr lv0 (PFun Lin a b)) ->
-    Term ls2 (Expr lv1 a) ->
-    CatAll '[ls0, ls1, ls2] ls3 ->
-    L LCBase ls3 (Expr (lv0 + lv1) b)
-
--- A term with LCDB free_vars lin_vars s represents
--- a term that depends on free variabes free_vars,
--- and *consumes* the linear variables in lin_vars, in
--- the context s.
-data LCDB :: [PType] -> [PType] -> Language where
-data instance L (LCDB free_vars lin_vars) ls tag where
-  -- We aren't consuming any linear variables here.
-  ExpandLCDB ::
-    Term ls tag ->
-    L (LCDB free_vars '[]) ls tag
-  -- We must consume the linear variables in both.
-  ContractLCDB ::
-    Term (LCDB free_vars lin_vars0 : LCDB free_vars lin_vars1 : ls) tag ->
-    Cat lin_vars0 lin_vars1 lin_vars2 ->
-    L (LCDB free_vars lin_vars2) ls tag
-  -- Given a context of any free variables,
-  -- we can select any of them.
-  VarFree ::
-    ElemOf free_vars a ->
-    L (LCDB free_vars '[]) '[] (Expr N a)
-  -- We can construct linear variables, but the
-  -- context is restricted, since we can only use them once.
-  VarLin ::
-    L (LCDB '[] '[a]) '[] (Expr (S N) a)
-  -- Given an expression in the same context that depends on some linear
-  -- variable of type a, we can turn it into a linear lambda.
-  ExpandVarFree ::
-    Term (LCDB free_vars0 lin_vars : ls) tag ->
-    Cat free_vars1 free_vars0 free_vars2 ->
-    L (LCDB free_vars2 lin_vars) ls tag
-  LamDBLin ::
-    Term (LCDB free_vars (a : lin_vars) : ls) (Expr (S lv) b) ->
-    L (LCDB free_vars lin_vars) ls (Expr lv (PFun Lin a b))
-  -- Given an expression in the same context that depends on some free
-  -- variable of type a, we can turn it into a free lambda.
-  -- It must not depend on any linear variables, since otherwise
-  -- those linear variables would be consumed more than once potentially.
-  LamFree ::
-    Term (LCDB (a : free_vars) '[] : ls) (Expr N b) ->
-    L (LCDB free_vars '[]) ls (Expr N (PFun Free a b))
-
-data LCHOAS :: Language where
--- A term with the `LCHOAS sf sl` language, where `sf` and `sl` are rigid,
--- is an open term. If they are ambiguous, it is a closed term.
--- They are split up to differentiate between linear and free variables.
-data instance L LCHOAS ls tag where
-  ExpandLCHOAS ::
-    Term ls tag ->
-    L LCHOAS ls tag
-  ContractLCHOAS ::
-    Term (LCHOAS : LCHOAS : ls) tag ->
-    L LCHOAS ls tag
-  -- | An embedded function defined by HOAS.
-  -- The Haskell-level function can use the argument arbitrarily, but it is inherently
-  -- opaque. It only knows it is a term of one language, but since it does not know it,
-  -- it can not inspect it, preventing the issue plaguing HOAS with GADTs.
-  -- The language must however be contractible, since if we use the argument twice,
-  -- we might have the language twice, hence we need to contract it.
-  LamHOASFree ::
-    (forall var. Term '[var] (Expr N a) -> Contractible var -> Term (var : ls) (Expr N b)) ->
-    L LCHOAS ls (Expr N (PFun Free a b))
-  -- | A *linear* embedded function defined by HOAS.
-  -- Similar to 'LamFree' with the difference that the language isn't contractible, and the
-  -- expression is marked as linear.
-  -- This prevents you from using it in a non-linear fashion, while still allowing
-  -- each branch to use the same linear variable.
-  LamHOASLin ::
-    (forall var. Term '[var] (Expr (S N) a) -> Term (var : ls) (Expr (S lv) b)) ->
-    L LCHOAS ls (Expr lv (PFun Lin a b))
-
-data PSOPHOAS :: Language where
-data instance L PSOPHOAS ls tag where
-  ExpandPSOPHOAS ::
-    Term ls tag ->
-    L PSOPHOAS ls tag
-  ContractPSOPHOAS ::
-    Term (PSOPHOAS : PSOPHOAS : ls) tag ->
-    L PSOPHOAS ls tag
-  MatchHOASFree ::
-    Term ls0 (Expr N a) ->
-    (forall var. PInst '[var] (Expr N) a -> Contractible var -> Term (var : ls) (Expr N b)) ->
-    L PSOPHOAS ls (Expr N b)
-
-
-type family Any where
-
--- FIXME: Make existential
-intr_HOAS_to_DB :: InterpretIn ls ls' LCHOAS (LCDB Any Any)
-intr_HOAS_to_DB = InterpretIn \subls (Term' node intrs perm) ->
-  case node of
-    ExpandLCHOAS term -> undefined $ Term' (ExpandLCDB term) intrs perm
-    LamHOASFree term ->
-      let
-        term' = term (flip Term ListEqMod1N $ Term' (VarFree ElemOfN) (InterpretAscN LenN) PermutationN) undefined
-      in
-      undefined $ Term' (LamFree term') (idInterpretation undefined) (idPermutation undefined)
-    ContractLCHOAS term ->
-      let
-        term' = interpretTerm (interpretOne undefined intr_HOAS_to_DB) term
-        term'' = interpretTerm (interpretOne undefined intr_HOAS_to_DB) (bringTerm (ListEqMod1S ListEqMod1N) term')
-      in
-      undefined term''
-      --undefined $ Term' (LamFree (term $ VarFree ElemOfN))
-    --ContractLCDB
+class All (c :: a -> Constraint) (l :: [a]) where
+  --c_all ::
+instance All c '[]
+instance (c x, All c xs) => All c (x : xs)
 
 {-
-pnotNode :: Term ls (Expr w PBool) -> Term ls' (Expr w PBool)
-pnotNode term = undefined
+transPermute :: Permutation xs ys -> Permutation ys zs -> Permutation xs zs
+transPermute = undefined
 
-pnot :: Term '[] [Expr Free (PBool #-> PBool)]
-pnot = undefined
+permuteTerm :: Permutation xs ys -> Term xs -> Term ys
+permuteTerm = undefined
+-}
+
+flipTerm :: Term (x : y : ls) -> Term (y : x : ls)
+flipTerm = undefined
+
+flip3Term :: Term (x : y : z : ls) -> Term (z : x : y : ls)
+flip3Term = undefined
+
+stripPermutation :: Permutation xs ys -> Permutation xs xs
+stripPermutation = undefined
+
+flipPermutation :: Permutation xs ys -> Permutation ys xs
+flipPermutation = undefined
+
+-- Given some languages ys, we figure out how to extract it from xs,
+-- collapsing as much as we can at the same time.
+-- For each element in `ys`, we check if it exists in `xs`,
+-- and if so, "remove" it from `xs`.
+-- At the end, we are left with an unused portion of `xs`, which
+-- we must merge into what we have.
+-- This isn't possible for all languages.
+-- If there is a language for which it isn't possible,
+-- an error is generated.
+-- This might e.g. be the case for unconsumed linear variables.
+class Collapse (xs :: [Language]) (ys :: [Language]) where
+  collapse :: Term xs -> Term ys
+
+-- thanks @rhendric!
+class CInsert x xs ys | x ys -> xs where
+  cinsert :: Insert x xs ys
+
+class CInsert_fallback x y xs ys | x y ys -> xs where
+  cinsert_fallback :: Proxy y -> Insert x xs (y : ys)
+instance {-# INCOHERENT #-} (a ~ b, xs ~ ys) => CInsert_fallback (Expr a) (Expr b) xs ys where
+  cinsert_fallback Proxy = IN
+instance  (xs ~ y : xs', CInsert x xs' ys) => CInsert_fallback x y xs ys where
+  cinsert_fallback Proxy = IS cinsert
+
+instance xs ~ ys => CInsert x xs (x : ys) where
+  cinsert = IN
+instance {-# INCOHERENT #-} CInsert_fallback x y xs ys => CInsert x xs (y : ys) where
+  cinsert = cinsert_fallback (Proxy @y)
+
+class CPermutation (xs :: [a]) (ys :: [a]) where
+  cpermutation :: Permutation xs ys
+instance CPermutation '[] '[] where
+  cpermutation = PN
+instance (CInsert x ys ys', CPermutation xs ys) => CPermutation (x : xs) ys' where
+  cpermutation = PS cinsert cpermutation
+
+reorderTerm :: CPermutation xs ys => Term xs -> Term ys
+reorderTerm = undefined
+
+reorderTermFlipped :: CPermutation ys xs => Term xs -> Term ys
+reorderTermFlipped = undefined
+
+givePermutation :: Permutation xs ys -> (CPermutation xs ys => r) -> r
+givePermutation _ _ = undefined
+
+plam :: forall a b ls. (forall l. Term '[Expr a, l] -> Term (Expr b : l : ls)) -> Term (LC : Expr (a #-> b) : ls)
+plam f =
+  let t = f (Term Var (PS (IS IN) (PS IN PN)))
+      p :: Permutation ls ls
+      p = case t of Term _ p' -> case flipPermutation p' of PS _ (PS _ p) -> stripPermutation p
+  in givePermutation p $ Term (Lam (reorderTerm t :: Term (Var a : Expr b : ls))) cpermutation
+
+-- explicit type family since this is erased to ()
+data family Append :: [a] -> [a] -> [a] -> Type
+data instance Append '[] ys ys = Append0
+newtype instance Append (x : xs) ys (x : zs) = Append1 (Append xs ys zs)
+
+class CAppend xs ys zs | xs ys -> zs where
+  cappend :: Append xs ys zs
+instance CAppend '[] ys ys where
+  cappend = Append0
+instance CAppend xs ys zs => CAppend (x : xs) ys (x : zs) where
+  cappend = Append1 cappend
+
+unsafeAppendProof :: Append xs ys zs
+unsafeAppendProof = unsafeCoerce ()
+
+data ListLang
+data instance L ListLang ls where
+  Nil :: L ListLang '[Expr (PList a)]
+  Cons :: Append ls0 ls1 ls -> Term (Expr a : ls0) -> Term (Expr (PList a) : ls1) -> L ListLang (Expr (PList a) : ls)
+  ListMatch ::
+    Append ls0 ls1 ls2 ->
+    Append ls2 ls3 ls ->
+    Term (Expr (PList a) : ls0) ->
+    Term (Expr b : ls1) ->
+    Term (Expr b : ls3) -> -- FIXME: pass in head and tail
+    L ListLang (Expr b : ls)
+
+pnil :: Term '[Expr (PList a), ListLang]
+pnil = Term Nil cpermutation
+
+pcons' :: Term '[Expr a, Var a] -> Term '[Expr (PList a), Var (PList a)] -> Term '[Expr (PList a), ListLang, Var (PList a), Var a]
+pcons' x xs = Term (Cons cappend x xs) cpermutation
+
+--pcons = Term '[Expr (a #-> PList a #-> PList a), LC, LC, ListLang, ListLang]
+--pcons = plam \x -> undefined $ plam \y ->
+
+psingleton :: Term '[LC, Expr (a #-> PList a), ListLang, ListLang]
+psingleton = plam \x -> Term (Cons cappend x (Term Nil (PS (IS IN) (PS IN PN)))) cpermutation
+
+--plist_of_3 :: Term '[LC, LC, LC, Expr (a #-> a #-> a #-> PList a)]
+--plist_of_3 = undefined $ plam \f -> undefined $ plam \acc -> flip3Term $ flip3Term $ plam \list -> undefined
+
+pid :: Term '[Expr (a #-> a), LC]
+pid = reorderTerm $ plam \x -> x
+
+data A
+data B
+
+c :: (forall ys. Insert A ys '[A, A] -> r) -> r
+-- CInsert A ys '[A, A]
+-- CInsert A
+c f = f cinsert
+
+{-
+c :: Permutation '[A, A] '[A, A]
+-- CPermutation '[A, A] '[A, A]
+-- CPermutation '[A] ys
+-- CInsert A ys '[A, A]
+c = cpermutation
 -}

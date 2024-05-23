@@ -1,8 +1,8 @@
-{ mkDerivation, base, lib, sop-core }:
+{ mkDerivation, base, lib }:
 mkDerivation {
   pname = "plutarch-core";
   version = "0.1.0";
   src = ./.;
-  libraryHaskellDepends = [ base sop-core ];
+  libraryHaskellDepends = [ base ];
   license = lib.licenses.mit;
 }

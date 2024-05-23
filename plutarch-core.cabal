@@ -34,5 +34,4 @@ library
   import:          c
   exposed-modules:
     Plutarch.Core
-    Plutarch.Internal.Utilities
     Plutarch.Example
