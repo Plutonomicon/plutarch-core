@@ -69,7 +69,8 @@ flipPermutation = undefined
 class Collapse (xs :: [Language]) (ys :: [Language]) where
   collapse :: Term xs -> Term ys
 
--- thanks @rhendric!
+-- thanks @AndrasKovacs, @rhendric, @effectfully!
+-- See https://discourse.haskell.org/t/challenge-implement-automatic-type-level-permutation/9610
 class CInsert x xs ys | x ys -> xs where
   cinsert :: Insert x xs ys
 
@@ -91,22 +92,17 @@ instance CPermutation '[] '[] where
   cpermutation = PN
 instance (CInsert x ys ys', CPermutation xs ys) => CPermutation (x : xs) ys' where
   cpermutation = PS cinsert cpermutation
+instance {-# INCOHERENT #-} CPermutation xs xs where
+  cpermutation = undefined -- FIXME
 
-reorderTerm :: CPermutation xs ys => Term xs -> Term ys
-reorderTerm = undefined
+pr' :: CPermutation xs ys => Term xs -> Term ys
+pr' = undefined
 
-reorderTermFlipped :: CPermutation ys xs => Term xs -> Term ys
-reorderTermFlipped = undefined
+pr :: CPermutation ys xs => Term xs -> Term ys
+pr = undefined
 
 givePermutation :: Permutation xs ys -> (CPermutation xs ys => r) -> r
 givePermutation _ _ = undefined
-
-plam :: forall a b ls. (forall l. Term '[Expr a, l] -> Term (Expr b : l : ls)) -> Term (LC : Expr (a #-> b) : ls)
-plam f =
-  let t = f (Term Var (PS (IS IN) (PS IN PN)))
-      p :: Permutation ls ls
-      p = case t of Term _ p' -> case flipPermutation p' of PS _ (PS _ p) -> stripPermutation p
-  in givePermutation p $ Term (Lam (reorderTerm t :: Term (Var a : Expr b : ls))) cpermutation
 
 -- explicit type family since this is erased to ()
 data family Append :: [a] -> [a] -> [a] -> Type
@@ -123,6 +119,11 @@ instance CAppend xs ys zs => CAppend (x : xs) ys (x : zs) where
 unsafeAppendProof :: Append xs ys zs
 unsafeAppendProof = unsafeCoerce ()
 
+data LL b l ls = forall ls0 ls1. (CInsert l ls1 ls0, CInsert (Expr b) ls ls1) => LL (Term ls0)
+
+plam :: forall a b ls. (forall l. Term '[l, Expr a] -> Term (l : Expr b : ls)) -> Term (LC : Expr (a #-> b) : ls)
+plam f = Term (Lam $ f $ Term Var (PS IN (PS IN PN))) cpermutation
+
 data ListLang
 data instance L ListLang ls where
   Nil :: L ListLang '[Expr (PList a)]
@@ -138,20 +139,27 @@ data instance L ListLang ls where
 pnil :: Term '[Expr (PList a), ListLang]
 pnil = Term Nil cpermutation
 
-pcons' :: Term '[Expr a, Var a] -> Term '[Expr (PList a), Var (PList a)] -> Term '[Expr (PList a), ListLang, Var (PList a), Var a]
-pcons' x xs = Term (Cons cappend x xs) cpermutation
+data Pack ls
+data instance L (Pack ls0) ls1 where
+  Pack :: Append ls0 ls1 ls -> Term ls -> L (Pack ls0) ls1
+
+pcons ::
+  forall a left' left right' right combined.
+  (CInsert (Expr a) left' left, CInsert (Expr (PList a)) right' right, CAppend left' right' combined) =>
+  Term left -> Term right -> Term (Expr (PList a) : ListLang : combined)
+pcons x xs = Term (Cons cappend (pr x :: Term (Expr a : left')) (pr xs :: Term (Expr (PList a) : right'))) cpermutation
 
 --pcons = Term '[Expr (a #-> PList a #-> PList a), LC, LC, ListLang, ListLang]
 --pcons = plam \x -> undefined $ plam \y ->
 
 psingleton :: Term '[LC, Expr (a #-> PList a), ListLang, ListLang]
-psingleton = plam \x -> Term (Cons cappend x (Term Nil (PS (IS IN) (PS IN PN)))) cpermutation
+psingleton = plam \x -> pr $ pcons x pnil
 
 --plist_of_3 :: Term '[LC, LC, LC, Expr (a #-> a #-> a #-> PList a)]
 --plist_of_3 = undefined $ plam \f -> undefined $ plam \acc -> flip3Term $ flip3Term $ plam \list -> undefined
 
-pid :: Term '[Expr (a #-> a), LC]
-pid = reorderTerm $ plam \x -> x
+pid :: Term '[LC, Expr (a #-> a)]
+pid = plam id
 
 data A
 data B
