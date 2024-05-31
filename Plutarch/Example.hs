@@ -7,14 +7,18 @@ import Plutarch.Core
 import Data.Proxy (Proxy (Proxy))
 import Data.Kind (Type, Constraint)
 
-type PType = Type
-data Expr (a :: PType)
-data LC
-data Var (a :: PType)
+type PType = [Language] -> Type
+data Expr (a :: PType) :: Language
+data TypeInfo (a :: PType) :: Language
+data LC :: Language
+data Var (a :: PType) :: Language
 data instance L (Expr a) ls where
 data instance L (Var a) ls where
   Var :: L (Var a) '[Expr a]
   VarCollapse :: Term (Var a : Var a : ls) -> L (Var a) ls
+
+infixr 0 #->
+data (#->) :: PType -> PType -> PType
 data instance L LC ls where
   Lam :: Term (Var a : Expr b : ls) -> L LC (Expr (a #-> b) : ls)
   LamConst :: Term (Expr b : ls) -> L LC (Expr (a #-> b) : ls)
@@ -22,11 +26,6 @@ data instance L LC ls where
 data App
 data instance L App lc where
   App :: Term (Expr (a #-> b) : ls) -> Term (Expr a : ls) -> L App (Expr b : ls)
-
-data PList :: PType -> PType
-
-infixr 0 #->
-data (#->) (a :: PType) (b :: PType)
 
 class Interpretible (l :: Language) where
   interpret :: Proxy l -> ()
@@ -104,10 +103,19 @@ pr = undefined
 givePermutation :: Permutation xs ys -> (CPermutation xs ys => r) -> r
 givePermutation _ _ = undefined
 
--- explicit type family since this is erased to ()
+-- really just a type family made explicit;
+-- it erases to unit
+-- FIXME: make zero size
 data family Append :: [a] -> [a] -> [a] -> Type
 data instance Append '[] ys ys = Append0
 newtype instance Append (x : xs) ys (x : zs) = Append1 (Append xs ys zs)
+
+-- FIXME: make zero size
+-- This one is actually a list of thunks
+-- unfortunately, even though they all are unit
+data family AppendAll :: [[a]] -> [a] -> Type
+data instance AppendAll '[] '[] = AppendAll0
+data instance AppendAll (xs : xss) r = forall r'. AppendAll1 (AppendAll xss r') (Append xs r' r)
 
 class CAppend xs ys zs | xs ys -> zs where
   cappend :: Append xs ys zs
@@ -119,10 +127,17 @@ instance CAppend xs ys zs => CAppend (x : xs) ys (x : zs) where
 unsafeAppendProof :: Append xs ys zs
 unsafeAppendProof = unsafeCoerce ()
 
-data LL b l ls = forall ls0 ls1. (CInsert l ls1 ls0, CInsert (Expr b) ls ls1) => LL (Term ls0)
-
 plam :: forall a b ls. (forall l. Term '[l, Expr a] -> Term (l : Expr b : ls)) -> Term (LC : Expr (a #-> b) : ls)
 plam f = Term (Lam $ f $ Term Var (PS IN (PS IN PN))) cpermutation
+
+data PList :: PType -> PType where
+  PNil :: PList a '[]
+  PCons :: Append ls0 ls1 ls -> Term (Expr a : ls0) -> Term (Expr (PList a) : ls1) -> PList a ls
+
+data HasType :: PType -> Language
+data instance L (HasType t) ls where
+  Construct :: t ls -> L (HasType t) (Expr t : ls)
+  Destruct :: Append ls ls' ls'' -> Term (Expr t : ls) -> (t '[] -> Term ls') -> L (HasType t) ls'' -- FIXME, replace '[] with vars
 
 data ListLang
 data instance L ListLang ls where
