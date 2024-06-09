@@ -12,7 +12,7 @@ import Unsafe.Coerce (unsafeCoerce)
 type Language = Type
 data family L (l :: Language) :: [Language] -> Type
 
--- Insert x xs ys is a proof that inserting x into xs at some index gives ys
+-- Insert x xs ys is a witness for that inserting x into xs at some index gives ys
 data Insert x xs ys where
   IN :: Insert x xs (x : xs)
   IS :: Insert x xs ys -> Insert x (y : xs) (y : ys)

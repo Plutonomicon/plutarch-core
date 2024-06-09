@@ -7,9 +7,39 @@ import Plutarch.Core
 import Data.Proxy (Proxy (Proxy))
 import Data.Kind (Type, Constraint)
 
+type NodeKind = Type
+
+data family Merge (kind :: NodeKind) (x :: Language) (y :: Language) :: Language -> Type
+data family Passthrough (kind :: NodeKind) (x :: Language) :: Language -> Type
+
+data Merges (kind :: NodeKind) (xs :: [Language]) (ys :: [Language]) (rs :: [Language]) where
+  MergesBase :: Merges kind '[] '[] '[]
+  MergesSkipLeft ::
+    Passthrough kind x r
+    -> Merges kind xs (y : ys) rs
+    -> Merges kind kind (x : xs) (y : ys) (r : rs)
+  MergesSkipRight ::
+    Passthrough kind y r
+    -> Merges kind (x : xs) ys rs
+    -> Merges kind kind (x : xs) (y : ys) (r : rs)
+  Merges ::
+    Merge kind x y r
+    -> Merges kind xs ys rs
+    -> Merges kind (x : xs) (y : ys) (r : rs)
+
 type PType = [Language] -> Type
 data Expr (a :: PType) :: Language
 data TypeInfo (a :: PType) :: Language
+
+data ProductNode :: NodeKind
+data SumNode :: NodeKind
+
+data App :: Language
+data instance L App lc where
+  App :: Merges ExprNode xs ys rs -> Term (Expr (a #-> b) : xs) -> Term (Expr a : ys) -> L App (Expr b : rs)
+data instance Merge kind App App App = MergeApp
+data instance Passthrough kind App App = PassthroughApp
+
 data LC :: Language
 data Var (a :: PType) :: Language
 data instance L (Expr a) ls where
@@ -23,25 +53,6 @@ data instance L LC ls where
   Lam :: Term (Var a : Expr b : ls) -> L LC (Expr (a #-> b) : ls)
   LamConst :: Term (Expr b : ls) -> L LC (Expr (a #-> b) : ls)
   LamCollapse :: Term (LC : LC : ls) -> L LC ls
-data App
-data instance L App lc where
-  App :: Term (Expr (a #-> b) : ls) -> Term (Expr a : ls) -> L App (Expr b : ls)
-
-class Interpretible (l :: Language) where
-  interpret :: Proxy l -> ()
-
-class All (c :: a -> Constraint) (l :: [a]) where
-  --c_all ::
-instance All c '[]
-instance (c x, All c xs) => All c (x : xs)
-
-{-
-transPermute :: Permutation xs ys -> Permutation ys zs -> Permutation xs zs
-transPermute = undefined
-
-permuteTerm :: Permutation xs ys -> Term xs -> Term ys
-permuteTerm = undefined
--}
 
 flipTerm :: Term (x : y : ls) -> Term (y : x : ls)
 flipTerm = undefined
