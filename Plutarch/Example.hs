@@ -1,31 +1,61 @@
-{-# LANGUAGE TypeFamilyDependencies, UndecidableInstances #-}
+{-# LANGUAGE TypeFamilyDependencies, UndecidableInstances, MagicHash, UnboxedTuples #-}
 
 module Plutarch.Example where
 
-import Unsafe.Coerce (unsafeCoerce)
+import Unsafe.Coerce (unsafeCoerce, unsafeCoerce#)
 import Plutarch.Core
 import Data.Proxy (Proxy (Proxy))
 import Data.Kind (Type, Constraint)
+import GHC.Exts (ZeroBitType)
+
+type Unit = (# #)
+mkUnit :: () -> Unit
+mkUnit () = (# #)
+data Box (a :: ZeroBitType) = Box a
+
+infix 0 :#:
+type (:#:) :: Type -> Type -> ZeroBitType
+newtype (:#:) a b = UnsafeEq (# #)
+
+infix 0 :~:
+data (:~:) (a :: Type) (b :: Type) where
+  Refl :: a :~: a
+
+mkEq :: Box (a :#: a)
+mkEq = Box (UnsafeEq (# #))
+unEq :: a :#: a -> a :~: a
+unEq (UnsafeEq (# #)) = unsafeCoerce Refl
+
+unsafeFakeZeroBitType :: forall (a :: ZeroBitType). Box a
+unsafeFakeZeroBitType = Box (unsafeCoerce# (# #))
+
+type ZeroPair :: ZeroBitType -> ZeroBitType -> ZeroBitType
+newtype ZeroPair a b = UnsafeZeroPair (# #)
+
+mkZeroPair :: a -> b -> ZeroPair a b
+mkZeroPair _ _ = UnsafeZeroPair (# #)
+
+unZeroPair :: ZeroPair a b -> (# a, b #)
+unZeroPair _ = case (unsafeFakeZeroBitType, unsafeFakeZeroBitType) of (Box x, Box y) -> (# x, y #)
+
+f :: (# #) -> Int
+f (# #) = 0
 
 type NodeKind = Type
 
-data family Merge (kind :: NodeKind) (x :: Language) (y :: Language) :: Language -> Type
-data family Passthrough (kind :: NodeKind) (x :: Language) :: Language -> Type
+data family Merge (kind :: NodeKind) (x :: Language) (y :: Language) :: Language -> ZeroBitType
 
-data Merges (kind :: NodeKind) (xs :: [Language]) (ys :: [Language]) (rs :: [Language]) where
-  MergesBase :: Merges kind '[] '[] '[]
-  MergesSkipLeft ::
-    Passthrough kind x r
-    -> Merges kind xs (y : ys) rs
-    -> Merges kind kind (x : xs) (y : ys) (r : rs)
-  MergesSkipRight ::
-    Passthrough kind y r
-    -> Merges kind (x : xs) ys rs
-    -> Merges kind kind (x : xs) (y : ys) (r : rs)
-  Merges ::
-    Merge kind x y r
-    -> Merges kind xs ys rs
-    -> Merges kind (x : xs) (y : ys) (r : rs)
+type Merges :: NodeKind -> [Language] -> [Language] -> [Language] -> ZeroBitType
+newtype Merges kind xs ys zs = UnsafeMerges (# #)
+
+merges_base :: Box (Merges kind '[] '[] '[])
+merges_base = Box (UnsafeMerges (# #))
+
+merges_step :: Merge kind x y z -> Merges kind xs yz zs -> Merges kind (x : xs) (y : ys) (z : zs)
+merges_step _ (UnsafeMerges (# #)) = (UnsafeMerges (# #))
+
+merges_unstep :: Merges kind (x : xs) (y : ys) (z : zs) -> (# Merge kind x y z, Merges kind xs ys zs #)
+merges_unstep (UnsafeMerges (# #)) = case unsafeFakeZeroBitType of Box x -> (# x, UnsafeMerges (# #) #)
 
 type PType = [Language] -> Type
 data Expr (a :: PType) :: Language
@@ -34,11 +64,20 @@ data TypeInfo (a :: PType) :: Language
 data ProductNode :: NodeKind
 data SumNode :: NodeKind
 
+infixr 0 -->
+data (-->) :: PType -> PType -> PType
+
+{-
 data App :: Language
 data instance L App lc where
-  App :: Merges ExprNode xs ys rs -> Term (Expr (a #-> b) : xs) -> Term (Expr a : ys) -> L App (Expr b : rs)
-data instance Merge kind App App App = MergeApp
-data instance Passthrough kind App App = PassthroughApp
+  App :: Merges ProductNode xs ys rs -> Term (Expr (a --> b) : xs) -> Term (Expr a : ys) -> L App (Expr b : rs)
+newtype instance Merge kind App app0 app1 = MergeApp (app0 :~: App, app1 :~: App)
+
+class CMerge (kind :: NodeKind) (x :: Language) (ys :: [Language]) (rs :: [Language]) where
+  cmerge :: Merges 
+
+class CMerges (kind :: NodeKind) (xs :: [Language]) (ys :: [Language]) (rs :: [Language]) | kind xs ys -> rs where
+  cmerges :: CMerges kind xs ys rs
 
 data LC :: Language
 data Var (a :: PType) :: Language
@@ -47,8 +86,6 @@ data instance L (Var a) ls where
   Var :: L (Var a) '[Expr a]
   VarCollapse :: Term (Var a : Var a : ls) -> L (Var a) ls
 
-infixr 0 #->
-data (#->) :: PType -> PType -> PType
 data instance L LC ls where
   Lam :: Term (Var a : Expr b : ls) -> L LC (Expr (a #-> b) : ls)
   LamConst :: Term (Expr b : ls) -> L LC (Expr (a #-> b) : ls)
@@ -114,66 +151,32 @@ pr = undefined
 givePermutation :: Permutation xs ys -> (CPermutation xs ys => r) -> r
 givePermutation _ _ = undefined
 
--- really just a type family made explicit;
--- it erases to unit
--- FIXME: make zero size
-data family Append :: [a] -> [a] -> [a] -> Type
-data instance Append '[] ys ys = Append0
-newtype instance Append (x : xs) ys (x : zs) = Append1 (Append xs ys zs)
-
--- FIXME: make zero size
--- This one is actually a list of thunks
--- unfortunately, even though they all are unit
-data family AppendAll :: [[a]] -> [a] -> Type
-data instance AppendAll '[] '[] = AppendAll0
-data instance AppendAll (xs : xss) r = forall r'. AppendAll1 (AppendAll xss r') (Append xs r' r)
-
-class CAppend xs ys zs | xs ys -> zs where
-  cappend :: Append xs ys zs
-instance CAppend '[] ys ys where
-  cappend = Append0
-instance CAppend xs ys zs => CAppend (x : xs) ys (x : zs) where
-  cappend = Append1 cappend
-
-unsafeAppendProof :: Append xs ys zs
-unsafeAppendProof = unsafeCoerce ()
-
 plam :: forall a b ls. (forall l. Term '[l, Expr a] -> Term (l : Expr b : ls)) -> Term (LC : Expr (a #-> b) : ls)
 plam f = Term (Lam $ f $ Term Var (PS IN (PS IN PN))) cpermutation
 
-data PList :: PType -> PType where
-  PNil :: PList a '[]
-  PCons :: Append ls0 ls1 ls -> Term (Expr a : ls0) -> Term (Expr (PList a) : ls1) -> PList a ls
-
-data HasType :: PType -> Language
-data instance L (HasType t) ls where
-  Construct :: t ls -> L (HasType t) (Expr t : ls)
-  Destruct :: Append ls ls' ls'' -> Term (Expr t : ls) -> (t '[] -> Term ls') -> L (HasType t) ls'' -- FIXME, replace '[] with vars
+data PList (a :: PType) :: PType
 
 data ListLang
 data instance L ListLang ls where
   Nil :: L ListLang '[Expr (PList a)]
-  Cons :: Append ls0 ls1 ls -> Term (Expr a : ls0) -> Term (Expr (PList a) : ls1) -> L ListLang (Expr (PList a) : ls)
+  Cons :: Merges SumNode ls0 ls1 ls -> Term (Expr a : ls0) -> Term (Expr (PList a) : ls1) -> L ListLang (Expr (PList a) : ls)
   ListMatch ::
-    Append ls0 ls1 ls2 ->
-    Append ls2 ls3 ls ->
+    Merges SumNode ls10 ls11 ls1 ->
+    Merges ProductNode ls0 ls1 ls ->
     Term (Expr (PList a) : ls0) ->
-    Term (Expr b : ls1) ->
-    Term (Expr b : ls3) -> -- FIXME: pass in head and tail
+    Term (Expr b : ls10) ->
+    Term (Expr b : ls11) -> -- FIXME: pass in head and tail
     L ListLang (Expr b : ls)
 
 pnil :: Term '[Expr (PList a), ListLang]
 pnil = Term Nil cpermutation
-
-data Pack ls
-data instance L (Pack ls0) ls1 where
-  Pack :: Append ls0 ls1 ls -> Term ls -> L (Pack ls0) ls1
 
 pcons ::
   forall a left' left right' right combined.
   (CInsert (Expr a) left' left, CInsert (Expr (PList a)) right' right, CAppend left' right' combined) =>
   Term left -> Term right -> Term (Expr (PList a) : ListLang : combined)
 pcons x xs = Term (Cons cappend (pr x :: Term (Expr a : left')) (pr xs :: Term (Expr (PList a) : right'))) cpermutation
+{-
 
 --pcons = Term '[Expr (a #-> PList a #-> PList a), LC, LC, ListLang, ListLang]
 --pcons = plam \x -> undefined $ plam \y ->
@@ -201,4 +204,6 @@ c :: Permutation '[A, A] '[A, A]
 -- CPermutation '[A] ys
 -- CInsert A ys '[A, A]
 c = cpermutation
+-}
+-}
 -}
