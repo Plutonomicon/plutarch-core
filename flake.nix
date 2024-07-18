@@ -15,10 +15,10 @@
       };
       hsPkgsFor = system: with pkgsFor system; hsOverlay haskell.lib haskellPackages;
       formattersFor = system: with (pkgsFor system); [
-        # nixpkgs-fmt
-        # haskellPackages.cabal-fmt
-        # haskellPackages.haskell-language-server
-        # haskellPackages.fourmolu
+        nixpkgs-fmt
+        haskellPackages.cabal-fmt
+        haskellPackages.haskell-language-server
+        haskellPackages.fourmolu
       ];
       regen = system: (pkgsFor system).writeShellApplication {
         name = "regen";
