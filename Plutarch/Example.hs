@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilyDependencies, UndecidableInstances, MagicHash, UnboxedTuples, ViewPatterns, PatternSynonyms #-}
+{-# LANGUAGE TypeFamilyDependencies, UndecidableInstances #-}
 
 module Plutarch.Example where
 
@@ -10,198 +10,111 @@ import GHC.Exts (ZeroBitType, TYPE)
 import Data.Type.Equality ((:~:)(Refl))
 import GHC.TypeLits (Nat, type (-))
 
-type ZeroUnit = (# #)
-mkZeroUnit :: () -> ZeroUnit
-mkZeroUnit () = (# #)
-type Box :: ZeroBitType -> Type
-data Box a = Box a
-unBox :: Box a -> a
-unBox (Box x) = x
-
-infix 4 ~#
-type (~#) :: a -> a -> ZeroBitType
-newtype (~#) x y = UnsafeEq (# #)
-
-mkZeroRefl :: Box (a ~# a)
-mkZeroRefl = Box (UnsafeEq (# #))
-unZeroEq :: a ~# b -> a :~: b
-unZeroEq (UnsafeEq (# #)) = unsafeCoerce Refl
-
-pattern ZeroRefl :: () => a ~ b => a ~# b
-pattern ZeroRefl <- (unZeroEq -> Refl) where
-  ZeroRefl = unBox mkZeroRefl
-{-# COMPLETE ZeroRefl #-}
-
-unsafeFakeZeroBitType :: forall (a :: ZeroBitType). Box a
-unsafeFakeZeroBitType = Box (unsafeCoerce# (# #))
-
-type ZeroPair :: ZeroBitType -> ZeroBitType -> ZeroBitType
-newtype ZeroPair a b = UnsafeZeroPair (# #)
-
-mkZeroPair :: a -> b -> ZeroPair a b
-mkZeroPair _ _ = UnsafeZeroPair (# #)
-
-unZeroPair :: ZeroPair a b -> (Box a, Box b)
-unZeroPair _ = (unsafeFakeZeroBitType, unsafeFakeZeroBitType)
-
-pattern ZeroPair :: a -> b -> ZeroPair a b
-pattern ZeroPair x y <- (unZeroPair -> (Box x, Box y)) where
-  ZeroPair x y = mkZeroPair x y
-{-# COMPLETE ZeroPair #-}
-
-type ZeroEither :: ZeroBitType -> ZeroBitType -> ZeroBitType
-newtype ZeroEither a b = UnsafeZeroEither (# #)
-
-mkZeroLeft :: a -> ZeroEither a b
-mkZeroLeft _ = UnsafeZeroEither (# #)
-
-mkZeroRight :: b -> ZeroEither a b
-mkZeroRight _ = UnsafeZeroEither (# #)
-
-unsafeUnZeroEither :: forall (a :: ZeroBitType) (b :: ZeroBitType) (c :: ZeroBitType). ZeroEither a b -> (a -> c) -> (b -> c) -> c
-unsafeUnZeroEither _ f g =
-  case (unsafeFakeZeroBitType, unsafeFakeZeroBitType) of { (Box x, Box y) ->
-    case f x of { _ ->
-      case g y of _ -> case unsafeFakeZeroBitType of Box z -> z
-    }
-  }
-
-type ZeroSome :: (a -> ZeroBitType) -> ZeroBitType
-newtype ZeroSome f = UnsafeZeroSome (# #)
-
-mkZeroSome :: f x -> ZeroSome f
-mkZeroSome _ = UnsafeZeroSome (# #)
-
-unZeroSome :: forall f rep (r :: TYPE rep). ZeroSome f -> (forall x. f x -> r) -> r
-unZeroSome (UnsafeZeroSome (# #)) f = case unsafeFakeZeroBitType of Box x -> f x
-
-type ZeroSomeHelper :: (a -> ZeroBitType) -> Type
-data ZeroSomeHelper f = forall x. ZeroSomeHelper (f x)
-
-zeroSomeHelper :: ZeroSome f -> ZeroSomeHelper f
-zeroSomeHelper (UnsafeZeroSome (# #)) = ZeroSomeHelper (unBox unsafeFakeZeroBitType)
-
-pattern ZeroSome
-  :: forall a {f :: a -> ZeroBitType}.
-     () =>
-     forall (x :: a).
-     f x -> ZeroSome f
-pattern ZeroSome fx <- (zeroSomeHelper -> ZeroSomeHelper fx) where
-  ZeroSome fx = mkZeroSome fx
-{-# COMPLETE ZeroSome #-}
-
-type ZeroSome6 :: (a0 -> a1 -> a2 -> a3 -> a4 -> a5 -> ZeroBitType) -> ZeroBitType
-newtype ZeroSome6 f = UnsafeZeroSome6 (# #)
-
-mkZeroSome6 :: f x0 x1 x2 x3 x4 x5 -> ZeroSome6 f
-mkZeroSome6 _ = UnsafeZeroSome6 (# #)
-
-unZeroSome6 :: forall f rep (r :: TYPE rep). ZeroSome6 f -> (forall x0 x1 x2 x3 x4 x5. f x0 x1 x2 x3 x4 x5 -> r) -> r
-unZeroSome6 (UnsafeZeroSome6 (# #)) f = f (unBox unsafeFakeZeroBitType)
-
-type ZeroSome6Helper :: (a0 -> a1 -> a2 -> a3 -> a4 -> a5 -> ZeroBitType) -> Type
-data ZeroSome6Helper f = forall x0 x1 x2 x3 x4 x5. ZeroSome6Helper (f x0 x1 x2 x3 x4 x5)
-
-zeroSome6Helper :: ZeroSome6 f -> ZeroSome6Helper f
-zeroSome6Helper (UnsafeZeroSome6 (# #)) = ZeroSome6Helper (unBox unsafeFakeZeroBitType)
-
-pattern ZeroSome6
-  :: forall a0 a1 a2 a3 a4 a5 {f :: a0 -> a1 -> a2 -> a3 -> a4 -> a5 -> ZeroBitType}.
-     () =>
-     forall (x0 :: a0) (x1 :: a1) (x2 :: a2) (x3 :: a3) (x4 :: a4) (x5 :: a5).
-     f x0 x1 x2 x3 x4 x5 -> ZeroSome6 f
-pattern ZeroSome6 fx <- (zeroSome6Helper -> ZeroSome6Helper fx) where
-  ZeroSome6 fx = mkZeroSome6 fx
-{-# COMPLETE ZeroSome6 #-}
-
-type ZeroForall :: (a -> ZeroBitType) -> ZeroBitType
-newtype ZeroForall f = UnsafeZeroForall (# #)
-
-mkZeroForall :: (forall x. f x) -> ZeroForall f
-mkZeroForall _ = UnsafeZeroForall (# #)
-
-unZeroForall :: ZeroForall f -> f x
-unZeroForall (UnsafeZeroForall (# #)) = case unsafeFakeZeroBitType of Box x -> x
 
 type NodeKind = Type
 
 type MergeCategory = Type
-type family GetMergeCategory (x :: Language) :: MergeCategory
-type family GetMergeIndex (x :: Language) :: a
 
-data family Merge (kind :: NodeKind) (category :: MergeCategory) (x :: a) (y :: a) :: a -> ZeroBitType
+data family MergeCategoryFor :: Language -> MergeCategory -> a -> Type
+type CMergeCategoryFor :: Language -> MergeCategory -> a -> Constraint
+class CMergeCategoryFor l c i | l -> c i , i c -> l where
+  cmergeCategoryFor :: MergeCategoryFor l c i
 
-newtype MergesBase xs ys zs = MergesBase (ZeroPair (ZeroPair (xs ~# '[]) (ys ~# '[])) (zs ~# '[]))
+data family Merge (kind :: NodeKind) (category :: MergeCategory) (x :: a) (y :: a) :: a -> Type
+type CMerge :: NodeKind -> MergeCategory -> a -> a -> a -> Constraint
+class CMerge kind cat x y r | kind cat x y -> r where
+  cmerge :: Merge kind cat x y r
 
-{-
-data HList as where
-  HNil :: HList '[]
-  HCons :: a -> HList as -> HList (a : as)
+-- This type _should_ have been isomorphic to unit,
+-- but this isn't possible to do in Haskell.
+-- You can't do a practical emulation "zero bit types" properly in Haskell,
+-- due to a lack of totality combined with equality proofs
+-- being possible.
+-- The core challenge is that you must somehow define a `type ZEither :: ZeroBitType`,
+-- which supports pattern matching on it such that either:
+-- - the result also has kind `ZeroBitType` (thus it needn't be run, but totality!)
+-- - both branches are _erased to the same code_ (how could we possibly emulate this?)
+--
+-- You _could_ still do it if you don't allow pattern matching on it with functions,
+-- but instead some calculus which you have full control over.
+-- This would be very painful however.
+--
+-- We choose the less painful but indeed much more dissatisfactory approach of
+-- making `Merges` not erased, such that it has actual meaning.
+--
+-- Anything which you do in `Merges`, should instead be done in your language definition.
+-- You should not have any `Merge k c x y` that has more than one possible value,
+-- likewise for `MergeCategoryFor` and `MergeIndexFor`.
+--
+-- We can't enforce this, however, and it won't break anything either,
+-- it's just bad style.
+type Merges :: NodeKind -> [Language] -> [Language] -> [Language] -> Type
+data Merges kind xs ys rs where
+  MergesBase :: Merges kind '[] '[] '[]
+  MergesStep ::
+    MergeCategoryFor x cat x' ->
+    MergeCategoryFor y cat y' ->
+    Merge kind cat x' y' r' ->
+    MergeCategoryFor r cat r' ->
+    Merges kind xs ys rs ->
+    Merges kind (x : xs) (y : ys) (r : rs)
 
-type Index :: forall a as. Nat -> HList as -> a
-type family Index (idx :: Nat) (xs :: HList as) :: a where
-  forall a as (x :: a) (xs :: HList as). Index @a @(a : as) 0 (HCons x xs) = x
-  Index n (HCons y xs) = Index (n - 1) xs
--}
-
-newtype MergesStep kind xs ys zs x y z xs' ys' zs' =
-  MergesStep (
-    ZeroPair
-      (ZeroPair
-        (ZeroPair (Merge kind x y z))
-        (Merges kind xs' ys' zs'))
-      (ZeroPair (xs ~# x : xs') (ZeroPair (ys ~# y : ys') (zs ~# z : zs')))
-  )
-
-type Merges :: NodeKind -> [Language] -> [Language] -> [Language] -> ZeroBitType
-newtype Merges kind xs ys zs = Merges (ZeroEither (MergesBase xs ys zs) (ZeroSome6 (MergesStep kind xs ys zs)))
-
-merges_base :: Box (Merges kind '[] '[] '[])
-merges_base = Box (Merges (mkZeroLeft (MergesBase (ZeroPair (ZeroPair ZeroRefl ZeroRefl) ZeroRefl))))
-
-merges_step :: Merge kind x y z -> Merges kind xs ys zs -> Merges kind (x : xs) (y : ys) (z : zs)
-merges_step merge merges = Merges (mkZeroRight (ZeroSome6 (MergesStep (ZeroPair (ZeroPair merge merges) (ZeroPair ZeroRefl (ZeroPair ZeroRefl ZeroRefl))))))
-
-merges_unstep :: Merges kind (x : xs) (y : ys) (z : zs) -> ZeroPair (Merge kind x y z) (Merges kind xs ys zs)
-merges_unstep (Merges merges) =
-  unsafeUnZeroEither
-    merges
-    (\(MergesBase (ZeroPair (ZeroPair _eq _) _)) -> unBox unsafeFakeZeroBitType) -- this case has a contradiction, be careful that we don't use it to type things illegally and cause e.g. a segfault
-    (\(ZeroSome6 (MergesStep (ZeroPair (ZeroPair merge merges) (ZeroPair ZeroRefl (ZeroPair ZeroRefl ZeroRefl))))) -> ZeroPair merge merges)
+class CMerges kind xs ys rs | kind xs ys -> rs where
+  cmerges :: Merges kind xs ys rs
+instance CMerges kind '[] '[] '[] where
+  cmerges = MergesBase
+instance (
+  CMergeCategoryFor x cat x',
+  CMergeCategoryFor y cat y',
+  CMerge kind cat x' y' r',
+  CMergeCategoryFor r cat r',
+  CMerges kind xs ys rs
+  ) => CMerges kind (x : xs) (y : ys) (r : rs) where
+  cmerges = MergesStep cmergeCategoryFor cmergeCategoryFor cmerge cmergeCategoryFor cmerges
 
 type PType = [Language] -> Type
+
 data Expr (a :: PType) :: Language
-data TypeInfo (a :: PType) :: Language
+data instance L (Expr a) ls where
 
 data ProductNode :: NodeKind
 data SumNode :: NodeKind
 
-infixr 0 -->
-data (-->) :: PType -> PType -> PType
+infixr 0 #->
+data (#->) :: PType -> PType -> PType
 
 data App :: Language
 data instance L App lc where
-  App :: Merges ProductNode xs ys rs -> Term (Expr (a --> b) : xs) -> Term (Expr a : ys) -> L App (Expr b : rs)
-newtype instance Merge kind App app0 app1 = MergeAppLeft (ZeroPair (app0 ~# App) (app1 ~# App))
-newtype instance Merge kind app0 App app1 = MergeAppRight (ZeroPair (app0 ~# App) (app1 ~# App))
+  App :: Merges ProductNode xs ys rs -> Term (Expr (a #-> b) : xs) -> Term (Expr a : ys) -> L App (Expr b : rs)
+
+data AppC :: MergeCategory
+data instance MergeCategoryFor App cat idx where
+  MergeCategoryFor_App :: MergeCategoryFor App AppC idx
+data instance Merge _ AppC x y z = Merge_App
+
+instance CMergeCategoryFor App AppC '() where
+  cmergeCategoryFor = MergeCategoryFor_App
+instance CMerge ProductNode AppC x y '() where
+  cmerge = Merge_App
+
+data ElemOf a as where
+  ElemOfN :: ElemOf x (x : xs)
+  ElemOfS :: ElemOf x xs -> ElemOf x (y : xs)
+
+--plam :: (Term '[Vars, Expr a] -> Term (Expr b : ls)) -> Term (Expr (a #-> b) : ls)
+--plam = undefined
 
 {-
+data TypedVar (as :: [PType]) :: Language
+data instance L (TypedVar as) ls where
+  TypedVar :: ElemOf a as -> L (TypedVar as) '[Expr a]
+  TypedVarCollapse :: Term (TypedVar a : TypedVar a : ls) -> L (TypedVar a) ls
 
-class CMerge (kind :: NodeKind) (x :: Language) (ys :: [Language]) (rs :: [Language]) where
-  cmerge :: Merges 
-
-class CMerges (kind :: NodeKind) (xs :: [Language]) (ys :: [Language]) (rs :: [Language]) | kind xs ys -> rs where
-  cmerges :: CMerges kind xs ys rs
+instance CMergeCategoryFor
 
 data LC :: Language
-data Var (a :: PType) :: Language
-data instance L (Expr a) ls where
-data instance L (Var a) ls where
-  Var :: L (Var a) '[Expr a]
-  VarCollapse :: Term (Var a : Var a : ls) -> L (Var a) ls
-
 data instance L LC ls where
-  Lam :: Term (Var a : Expr b : ls) -> L LC (Expr (a #-> b) : ls)
+  Lam :: Term (TypedVar a : Expr b : ls) -> L LC (Expr (a #-> b) : ls)
   LamConst :: Term (Expr b : ls) -> L LC (Expr (a #-> b) : ls)
   LamCollapse :: Term (LC : LC : ls) -> L LC ls
 

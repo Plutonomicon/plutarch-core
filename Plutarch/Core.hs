@@ -10,7 +10,8 @@ import Data.Kind (Type)
 import Unsafe.Coerce (unsafeCoerce)
 
 type Language = Type
-data family L (l :: Language) :: [Language] -> Type
+type Tag = Type
+data family L (l :: Language) (tag :: Tag) :: [Language] -> Type
 
 -- Insert x xs ys is witnesses that inserting x into xs at some index gives ys
 data Insert x xs ys where
@@ -22,9 +23,11 @@ data Permutation xs ys where
   PN :: Permutation '[] '[]
   PS :: Insert x ys ys' -> Permutation xs ys -> Permutation (x : xs) ys'
 
-type Term :: [Language] -> Type
-data Term ls where
-  Term :: L l ls -> Permutation (l : ls) ls' -> Term ls'
+data S
+
+type Term :: S -> [Language] -> Type
+data Term s ls where
+  Term :: L l tag ls -> Permutation (l : ls) ls' -> Term s ls'
 
 --- Show instances
 
